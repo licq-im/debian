@@ -1,0 +1,11 @@
+licq-plugin-osd for Debian
+==========================
+
+To configure the OSD plug-in, you need to copy examples/licq_osd.conf
+to ~/.licq/.  To load the plug-in, start licq like
+
+  licq -p osd -p <other-plugins>,
+
+or load the plug-in from the GUI.
+
+ -- Peter Eisentraut, 2004-10-03

@@ -1,0 +1,7 @@
+?package(licq):\
+  title="Licq"\
+  needs="X11"\
+  section="Applications/Network/Communication"\
+  icon="/usr/share/pixmaps/licq.xpm"\
+  command="/usr/bin/licq"\
+  hints="IM,Messaging"

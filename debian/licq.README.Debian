@@ -1,0 +1,10 @@
+Licq for Debian
+===============
+
+If you are using a plug-in package other than licq-plugin-qt, you will
+need to either edit your ~/.licq/licq.conf file to specify which one
+you want to start with, or start licq with the option "-p <pluginname>",
+e.g., if you were using the package licq-plugin-jonsgtk, but not the qt
+package, start licq with "licq -p jons-gtk-gui".
+
+ -- Peter Eisentraut, 2004-10-03

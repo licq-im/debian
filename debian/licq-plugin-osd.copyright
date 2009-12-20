@@ -1,0 +1,23 @@
+This Debian package was created by Thibaut VARENE <varenet@debian.org>
+on 4 Jul 2004.  On 01 Oct 2004, it was integrated into the licq package,
+which is maintained by Peter Eisentraut <petere@debian.org>.
+
+The upstream sources were obtained from the Licq home page at
+<http://www.licq.org/download.php>.
+
+Upstream author: Martin Maurer <martin.maurer@email.de>
+
+Copyright: 2002-2004 Martin Maurer
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+ 
+  This package is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  Lesser General Public License for more details.
+
+On Debian systems, the complete text of the GNU GPL can be found in the
+file /usr/share/common-licenses/GPL.

@@ -1,0 +1,61 @@
+.TH LICQ 1 "08 Oct 2006"
+.SH NAME
+licq \- ICQ client
+.PP
+.SH SYNOPSIS
+\fBlicq\fR [\fIOPTION\fR]... [-- \fIPLUGIN-OPTIONS\fR]...
+.SH DESCRIPTION
+\fBlicq\fR is an ICQ instant messaging client daemon that supports a
+number of interfaces via plug-ins, primarily Qt, but also GTK+, console,
+and other utility plug-ins.  At least one plug-in is required for Licq
+to function.
+.SH OPTIONS
+.TP
+\fB-b\fR \fIDIR\fR
+Set the base directory for configuration and data files
+(default: \fI$HOME/.licq\fR)
+.TP
+\fB-c\fR
+Disable color at standard output.
+.TP
+\fB-d\fR \fINUMBER\fR
+Set what information is logged to standard output:
+.br
+1 - status information
+.br
+2 - unknown packets
+.br
+4 - errors
+.br
+8 - warnings
+.br
+16 - all packets
+.br
+Add values together for multiple options.
+.TP
+\fB-h\fR
+Print a help screen on standard output, then exit.
+.TP
+\fB-I\fR
+Force initialization of the given base directory.
+.TP
+\fB-o\fR \fIFILE\fR
+Redirect standard error to \fIFILE\fR, which can be a device (e.g., \fI/dev/ttyp4\fR).
+.TP
+\fB-p\fR \fIPLUGIN\fR
+Load the given plug-in library.
+.SH EXAMPLES
+To start \fBlicq\fR with the KDE GUI plug-in:
+.RS
+.sp
+licq \-p kde-gui
+.sp
+.RE
+This choice is recorded, so next time it suffices to start without any options.
+.SH FILES
+.TP 5
+\fI$HOME/.licq/\fR
+per-user configuration data
+.SH AUTHOR
+This man page was written by Zed Pobre <zed@debian.org> and
+Peter Eisentraut <petere@debian.org> for the Debian project.

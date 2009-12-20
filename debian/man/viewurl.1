@@ -1,0 +1,50 @@
+.TH VIEWURL 1 "02 Oct 2006"
+.SH NAME
+viewurl\-firefox.sh, viewurl\-lynx.sh, viewurl\-mozilla.sh, viewurl\-ncftp.sh,
+viewurl\-netscape.sh, viewurl\-opera.sh, viewurl\-seamonkey.sh, viewurl\-w3m.sh
+\- Licq URL helper scripts
+.PP
+.SH SYNOPSIS
+.B viewurl-firefox.sh
+.I URL
+.br
+.B viewurl-lynx.sh
+.I URL
+.br
+.B viewurl-mozilla.sh
+.I URL
+.br
+.B viewurl-ncftp.sh
+.I URL
+.br
+.B viewurl-netscape.sh
+.I URL
+.br
+.B viewurl-opera.sh
+.I URL
+.br
+.B viewurl-seamonkey.sh
+.I URL
+.br
+.B viewurl-w3m.sh
+.I URL
+
+.SH DESCRIPTION
+The viewurl helper scripts open the respective user agent (usually a web
+browser) and display the URL supplied as an argument.  They are intended
+to be used with the Licq ICQ client, where you can configure your
+preferred user agent for various URL types.
+
+.SH OPTIONS
+.TP
+.I URL
+the URL to be displayed
+
+.SH BUGS
+These scripts should probably not be called directly by users and should
+therefore be installed in \fI/usr/share/licq\fR, but that will cause an upgrade
+nightmare for some users.
+
+.SH AUTHOR
+This manual page was written by Peter Eisentraut <petere@debian.org> for the
+Debian project.

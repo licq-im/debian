@@ -1,0 +1,53 @@
+# bug #362472
+
+diff -Nur licq-1.3.5-rc2/plugins/qt-gui/src/mainwin.cpp licq-1.3.5-rc2.new/plugins/qt-gui/src/mainwin.cpp
+--- licq-1.3.5-rc2/plugins/qt-gui/src/mainwin.cpp	2007-10-10 21:27:24.000000000 +0200
++++ licq-1.3.5-rc2.new/plugins/qt-gui/src/mainwin.cpp	2007-10-18 12:47:35.000000000 +0200
+@@ -356,19 +356,6 @@
+ 
+   m_bDisableDockIcon = bDisableDockIcon;
+ 
+-  // set up appicon and docking, code supplied by Mark Deneed
+-  if (!m_bDisableDockIcon)
+-  {
+-    WId win = winId();     // get the window
+-    XWMHints *hints;  // hints
+-    Display *dsp = x11Display();  // get the display
+-    hints = XGetWMHints(dsp, win);  // init hints
+-    hints->window_group = win;  // set set the window hint
+-    hints->flags = WindowGroupHint;  // set the window group hint
+-    XSetWMHints(dsp, win, hints);  // set the window hints for WM to use.
+-    XFree( hints );
+-  }
+-
+   connect(qApp, SIGNAL(aboutToQuit()), this, SLOT(slot_aboutToQuit()));
+ 
+   // read in info from file
+diff -Nur licq-1.3.5-rc2/plugins/qt-gui/src/userbox.cpp licq-1.3.5-rc2.new/plugins/qt-gui/src/userbox.cpp
+--- licq-1.3.5-rc2/plugins/qt-gui/src/userbox.cpp	2007-10-01 19:50:25.000000000 +0200
++++ licq-1.3.5-rc2.new/plugins/qt-gui/src/userbox.cpp	2007-10-18 12:49:02.000000000 +0200
+@@ -1021,11 +1021,6 @@
+     XSetClassHint(x11Display(), winId(), &classhint);
+     free(classhint.res_name);
+ 
+-    XWMHints *hints = XGetWMHints(x11Display(), winId());
+-    hints->window_group = winId();
+-    hints->flags = WindowGroupHint;
+-    XSetWMHints(x11Display(), winId(), hints);
+-    XFree( hints );
+     floaties->resize(floaties->size()+1);
+     floaties->insert(floaties->size()-1, this);
+   }
+diff -Nur licq-1.3.5-rc2/plugins/qt-gui/src/wharf.cpp licq-1.3.5-rc2.new/plugins/qt-gui/src/wharf.cpp
+--- licq-1.3.5-rc2/plugins/qt-gui/src/wharf.cpp	2007-10-01 19:50:25.000000000 +0200
++++ licq-1.3.5-rc2.new/plugins/qt-gui/src/wharf.cpp	2007-10-18 12:47:46.000000000 +0200
+@@ -105,8 +105,7 @@
+   hints->icon_x = 0;
+   hints->icon_y = 0;
+   hints->icon_window = wharfIcon->winId();
+-  hints->window_group = win;  // set the window hint
+-  hints->flags = WindowGroupHint | IconWindowHint | IconPositionHint | StateHint; // set the window group hint
++  hints->flags = IconWindowHint | IconPositionHint | StateHint;
+   XSetWMHints(dsp, win, hints);  // set the window hints for WM to use.
+   XFree( hints );
+ 

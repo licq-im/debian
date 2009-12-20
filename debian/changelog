@@ -1,0 +1,1298 @@
+licq (1.3.6-3) unstable; urgency=low
+
+  * QA upload.
+  * Fix "fails to build with gcc-4.4", apply patch fix-const.patch from Ubuntu
+    (closes: #548616).
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 20 Dec 2009 17:46:19 +0100
+
+licq (1.3.6-2) unstable; urgency=low
+
+  * QA upload.
+  * Fix FTBFS: Depend on newer kdebase-data which stores licq.png in a
+    different directory (Closes: #530470)
+
+ -- Jan Hauke Rahm <info@jhr-online.de>  Sun, 14 Jun 2009 17:32:54 +0200
+
+licq (1.3.6-1) unstable; urgency=low
+
+  * QA Upload
+  * Sync from Ubuntu jaunty to Debian unstable, summary of changes follows
+    - New upstream release 1.3.6
+    - Removed 40_ICQ_version_too_old.patch, merged upstream
+    - Added libboost-dev to the build-deps
+    - Dropped licq.docs as they are no longer shipped
+  * debian/control:
+    - Bumped Standards Version to 3.8.0
+    - Added ${misc:Depends} to depends lines to lintian clean the package
+
+ -- Michael Casadevall <sonicmctails@gmail.com>  Tue, 16 Dec 2008 17:24:49 -0500
+
+licq (1.3.6-0ubuntu1) jaunty; urgency=low
+
+  * New upstream release 1.3.6
+  * Removed 40_ICQ_version_too_old.patch, merged upstream
+  * Removed 60_glibc2_8-ftbfs-fix.patch, unneeded
+  * Added libboost-dev to the build-deps
+  * debian/licq.docs
+    - Dropped docs no longer shipped upstream
+
+ -- Michael Casadevall <sonicmctails@gmail.com>  Fri, 07 Nov 2008 17:36:24 -0500
+
+licq (1.3.5-7ubuntu1) intrepid; urgency=low
+
+  * Fixed FTBFS failure due to glibc2.8 via 60_glibc2_8-ftbfs-fix.patch
+  * Switched licq icon to be pulled from oxygen skin vs. crystalsvg
+    as intrepid no longer carries the later by default in kdebase-data
+  * Modify Maintainer value to match the DebianMaintainerField
+    specification.
+
+ -- Michael Casadevall <sonicmctails@gmail.com>  Mon, 14 Jul 2008 04:06:46 +0000
+
+licq (1.3.5-7) unstable; urgency=low
+
+  * QA Upload
+  * Fixing ICQ version too old problem (Closes: #488887)
+
+ -- Rene Stegmaier <rene@rr47.de>  Wed, 02 Jul 2008 09:41:16 +0200
+
+licq (1.3.5-6) unstable; urgency=high
+
+  * QA Upload
+  * CVE-2008-1996: Limit maximum number of connections to avoid
+    DoS attacks. Patch from upstream, pointed out by Steffen Joeris.
+    (closes: #479036)
+
+ -- Frank Lichtenheld <djpig@debian.org>  Fri, 02 May 2008 14:36:59 +0200
+
+licq (1.3.5-5) unstable; urgency=low
+
+  * QA Upload
+    + change maintainer address to QA group
+
+ -- Frank Lichtenheld <djpig@debian.org>  Thu, 24 Apr 2008 03:14:09 +0200
+
+licq (1.3.5-4) unstable; urgency=low
+
+  * Added auto-reply configure cache override for gcc-4.3 support
+    (closes: #474425)
+
+ -- Peter Eisentraut <petere@debian.org>  Mon, 07 Apr 2008 12:08:47 +0200
+
+licq (1.3.5-3) unstable; urgency=low
+
+  * Updated standards version
+  * Updated lintian overrides
+  * Removed custom lintian overrides installation rules, made use of new 
+    debhelper and cdbs features instead
+  * Changed to debhelper level 6
+  * Changed section of licq-dev to libdevel
+
+ -- Peter Eisentraut <petere@debian.org>  Fri, 04 Apr 2008 21:13:07 +0200
+
+licq (1.3.5-2) unstable; urgency=low
+
+  * Uploaded to unstable
+
+ -- Peter Eisentraut <petere@debian.org>  Sun, 18 Nov 2007 19:37:01 +0100
+
+licq (1.3.5-1) experimental; urgency=low
+
+  * New upstream release
+    - Obsoleted patches: 42_licq-qt-no-rpath.patch
+  * Updated menu section for new menu policy
+  * Updated copyright files
+
+ -- Peter Eisentraut <petere@debian.org>  Mon, 29 Oct 2007 03:55:57 +0100
+
+licq (1.3.4-3) unstable; urgency=low
+
+  * Don't ignore errors from make distclean, as per lintian check
+  * Changed ${Source-Version} to ${binary:Version}
+  * Removed kderemove tag from menu entry
+  * Updated lintian overrides
+  * Added Homepage control field
+
+ -- Peter Eisentraut <petere@debian.org>  Wed, 10 Oct 2007 14:20:25 +0200
+
+licq (1.3.4-2) unstable; urgency=low
+
+  * licq-plugin-qt replaces a file from the old licq package
+    (closes: #393319)
+
+ -- Peter Eisentraut <petere@debian.org>  Mon, 16 Oct 2006 18:51:14 +0200
+
+licq (1.3.4-1) unstable; urgency=low
+
+  * New upstream release
+    - Updated libtool (closes: #343460, #382455)
+    - Fixed: when out of diskspace, licq continuously creates windows
+      (closes: #245036)
+    - Fixed: eats characters after quotes (closes: #249484)
+    - Fixed: emoticon support needs improvement (closes: #283905)
+    - Fixed: set status to offline via licq.fifo doesn't work correctly
+      (closes: #310670)
+    - Fixed: RMS plugin won't load (closes: #340414)
+    - Fixed: Online ICQ users are changed to Offline after a period of time
+      (closes: #342627)
+    - Fixed: licq should check for stale pidfile (closes: #376298)
+  * Improved man pages
+
+ -- Peter Eisentraut <petere@debian.org>  Sun,  8 Oct 2006 23:37:46 +0200
+
+licq (1.3.4~RC2-1) experimental; urgency=low
+
+  * New upstream release candidate
+    - Obsoleted patches:
+      44_licq-spooky-ok-button.patch
+    - osd plugin reappeared
+  * Cleaned up build dependencies
+  * Updated watch file
+  * Added support for new viewurl scripts
+  * Removed obsolete Provides and Conflicts
+
+ -- Peter Eisentraut <petere@debian.org>  Mon,  2 Oct 2006 21:24:22 +0200
+
+licq (1.3.4~RC1-1) experimental; urgency=low
+
+  * New upstream release candidate
+    - Obsoleted patches:
+      10_gcc-4.1.patch
+      12_licq-desktop.patch
+      36_licq-qt-localedir-fix.patch
+      38_licq-qt-no-home.patch
+      40_licq-forwarder-fix.patch
+      51_licq-qt-withdraw-dock-window.patch
+    - Updated libtool (closes: #343460, #382455)
+    - osd plugin disappeared
+
+ -- Peter Eisentraut <petere@debian.org>  Mon, 25 Sep 2006 15:49:27 +0200
+
+licq (1.3.2-7) unstable; urgency=low
+
+  * Added fix for occasionally dysfunctional OK button in account editing
+    dialog (closes: #377894)
+  * Added fix for docking problems with WindowMaker (closes: #362472,
+    #305086)
+  * Updated lintian overrides
+
+ -- Peter Eisentraut <petere@debian.org>  Tue, 25 Jul 2006 01:49:01 +0200
+
+licq (1.3.2-6) unstable; urgency=low
+
+  * Fixed compilation with GCC 4.1 (closes: #356174)
+  * Reverted to upstream licq.desktop with patches (closes: #365786)
+  * Added upstream patch to hide dock window from WindowMaker tabbing
+    list (closes: #367039)
+  * Simplified configure options handling
+  * Changed to debhelper level 5
+  * Updated standards version
+
+ -- Peter Eisentraut <petere@debian.org>  Sat, 13 May 2006 13:31:41 +0200
+
+licq (1.3.2-5) unstable; urgency=low
+
+  * Removed GCC 3.4 workaround on arm, m68k, hppa (closes: #343010)
+  * Made build bin-NMU safe by installing licq and licq-dev in the same
+    make target (closes: #342870)
+
+ -- Peter Eisentraut <petere@debian.org>  Thu, 15 Dec 2005 08:42:52 +0100
+
+licq (1.3.2-4) unstable; urgency=low
+
+  * Added build dependency on g++-3.4 on the respective platforms
+
+ -- Peter Eisentraut <petere@debian.org>  Mon,  7 Nov 2005 07:18:17 +0100
+
+licq (1.3.2-3) unstable; urgency=low
+
+  * Rebuilt with GCC 3.4 on arm, m68k, hppa
+
+ -- Peter Eisentraut <petere@debian.org>  Mon,  7 Nov 2005 01:34:31 +0100
+
+licq (1.3.2-2) unstable; urgency=low
+
+  * First upload of new upstream version to unstable (really closes:
+    #326420, #333624, #336427)
+    - Fixes buffer overflow in icqd.cpp (closes: #331712)
+    - Fixes invisibility handling (closes: #281314)
+    - Fixes encoding conversion with Windows clients (closes: #203346)
+    - Fixes docking problems (closes: #264408)
+    - Fixes status icon with tabbed chatting (closes: #275340)
+    - Fixes dock icon settings crash (closes: #276622)
+    - Fixes segfaults with old users.conf (closes: #276756)
+  * Added MSN plug-in (closes: #276943)
+  * Disabled rpath for Qt/KDE plug-in
+  * Switched dependencies to libcdk5
+
+ -- Peter Eisentraut <petere@debian.org>  Wed,  2 Nov 2005 17:07:44 +0100
+
+licq (1.3.2-1) experimental; urgency=low
+
+  * New upstream release (closes: #336427)
+    - Obsoletes: 32_licq-osd-makefile.dpatch
+  * Added 40_licq-forwarder-fix patch
+  * Fixed watch file to filter out RC versions
+  * Removed libtool build dependency
+  * Added build dependency on libxss-dev (closes: #326430)
+  * Great rules simplification; switched to CDBS, simple-patchsys
+
+ -- Peter Eisentraut <petere@debian.org>  Tue,  1 Nov 2005 15:34:31 +0100
+
+licq (1.3.1+1.3.2RC2-1) experimental; urgency=low
+
+  * New upstream release (closes: #333624)
+    - Obsoletes: 34_licq-qt-keep-qm.dpatch, 40_licq-broken-subdirs.dpatch,
+      42_licq-qt-gcc4-fix.dpatch
+  * Switched to libgpgme11
+  * Added build dependency on libtool as temporary workaround for broken
+    upstream tarball
+
+ -- Peter Eisentraut <petere@debian.org>  Sun, 16 Oct 2005 09:45:56 +0200
+
+licq (1.3.0-4) unstable; urgency=low
+
+  * Changed maintainer address
+  * Updated standards version
+  * Applied code fix for GCC 4.0 (from Andreas Jochens <aj@andaco.de>)
+    (closes: #325590)
+  * Rebuilt for new C++ ABI (closes: #324854)
+
+ -- Peter Eisentraut <petere@debian.org>  Wed, 31 Aug 2005 15:23:32 +0200
+
+licq (1.3.0-3) unstable; urgency=low
+
+  * Added DEB_BUILD_GNU_TYPE and DEB_HOST_GNU_TYPE assignments
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Sun, 29 May 2005 23:14:36 +0200
+
+licq (1.3.0-2) unstable; urgency=medium
+
+  * Added libtool upgrading to autotools upgrade dpatch,
+    rebuilt using new libtool (closes: #276509)
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Tue,  2 Nov 2004 00:03:28 +0100
+
+licq (1.3.0-1) unstable; urgency=low
+
+  * New upstream release
+  * Removed special nonoptimizing compiler flags for Alpha
+  * Patching now handled by dpatch
+  * config.guess and config.sub now handled by dpatch
+  * Autotools run converted to one big dpatch
+  * Libtool hackery is obsolete
+  * licq-plugin-jonsgtk removed, packaged separately; removed build
+    dependencies libglib1.2-dev, libgtk1.2-dev
+  * Enabled auto-reply, forwarder, osd plug-ins
+  * Added build dependencies libcdk-dev, libgpgme-dev, libxosd-dev
+  * Further rules cleanup
+  * Refactored installation of lintian overrides, removed some no longer
+    need overrides
+  * Removed licq wrapper
+  * Removed postinst note about upgrading ancient versions
+  * Revised man pages
+  * Revised descriptions
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Sun,  3 Oct 2004 16:27:03 +0200
+
+licq (1.2.7-11) unstable; urgency=medium
+
+  * Corrected licq header installation path (closes: #258439)
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Sat, 10 Jul 2004 11:51:39 +0200
+
+licq (1.2.7-10) unstable; urgency=low
+
+  * Fixed double application of DESTDIR during installation
+    (closes: #255460, #255621)
+  * Prevent writing into home directory during installation
+  * New desktop file taken from SUSE; revised Debian menu file
+  * Respect DEB_BUILD_OPTIONS
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Tue, 22 Jun 2004 08:20:37 +0200
+
+licq (1.2.7-9) unstable; urgency=low
+
+  * Trimmed build dependencies
+  * Updated to debhelper 4
+  * Tidying in debian/rules
+  * Accelerated compilation a little by using config.cache file.
+  * Added watch file
+  * Only preload libqt-mt if it is installed (closes: #254410)
+  * Moved licq.real back to /usr/bin; breaks KDE session management
+    otherwise (closes: #254880)
+  * Symlinked licq.real man page to licq
+  * Fixed Russian translation (closes: #253801)
+  * Use x-terminal-emulator as default terminal, not xterm.
+  * Use sensible-browser as default browser, not netscape.
+  * Removed README.Windowmaker (It was not installed anyway.)
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Sat, 19 Jun 2004 20:53:27 +0200
+
+licq (1.2.7-8) unstable; urgency=low
+
+  * New maintainer (closes: #246972)
+  * Replace reference to Notify.wav by Online.wav (closes: #125690)
+  * Quote URL shell variables in viewurl-mozilla.sh (closes: #247132)
+  * Move licq.real to private directory /usr/lib/licq
+  * Added man page for viewurl-*.sh
+  * Editorializing in debian/control, debian/menu, README.Debian,
+    README.Windowmaker, debian/postinst
+  * Reorganized and rewrote copyright files
+  * Install less useless documentation text files
+  * Removed obsolete watch file
+  * Removed source and diff targets in debian/rules
+  * Converted changelog to UTF-8
+  * Added source.lintian-overrides
+
+ -- Peter Eisentraut <peter_e@gmx.net>  Fri, 28 May 2004 20:38:44 +0200
+
+licq (1.2.7-7) unstable; urgency=low
+
+  * Package orphaned.
+
+ -- Zed Pobre <zed@debian.org>  Sun,  2 May 2004 11:07:06 -0500
+
+licq (1.2.7-6) unstable; urgency=low
+
+  * Use exec in the wrapper to avoid an extra process (closes: #221804)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 29 Nov 2003 14:07:15 -0600
+
+licq (1.2.7-5) unstable; urgency=low
+
+  * Properly pass command line arguments in the wrapper (closes: #219819)
+  * Properly remove autom4te.cache in plugin directories on clean
+
+ -- Zed Pobre <zed@debian.org>  Mon, 10 Nov 2003 13:45:48 -0600
+
+licq (1.2.7-4) unstable; urgency=low
+
+  * Applied libtool patch from Torbjörn Wassberg (closes: #211473 again)
+  * Rebuild against latest xrender libraries should take care of licq not
+    starting under some circumstances (closes: #214777, #215309, #216054)
+  * Removed qt3-plugins-headers from Build-Depends (no longer exists)
+  * Create a wrapper to force LD_PRELOAD=/usr/lib/libqt-mt.so.3 before
+    running the real licq (closes: #218971)
+
+ -- Zed Pobre <zed@debian.org>  Wed,  5 Nov 2003 19:47:42 -0600
+
+licq (1.2.7-3) unstable; urgency=low
+
+  * No longer use the config.* from autotools-dev, since the libtool ones
+    seem to be the right ones to use again (closes: #211473).
+  * Updated libtool version in Build-Depends
+
+ -- Zed Pobre <zed@debian.org>  Wed, 17 Sep 2003 21:33:21 -0500
+
+licq (1.2.7-2) unstable; urgency=low
+
+  * Rebuild against new QT libraries (closes: #208243)
+  * Standards-Version 3.6.1
+
+ -- Zed Pobre <zed@debian.org>  Mon,  1 Sep 2003 14:58:46 -0500
+
+licq (1.2.7-1) unstable; urgency=low
+
+  * New upstream version (closes: #200312)
+    - GPL+OpenSSL exemption now in license (closes: #173969)
+    - Server-side user lists should be fixed (closes: #187152)
+    - Some compatability with AIM
+  * Build-Depends libpng12-dev (closes: #202983)
+  * Desktop file added for licq to /usr/share/applications/ (thanks to
+    André Dahlqvist <anedah-9@student.luth.se>) (closes: #200176)
+  * Split out binary-indep and binary-arch in debian/rules (closes: #194028)
+  * Use dh_install and rm -rf instead of dh_movefiles, since Joey Hess has
+    stated that dh_movefiles should be considered deprecated
+    (debian-devel, 20030704060555.GE20635@dragon.kitenet.net)
+
+ -- Zed Pobre <zed@debian.org>  Sun, 27 Jul 2003 14:00:32 -0500
+
+licq (1.2.6-2) unstable; urgency=low
+
+  * Make the jonsgtkgui configure script executable before running
+    it.  This is required since the upstream jonsgtkgui has been
+    abandoned and I'm now patching it in by hand (closes: #191628)
+  * Fix bug with KDE plugin not finding icons (thanks to Aurelien
+    Jarno <aurel32@debian.org> for the patch) (closes: #191795)
+
+ -- Zed Pobre <zed@debian.org>  Sat,  3 May 2003 19:52:34 -0500
+
+licq (1.2.6-1) unstable; urgency=low
+
+  * New upstream version
+  * Skins can finally be put into ~/.licq/qt-gui/ (closes: #166502)
+  * KDE plugin is now also built. (closes: #180547)
+
+ -- Zed Pobre <zed@debian.org>  Sun, 27 Apr 2003 11:35:55 -0500
+
+licq (1.2.4-1) unstable; urgency=low
+
+  * New upstream version
+  * Add libqt3-compat-headers to Build-Depends (closes: #181272)
+  * Everything is now being compiled with the same libraries as KDE,
+    so those with KDE plugins should no longer have issues running the
+    QT plugin (closes: #180730)
+  * Licq now Depends: licq-plugin-qt | licq-plugin instead of
+    licq-plugin-qt2 | licq-plugin (closes: #181209)
+  * Apply (modified) patches from Aurelien Jarno
+    <aurelien@aurel32.net> to put KDE plugin support back into the
+    package.  Thanks to Aurelien, but note that since I don't run KDE,
+    I cannot properly test the KDE plugin.  Aurelien has offered to
+    help deal with KDE plugin bugs and testing.
+    * Update: I've had to comment this back out, because I updating to
+      the latest KDE on my build box clobbers a number of other things I
+      need due to the recent libvorbis0a switchover.  I'll reactivate at
+      some point after this stabilizes -- it otherwise looks clean.
+  * Applied patch from Filippo Panessa <kalem@linux.it> to fix
+    problems with qinterlacestyle.h and the latest libqt3 packages.
+
+ -- Zed Pobre <zed@debian.org>  Sat, 22 Mar 2003 12:26:51 -0600
+
+licq (1.2.3-1) unstable; urgency=low
+
+  * New upstream stable release. (closes: #179417)
+  * licq now Conflicts: any version of licq-plugin-qt2.  Having that
+    plugin installed was causing segfaults on startup if any UIN data
+    was present (closes: #176180, #176173, #176047, #176087, #175995)
+  * Builds with g++-3.2, so g++ errors seem to be resolved (closes: #157119)
+  * Remove --host from console plugin configure script.  I added this
+    a long time ago for a reason, but I can't find it in the changelog,
+    and it appears to be the cause of the console plugin breakage, so away
+    it goes again.  Thanks to Wellington Seixas Castello for finding
+    out what was breaking. (closes: #167965)
+  * Build-Depends libssl-dev.  I'm leaving this turned on for the
+    moment because I remember getting flamed by upstream for not
+    reading all of the documentation the last time I asked about a
+    license conflict (it was actually in there).  I've forgotten where
+    it is, though, and I can't find it on a quick search. (closes: #171628)
+  * Jons GTK plugin has been put back in
+  * Autoreply plugin has vanished.
+  * All plugins now require a version of licq exactly equal to the
+    version of the plugin.  Upstream breaks plugin compatibility too
+    often not to do this.
+  * Stop creation of blank licq-plugin-qt2 directory in licq-plugin-qt
+    package.
+  * Build with new qt3 libraries.  This required altering the
+    build-dependencies, since things seem to have been split all over
+    the place. (closes: #180217)
+  * Font shrinkage was probably particular to older KDE or qt libs.
+    If still a problem, please reopen (closes: #110213, #172125)
+  * i18n should be fine (closes: #157373)
+  * Removing users doesn't seem to cause segfaults now (closes: #148467)
+  * No problems with AA on the QT plugin now (closes: #90371)
+  * Keyboard shortcuts *are* in use in the qt plugin -- they just
+    aren't synchronized with the jonsgtk plugin, and they aren't
+    likely to be.  This is not something that upstream seems inclined
+    to change, as it was forwarded to the list a very long time ago
+    without result (closes: #91269)
+  * The missing peer to peer mode was corrected a long time ago
+    (closes: #90555)
+
+ -- Zed Pobre <zed@debian.org>  Sun,  9 Feb 2003 15:44:00 -0600
+
+licq (1.2.0a.cvs.20030106-1) unstable; urgency=low
+
+  * New upstream CVS version
+  * Jon's GTK plugin is broken again, so take it back out
+    (closes: #172779)
+  * Console plugin is still broken, but leaving it in place for now.
+  * Added in a slew of build-depends entries (with some luck, this
+    closes: #168952, as well as #171628)
+  * Use admin/config.* from autotools-dev instead of the one brought in by
+    libtoolize (closes: #168662)
+  * Away status box should be fixed now
+    (closes: #174951, #174798, #172773, #175257, #173926)
+  * Startup segfault is gone (closes: #167829, #168551)
+  * licq now Conflicts: licq-plugin-kde (closes: #167811)
+  * Renamed licq-plugin-qt2 to licq-plugin-qt.
+    Conflicts/Replaces/Provides used, so it should go up cleanly.
+    (closes: #168384)
+
+ -- Zed Pobre <zed@debian.org>  Mon,  6 Jan 2003 18:14:43 -0600
+
+licq (1.2.0a.cvs.20021031-1) unstable; urgency=high
+
+  * Use upstream CVS version to plug a possible security hole
+    involving tricking a user into running arbitrary commands by
+    using unescaped characters in personal info (closes: #166992)
+  * Tim Van Erven's patch from 1.2.0a-1 has been merged upstream.
+  * va_list bug has been corrected (closes: #129660)
+  * User information update seems to be fixed (closes: #133855)
+  * I've heard nothing back on an unreproducible segfault in the KDE
+    plugin, so I'm assuming it's not an issue.  If someone is still
+    seeing it with this version, please reopen. (closes: #157401)
+  * Compile against libqt3 (closes: #165467)
+  * Accents "Work For Me"(tm) (closes: #98341)  If someone is still
+    having problems with accents in the console plugin, please
+    reopen.
+  * Heavy CPU use on message flash was fixed a long time ago
+    (closes: #94334, #100493, #103712)
+  * Update build-dependencies to set default -dev dependencies to the
+    most recent versions where a virtual package was specified.
+  * Build and include Jon's GTK plugin.
+  * Autoreply plugin is back.
+  * The KDE plugin has been removed.  I can't get kdelibs-dev
+    installed on my build machine anymore, and the method for getting
+    it built has always been a horrible kludge.  If you want it back,
+    get the KDE packages updated, and then send me patches for an
+    elegant way to build it alongside the qt plugin.
+
+ -- Zed Pobre <zed@debian.org>  Fri,  1 Nov 2002 15:03:51 -0600
+
+licq (1.2.0a-3) unstable; urgency=low
+
+  * Added libfam-dev to build-depends.  Thanks to Plamen K. Kosseff
+    <p_kosseff@prosyst.bg> for pointing it out.
+
+ -- Zed Pobre <zed@debian.org>  Wed,  9 Oct 2002 15:53:00 -0500
+
+licq (1.2.0a-2) unstable; urgency=low
+
+  * Rearranged autoconf lines, added an autoheader call, set
+    acinclude.m4 not to pull in the extra includes that upstream
+    provided, and removed AC_LIBTOOL_CXX from configure.in.  This
+    seems to fix the libtool problem without having to copy
+    /usr/bin/libtool.  Thanks to Ryan Murray for his help on this.
+    (closes: #157081)
+  * File transfers are working (closes: #155225)
+  * As long as I'm here, close the bugs related to needing to package
+    a new upstream version (closes: #155237, #155299)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 17 Aug 2002 15:48:35 -0500
+
+licq (1.2.0a-1) unstable; urgency=low
+
+  * New upstream version, official release.
+  * Autoreply plugin has vanished.
+  * Copy /usr/bin/libtool just before make.  Something is corrupting
+    it when it is being generated during configure. I suspect that it
+    is a libtool bug, but I don't have time to investigate.
+    (closes: #147961).  
+  * Added patch from Tim van Erven <tripudium@chello.nl> to remove
+    preceding path info from filenames on transfer to prevent file
+    sends from overwriting arbitrary files. (closes: #155831)
+  * The segfault on message send reported in #154392 was reported in a
+    version of licq that I never uploaded, and in any case doesn't
+    appear to happen in 1.2.0. (closes: #154392)
+  * I have tested an install by hand, and this package seems to work
+    fine on woody (closes: #149239)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 17 Aug 2002 11:59:39 -0500
+
+licq (1.0.4.cvs.20020521-2) unstable; urgency=low
+
+  * Recompile with fixed libtool (closes: #147961)
+
+ -- Zed Pobre <zed@debian.org>  Wed, 12 Jun 2002 17:04:46 -0500
+
+licq (1.0.4.cvs.20020521-1) unstable; urgency=medium
+
+  * Well, even if it isn't released, Woody is solidly frozen, so I'm
+    uploading new things.
+  * New upstream CVS version
+  * A number of C++ cleanups in the console, qt, and rms plugins (this
+    finally closes: #120490 once and for all I hope).
+  * SSL support enabled.  Now Provides, Replaces, Conflicts:
+    licq-ssl. (closes: #141812)
+  * Since licq-ssl can now be dropped, the fact that the last
+    uploaded version of it is obsolete is no longer going to cause
+    problems, so this closes: #142564, #146898)
+  * SSL support fundamentally conflicts with SOCKS support, which doesn't
+    work with free software components anyway.  SOCKS support is therefore
+    not going to be turned on in the forseeable future.
+    (closes: #111536, #127668)
+  * The warning about the licq.conf files having to be recreated from
+    scratch is now only shown if the old version number is less than 1.0.
+    The message was updated to reflect my suspicion that some versions
+    between 0.70 and 1.0 will also break on upgrade.
+    (closes: #117279, #59540)
+    * The above, as Wichert notes, should really be in Debconf, but if I
+      keep putting off fixing little things until I have the time and energy
+      to fix them perfectly, they build up and I never get them done at all,
+      so I'm doing it this way first.
+  * Moved the Recommends: bind9-host to a Suggests, and changed it to
+    bind9-host | host.  Also added kmail, ping, queso, traceroute to the
+    suggests to match other entries in share/utilities (closes: #138761)
+  * Crashing at startup in the KDE plugin should have gone away a long
+    time ago. (closes: #99740)
+  * Don't do anything in onevent if there is no szParam.  This prevents
+    sox/play from complaining when a sound file isn't specified.
+    (closes: #96122, #103818, #129280)
+    * I am not entirely happy with this solution.  If someone is using as
+    a generic command for all events a command that requires no arguments,
+    this will cause it to silently fail to trigger.  I am hypothesizing at
+    the moment that nobody actually uses LICQ this way.  If I get bug
+    reports, I will undo this.
+  * Fix spelling error in autoreply description (closes: #125082)
+  * Remove plugins/console/aclocal.m4 on clean
+
+ -- Zed Pobre <zed@debian.org>  Tue, 21 May 2002 20:45:45 -0500
+
+licq (1.0.4.cvs.20020327-1) unstable; urgency=high
+
+  * New upstream CVS version
+  * Now packaging Jon's GTK plugin as licq-plugin-jonsgtk -- with luck,
+    this will be able to replace the now defunct gtk+licq package.
+    * No luck was to be found here.  Removed this again, as it breaks
+      trying to find a socks-related function in licq, even if socks is
+      disabled.  And no, Dante doesn't work.
+  * Randolph Chung <tausq@debian.org> informs me that licq now builds
+    perfectly well on hppa, so I can just reset Architecture: any.  This
+    does so, and closes: #120490.
+  * Random chat bug should be fixed now (closes: #136193)
+  * Recommends: bind9-host instead of host (closes: #138761)
+  * User profile segfault fixed (closes: #133767)
+  * Online notification should be stable by now (closes: #92625)
+  * Console plugin: tab on empty line now correctly shows list of
+    contacts, instead of segfaulting (closes: #104547)
+  * Qt plugin crash fixed a long time ago (closes: #123362)
+  * Console plugin: relocation error on search fixed (closes: #138212)
+  * I've been told that the segfault on SMS message was fixed some time
+    ago.  I can't test this, so if someone knows differently, please
+    reopen (closes: #85828)
+  * The problem with recurring offline messages was related to the
+    protocol change.  Since the cvs version supports the v8 protocol, this
+    problem should have gone away. (closes: #118570)
+  * Console plugin: /status offline no longer segfaults (closes: #135298)
+  * Put the final $(MAKE) distclean after the distcleans on the plugins to
+    avoid missing makefiles and impossible cleans.
+
+ -- Zed Pobre <zed@debian.org>  Sun,  7 Apr 2002 14:54:47 -0500
+
+licq (1.0.4.cvs.20020211-1) unstable; urgency=high
+
+  * New upstream CVS version which fixes a remote buffer overflow
+    (closes: #133134)
+  * Conflicts with existing versions of licq-plugin-gtk+/gnome, since they
+    cause the current version of licq to segfault on startup
+    (fixes: #108304, #111777, #123031, #126806)
+  * Message segfault should be fixed (closes: #98209)
+  * Segfault on exit on qt plugin seems to have gone away
+    (closes: #81884, #105265)
+  * Console plugin no longer segfaults on exit, either
+    (closes: #87440, #122229, #117530)
+  * Console plugin help now mentions /view (closes: #89248)
+  * Missed closing a protocol bug fixed with the previous CVS release
+    (closes: #122301)
+  * The old mirabilis login servers are no longer used, even if they're
+    mentioned in the user configuration file (the name of the parameter
+    has changed) (closes: #116758)
+  * Updated the conflicts version on the qt2 plugin (closes: #123271)
+  * If there ever really was a problem with the qt2 plugin, it's definitely
+    changed now... (closes: #110032)
+  * I am temporarily dealing with the problems with the hppa building by
+    excluding that architecture completely.  Even applying all supplied
+    patches won't get it to build, and I'm having some problems
+    communicating with upstream right now to get them forwarded anyway...
+    (I will change severity and retitle #120490 once this is installed)
+
+ -- Zed Pobre <zed@debian.org>  Mon, 11 Feb 2002 14:24:13 -0600
+
+licq (1.0.4.cvs.20020205-1) unstable; urgency=high
+
+  * Switched to using the CVS version.  The last official release is badly
+    broken since it doesn't use the newest protocol, and the older
+    protocols have stopped working.
+    (closes: #122902, #122686, #125986, #131776)
+  * Thanks to Ivan for the NMUs while I was away.  Officially recognize
+    the fixes (closes: #118873, #121678)
+  * Fix typo in control file (orthers -> others) (closes: #125081)
+  * Removed note in the licq-dev copyright file about the qt2 plugin
+    having the GPL exception (no longer necessary)
+  * Build-Depends: automake instead of automake1.5
+  * Run aclocal before libtoolize -f in the configure stage, rather than
+    after it.
+
+ -- Zed Pobre <zed@debian.org>  Tue,  5 Feb 2002 18:29:53 -0600
+
+licq (1.0.4-0) unstable; urgency=low
+
+  * NMU
+  * New upstream version
+    No more licq-plugin-forwarder
+  * Updated copyright files to reflect proper upstream location
+
+ -- Ivan E. Moore II <rkrusty@debian.org>  Fri, 07 Dec 2001 12:55:41 -0700
+
+licq (1.0.3-5.2) unstable; urgency=low
+
+  * NMU 
+  * Put the Build-Depends back 
+  * Update admin/config.* files for hppa and others 
+  * Update admin/libtool.* files for hppa and others
+  * It's Qt...not QT (Closes: #118873)
+
+ -- Ivan E. Moore II <rkrusty@debian.org>  Sat, 01 Dec 2001 17:02:41 -0700
+
+licq (1.0.3-5.1) unstable; urgency=low
+
+  * NMU with permission
+  * Build with -O0 and -mieee for Alpha (Closes: #121678)
+  * Remove unneccesary build-depends as they are already depended upon
+    by packages which we build-depend on...ie kdelibs-dev depends on
+    libqt-dev which depends on libz-dev and libpng2-dev...so don't depend
+    on libqt-dev, libz-dev, or libpng2-dev since we indirectly do already.
+
+ -- Ivan E. Moore II <rkrusty@debian.org>  Sat, 01 Dec 2001 00:34:41 -0700
+
+licq (1.0.3-5) unstable; urgency=low
+
+  * Edit src/optionsdlg.cpp in the qt-gui plugin to check SHARE_DIR
+    instead of BASE_DIR for the translations files.  This should clear out
+    the remaining problem of translation files being looked for in
+    .licq/translations in the qt plugin.
+
+ -- Zed Pobre <zed@debian.org>  Thu,  1 Nov 2001 18:24:41 -0600
+
+licq (1.0.3-4) unstable; urgency=low
+
+  * Added versioned depends on libtool 1.4.2 (closes: #109044)
+  * Added a "[floaties]" section to the default licq_qt-gui.conf file
+    (closes: #109106)
+  * Removed local emacs settings from changelog.
+
+ -- Zed Pobre <zed@debian.org>  Mon, 22 Oct 2001 22:42:11 -0500
+
+licq (1.0.3-3) unstable; urgency=medium
+
+  * Add libncurses5-dev to Build-Depends (closes: #105164)
+  * Standards-Version 3.5.6 (no changes needed)
+  * licq *does* recommend sox (closes: #97845)
+  * Name of default Online Notify .wav file corrected (closes: #90950)
+  * Default parallelization set to -j 1 for the sake of autobuilders with
+    older machines (closes: #102851)
+  * I've been told that the simultaneous Send/Receive crash bug has been
+    fixed (I was never able to reproduce it myself).  (closes: #66075)
+  * Bad socket problem fixed ages ago (closes: #81267)
+  * hints="Messaging" added to debian/menu file (closes: #98777)
+  * Run libtoolize -f as part of the configure step.  Call aclocal as well
+    as automake/autoconf. (closes: #98184)
+  * Move CFLAGS= statements from the build targets to the configure
+    targets (closes: #92038)
+  * Change nslookup in hostname.utility to host.  Add Recommends: on host
+    (closes: #100322)
+  * Root (or fakeroot) is not needed for debian/rules clean.  Test removed.
+  * Translation files should have been found in the correct place as of
+    1.0 (closes: #56034)
+  * Likewise for sound files (closes: #62558)
+  * Russian translations should have been handled correctly since around
+    0.80 (closes: #50466)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 28 Jul 2001 14:25:38 -0500
+
+licq (1.0.3-2) unstable; urgency=low
+
+  * Fixed Build-Depends (closes: #89591)
+  * Crash problems in 1.0.2 should have disappeared with 1.0.3-1 (reopen
+    if this is not the case, they were not reproducible here).
+    (closes: #88637, #89159)
+
+ -- Zed Pobre <zed@debian.org>  Wed, 14 Mar 2001 17:29:49 -0600
+
+licq (1.0.3-1) unstable; urgency=low
+
+  * New upstream version, despite the fact that it has yet to be announced
+    on the main web page.
+  * The README for the console plugin no longer makes reference to its own
+    version number.  The Debian patch that updated that version number has
+    been removed.
+  * The plugins now depend on an unversioned licq | licq-ssl, in
+    preparation for separate licq-ssl packaging.  I have the nasty feeling
+    that removing the version from the dependency is going to come back to
+    bite me in the ass, but no simple method for handling an
+    =source-version type dependency that won't force licq-ssl to strictly
+    match every single release that I make comes to mind...
+
+ -- Zed Pobre <zed@debian.org>  Sun, 11 Mar 2001 00:21:43 -0600
+
+licq (1.0.2-5) unstable; urgency=low
+
+  * Split the qt2 plugin into licq-plugin-qt2 and licq-plugin-kde
+    (closes: #85229, #85231, #84324)
+  * New QT2 include and library file locations accounted for.  This puts a
+    version in the Build-Depends (closes: #85325)
+  * Bug#80460 was filed against an obsolete version (closes: #80460)
+
+ -- Zed Pobre <zed@debian.org>  Mon, 12 Feb 2001 20:58:21 -0600
+
+licq (1.0.2-4) unstable; urgency=low
+
+  * Okay, *really* enable KDE support (closes: #83747)
+  * Update Build-Depends
+  * Bump Standards-Version
+  * Remove config.log on clean
+
+ -- Zed Pobre <zed@debian.org>  Tue, 30 Jan 2001 09:43:35 -0600
+
+licq (1.0.2-3) unstable; urgency=low
+
+  * Enabled KDE support in the QT plugin (closes: #83747)
+  * Updated override files locations
+  * Removed spurious dh_makeshlibs call
+
+ -- Zed Pobre <zed@debian.org>  Sun, 28 Jan 2001 21:23:15 -0600
+
+licq (1.0.2-2) unstable; urgency=low
+
+  * RMS plugin now contains licq_rms.conf (closes: #83448, #83449)
+  * QT-gui $DISPLAY problem seems to have gone away (tested on a remote
+    system) (closes: #64138)
+
+ -- Zed Pobre <zed@debian.org>  Wed, 24 Jan 2001 19:15:11 -0600
+
+licq (1.0.2-1) unstable; urgency=low
+
+  * New upstream version
+  * Console plugin README patch originally submitted by David Starner (see
+    bug#74651) has been accepted upstream.  The version number was still
+    listed as 0.20, however, and has been corrected.  This and the
+    licq_forwarder README correction have been sent upstream.
+  * LICQ should no longer damage or truncate files in out-of-space
+    situations (closes: #76815)
+  * QT2 plugin crashes should all be gone by now (this is related more to
+    QT changes than LICQ changes, however).  (closes: #76465, #78101)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 23 Dec 2000 12:35:00 -0600
+
+licq (1.0-5) unstable; urgency=low
+
+  * Rebuild with dpkg 1.7.2 to fix spurious libc5 dependencies
+    (closes: #77671)
+
+ -- Zed Pobre <zed@debian.org>  Thu, 23 Nov 2000 20:06:55 -0600
+
+licq (1.0-4) unstable; urgency=low
+
+  * The example licq_autoreply.conf now shows up in the
+    /usr/share/doc/licq-plugin-autoreply directory. (closes: #77112)
+
+ -- Zed Pobre <zed@debian.org>  Fri, 17 Nov 2000 19:14:58 -0600
+
+licq (1.0-3) unstable; urgency=low
+
+  * The example licq_forwarder.conf now shows up in the
+    /usr/share/doc/licq-plugin-forwarder directory. (closes: #75529)
+  * s/licq_email.conf/licq_forwarder.conf in the forwarder README
+  * Tested that the transmission of extended characters is working
+    (closes: #63227, #70433, #72966)
+  * Tested that LICQ is properly reporting when you are added to another
+    user's contact list (and the user announced it).  It intentionally
+    won't happen if you aren't accepting messages from people not on your
+    own contact list, and the person adding you is not on your
+    list. (closes: #68778)
+  * Tested that the black transfer bar no longer disappears on large file
+    transfers (closes: #65979)
+
+ -- Zed Pobre <zed@debian.org>  Sun,  5 Nov 2000 15:48:27 -0600
+
+licq (1.0-2) unstable; urgency=low
+
+  * Build-Depends: libqt2.2, not libqt2.1 (closes: #75345)
+  * Added a note in README.Debian about the odd segfault bugs that keep
+    getting reported against licq-plugin-qt2 (and are currently assigned
+    to libqt2.2).
+  * Bumped standards-version to 3.2.1
+  * Debugging option made optional (uncomment the appropriate variable in
+    debian/rules)
+  * Added a README.Windowmaker to provide a workaround for people having
+    problems with two icons or a nonfunctioning icon.  Benjamin Lewis
+    submitted the original notes on it; I've rewritten them.  If you use
+    Windowmaker and have an improvement on my wording, let me
+    know. (closes: #49503, #50216)
+  * Compiled against XFree86 4.0.1, now that it's actually in Debian
+    proper, which lets me build on my own machine again.  This
+    incidentally fixes the problem with the spurious ldso dependency
+    (closes: #75224)
+  * Whatever problem was involved with licq 0.76 and libqt2.1 is by now
+    completely irrelevant.  (closes: #60492)
+
+ -- Zed Pobre <zed@debian.org>  Fri,  3 Nov 2000 17:40:17 -0600
+
+licq (1.0-1) unstable; urgency=low
+
+  * New upstream version (closes: #74580, #74581)
+  * Changed the licq Depends: licq-plugin to 
+    Depends: licq-plugin-qt2 | licq-plugin to get a more expected default
+    behaviour for people that install LICQ without specifically selecting
+    their plugins (closes: #74727).
+  * Console plugin README now mentions that PgUp/PgDn scrolls the main
+    window (thanks to David Starner for the wording).  Patch sent upstream
+    as well.  (closes: #74651)
+
+ -- Zed Pobre <zed@debian.org>  Thu, 12 Oct 2000 13:38:48 -0500
+
+licq (0.85cvs20000918-1) unstable; urgency=low
+
+  * Oops, REALLY disabled SSL support this time (closes: #72136, #72184)
+  * Using the upstream CVS snapshot with the autoreply and forwarder
+    plugins that were missing from the CVS imported from 0.85.  This
+    seems to fix all of the instability crash problems reported with the
+    QT2 plugin.  Theoretically, it was due to -fno-rtti causing licq to
+    segfault whenever a plugin called a function that needed it (i.e. the
+    QT2 plugin, which acquired the problem from libqt2.2), but I had no
+    luck trying to backport the change into 0.85.
+    (closes: #71533, #71667, #71812, #71850, #72149)
+
+ -- Zed Pobre <zed@debian.org>  Thu, 21 Sep 2000 12:26:44 -0500
+
+licq (0.85-8) unstable; urgency=low
+
+  * Disabled SSL support. (closes: #71549, #71579)
+
+ -- Zed Pobre <zed@debian.org>  Wed, 13 Sep 2000 16:43:37 -0700
+
+licq (0.85-7) unstable; urgency=low
+
+  * Compiled against libqt2.2
+
+ -- Zed Pobre <zed@debian.org>  Sun, 10 Sep 2000 15:51:00 -0700
+
+licq (0.85-6) unstable; urgency=low
+
+  * Split off the /usr/include/licq/* into a licq-dev package.
+
+ -- Zed Pobre <zed@debian.org>  Fri,  1 Sep 2000 13:50:18 -0500
+
+licq (0.85-5) unstable; urgency=low
+
+  * Build-Depends now lists libqt2.1-dev instead of libqt2-dev.  Oddly,
+    the bug report for this never reached me and isn't in my buglist at
+    bugs.debian.org, but this closes: #68868.
+
+ -- Zed Pobre <zed@debian.org>  Fri, 25 Aug 2000 11:16:07 -0500
+
+licq (0.85-4) unstable; urgency=low
+
+  * Plugin packages now depend on an equal-versioned licq main package
+    (closes: #69886)
+  * README.Debian updated to note that you have to use "-p <plugin>" when
+    using plugins other than the qt one (closes: #69893)
+  * Removed reference to the now obsolete licq-data package from the
+    README.Debian file.
+
+ -- Zed Pobre <zed@debian.org>  Thu, 24 Aug 2000 17:22:57 -0500
+
+licq (0.85-3) unstable; urgency=low
+
+  * Oops, forgot to put a copyright file into the RMS package plugin...
+  * Oops, the libtool kludge *is* still necessary.  Put it back in...
+  * Permissions fixed on the viewurl-* files
+
+ -- Zed Pobre <zed@debian.org>  Sat, 19 Aug 2000 10:00:56 -0500
+
+licq (0.85-2) unstable; urgency=low
+
+  * The rms plugin wasn't rebuilding properly because I'd forgotten to
+    remove the build and configure stamps in the clean target.  Doh.
+    Thanks to Dan Nguyen <nguyend7@cse.msu.edu> for catching this.
+  * He also caught a typo in build-forwarder.  Fixed.
+
+ -- Zed Pobre <zed@debian.org>  Wed, 16 Aug 2000 08:55:22 -0500
+
+licq (0.85-1) unstable; urgency=low
+
+  * New upstream version
+  * Support for ICQ TCP protocols v4,5,6,7
+  * Multiple recipient option
+  * Spoof option has been removed (it didn't work on most clients anymore
+    anyway)
+  * The autoreply plugin is now v0.17
+  * The console plugin is now v0.30
+  * The forwarder plugin is now v0.66
+  * There is a new rms plugin, at v0.10, but it's not packaged, as I can't
+    get it to build reliably (the README for it is also the README for the
+    forwarder plugin...)
+  * Updated the description
+  * Now conflicts and replaces licq-data, since those files have been
+    merged with the main source
+
+ -- Zed Pobre <zed@debian.org>  Wed,  9 Aug 2000 06:47:21 -0500
+
+licq (0.81-1) unstable; urgency=low
+
+  * libqt2.1 has finally made it through incoming, so the newer LICQ Qt
+    plugins will work now, making this package possible.
+  * This is the latest stable upstream version.  The latest devel version
+    (0.84b) has plugins that don't compile on my system.
+  * The qt-gui plugin version seems synced to the main licq version now,
+    and won't be commented on in the future.  None of the other plugins
+    have been updated since 0.80.
+
+ -- Zed Pobre <zed@debian.org>  Sat,  8 Jul 2000 13:04:42 -0500
+
+licq (0.80-1) unstable; urgency=low
+
+  * New upstream version.  Multiparty chat should now work.
+  * The autoreply plugin is now v0.15
+  * The console plugin is now v0.21
+  * The forwarder plugin is now v0.60
+  * The qt-gui plugin is now v0.80
+  * src/(daemon)?/Makefile.in is now removed on debian/rules clean
+  * The patch to make sure that qt-gui installs its po files is no longer
+    needed and has been removed.
+  * A few bugs have been fixed by now (closes: #59842, #42201, #49762)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 25 Mar 2000 15:43:48 -0600
+
+licq (0.76-3) unstable; urgency=low
+
+  * The autoreply plugin (v0.12) is now compiled and packaged.
+  * The console plugin (v0.20) is now compiled and packaged.
+  * The forwarder plugin (v0.52) is now compiled and packaged.
+  * The shlibs.local file should no longer be needed, so it has been
+    removed.
+
+ -- Zed Pobre <zed@debian.org>  Fri, 17 Mar 2000 04:31:29 -0600
+
+licq (0.76-2) frozen unstable; urgency=high
+
+  * Recompile to fix the horrid mess created by the new libqt2 epoch,
+    including an important bug against this package.  Closes: #57359
+
+ -- Zed Pobre <zed@debian.org>  Wed,  1 Mar 2000 11:27:40 -0600
+
+licq (0.76-1) unstable; urgency=low
+
+  * New upstream version
+  * Several new features in this version, including random chat support,
+    word wrap in history, and auto-popup/auto-raise on incoming message
+  * The QT plugin is now version 0.71
+  * UIN spoofing re-enabled in QT plugin
+
+ -- Zed Pobre <zed@debian.org>  Sat, 19 Feb 2000 22:40:43 -0600
+
+licq (0.75.3a-2) unstable; urgency=low
+
+  * Added local Lintian overrides.
+
+ -- Zed Pobre <zed@debian.org>  Sun, 13 Feb 2000 14:59:56 -0600
+
+licq (0.75.3a-1) unstable; urgency=low
+
+  * New upstream version
+  * The QT plugin is now version 0.70.4
+
+ -- Zed Pobre <zed@debian.org>  Sat,  5 Feb 2000 14:28:40 -0600
+
+licq (0.75.2-2) frozen unstable; urgency=medium
+
+  * 0.75.2 fixed a nasty segfaulting bug that 0.71 had, so it needs to go
+    into frozen as well...  (closes: #56254)
+
+ -- Zed Pobre <zed@debian.org>  Thu,  3 Feb 2000 09:03:44 -0600
+
+licq (0.75.2-1) unstable; urgency=low
+
+  * New upstream version.
+  * The QT plugin is now version 0.70.2.
+  * The locale modules for the QT plugin are now built (closes: #50034)
+
+ -- Zed Pobre <zed@debian.org>  Wed, 19 Jan 2000 13:25:05 -0600
+
+licq (0.71-5) unstable frozen; urgency=medium
+
+  * Tinkered with the Build-Depends line a bit.  Something VERY strange is
+    going on here, as the patch submitted by Tommy Virtanen in bug report
+    #54475 doesn't match my debian/control file.  My sources don't have a
+    Build-Depends on libstdc++2.10-dev, it was on libstdc++-dev.  In any
+    case, that has been removed.  Same with the supposed typo of
+    zlibg1-dev; on my source tree it was libz-dev (the virtual package).
+    (closes: #54475, #52775, #53611)
+  * licq-plugin-qt2 now depends on libqt2 libqt2 (>= 2.0.2), libqt2 (<< 2.1)
+    via shlibs.local to prevent people from using unofficial libqt2
+    versions which are causing the missing symbol errors. (closes: #53243)
+
+ -- Zed Pobre <zed@debian.org>  Sun,  9 Jan 2000 14:17:18 -0600
+
+licq (0.71-4) unstable; urgency=medium
+
+  * There is now a proper UPGRADE file.  The two README-x-y files have
+    been removed.  Scripts for proper configuration and history conversion
+    are in the /usr/share/doc/licq directory.
+  * Added a conflicts for licq-plugin-qt2 (<< 0.71) as the versions
+    provided earlier than that appear to cause segfaulting. 
+    (closes: #51984)
+  * Updated to standards-version 3.1.1 (added Build-Depends)
+
+ -- Zed Pobre <zed@debian.org>  Sun, 12 Dec 1999 12:11:07 -0600
+
+licq (0.71-3) unstable; urgency=low
+
+  * Created a symlink for the missing UPGRADE file for people that can't
+    figure out that maybe it refers to the README-0.61-0.70 and
+    README-0.70-0.71 files.  (closes: #50450, #50465)
+
+ -- Zed Pobre <zed@debian.org>  Wed, 17 Nov 1999 16:21:25 -0600
+
+licq (0.71-2) unstable; urgency=medium
+
+  * dpkg-buildpackage for some reason didn't correctly override the
+    environment variable for pentium-builder, and 0.71-1 went out
+    optimized for i686.  Manually removed the environment variable for
+    this build. (closes: #50393, #50403)
+
+ -- Zed Pobre <zed@debian.org>  Tue, 16 Nov 1999 22:24:57 -0600
+
+licq (0.71-1) unstable; urgency=medium
+
+  * New upstream version.  i18n support is rumored to be much improved
+    over 0.70.1a.  Ignore features have also been added.
+  * QT plugin is now version 0.67
+  * Manpages for (.*)convert have been moved to licq-data (where the
+    conversion programs are).
+  * WARNING: This version has an incompatable licq.conf and history/*
+    format from previous versions.  Backup your .licq directory and delete
+    it before activating licq.  UIN files can be safely copied back, but
+    not history files.
+  * LICQ now aborts if it finds a licq.conf file from an incompatable
+    version, forcing you to at least partially follow upgrade instructions
+    before starting it.  This is preferred by some users; frankly, I liked
+    being able to take my chances if I had to for whatever reason.
+    (closes: #50215) 
+
+ -- Zed Pobre <zed@debian.org>  Mon, 15 Nov 1999 14:41:01 -0600
+
+licq (0.70.1a-1) unstable; urgency=low
+
+  * New upstream version.
+  * The dots icons are now in the new recommended package licq-data.
+  * QT plugin is now version 0.66.2
+  * Now recommends sox, which provides /usr/bin/play, which is by default
+    used as the player for even sounds. (closes: #48098)
+  * Now depends on libqt2, rather than qt2 (closes: #47569, #47652)
+
+ -- Zed Pobre <zed@debian.org>  Fri, 29 Oct 1999 22:23:15 -0500
+
+licq (0.70rel-2) unstable; urgency=low
+
+  * The dots icons disappeared from the QT plugin.  Since the website
+    claims that they're still included, I'm assuming that they were
+    supposed to be and got missed somehow, and reincluding them in the
+    package.  The absence can cause startup crashes if you had a 0.70h
+    version and had your preferences set to dots.  There were some other
+    icon and skin sets included as well, but those are considered distinct
+    now by upstream, and will be packaged separately.
+
+ -- Zed Pobre <zed@debian.org>  Sat, 25 Sep 1999 19:20:44 -0500
+
+licq (0.70rel-1) unstable; urgency=medium
+
+  * New upstream version was 0.70 (final).  This is now considered a
+    stable release. Since upstream has unfortunately decided to go from
+    0.70h->0.70, I've renamed it 0.70rel so that upgrades will happen
+    automatically.
+  * Segfault on exit has been fixed in this version.
+  * The manpages are still not included in the upstream package, and have
+    been patched into this one.
+  * doc/UPGRADE has been put back in, however, so I removed the patch-in
+    for that.
+  * QT plugin has gone from 0.66 to 0.66.1
+  * debian/rules now uses QTGUI to handle the directory name, so it only
+    has to be changed in one spot for future upgrades.  The
+    debian/licq-plugin-qt2.docs file still has to be changed each time.
+  * Made sure that CHANGELOG.gz was linked to changelog.gz in
+    licq-plugin-qt2 as well as licq.
+  * Put a #DEBHELPER# into the postinst to prevent my postinst from
+    overriding the debhelper-generated one.  This fixes a problem with a
+    missing update-menus call and a missing /usr/doc/licq symlink.
+
+ -- Zed Pobre <zed@debian.org>  Sat, 25 Sep 1999 12:03:00 -0500
+
+licq (0.70h-2) unstable; urgency=low
+
+  * Fixed reference to /usr/doc in the postinst warning.
+  * Not uploaded in favor of working on 0.70rel-1.
+
+ -- Zed Pobre <zed@debian.org>  Sat, 25 Sep 1999 10:50:21 -0500
+
+licq (0.70h-1) unstable; urgency=low
+
+  * New upstream version, classified by upstream as developmental.
+    Upstream has finally merged sources for the main program and the QT
+    plugin, so it's less messy for me to build the program now.
+  * This version depends on QT 2.0, which is in main, so LICQ is being
+    moved from contrib to main itself.
+  * Switched to FHS
+  * This build now correctly depends on only the libstdc++-libc6.1-1.so.2 
+    library (closes: #44389)
+
+ -- Zed Pobre <zed@debian.org>  Sat, 11 Sep 1999 03:47:20 -0500
+
+licq (0.61-1) unstable; urgency=low
+
+  * New upstream version
+
+ -- Zed Pobre <zed@debian.org>  Mon, 12 Apr 1999 09:55:52 -0500
+
+licq (0.60.1-1) unstable; urgency=low
+
+  * New upstream version.  
+  * I have completely given up on providing a clean
+    upgrade path from 0.44, and am simply putting warnings in the
+    README.Debian that if you don't read the docs and follow the
+    instructions, it *will* break.
+
+ -- Zed Pobre <zed@debian.org>  Wed, 24 Feb 1999 12:51:40 -0600
+
+licq (0.51a-1) unstable; urgency=low
+
+  * New upstream version.
+  * Includes the file.cpp and licq.cpp updates.
+  * I took too long, and a new upstream version got released before I
+    uploaded, so this never appeared.
+	
+ -- Zed Pobre <zed@debian.org>  Fri, 22 Jan 1999 00:22:23 -0600
+
+licq (0.50alpha1-0) unstable; urgency=low
+
+  * New upstream version.  
+  * For people that read changelogs, but not READMEs, you have to specify
+    the absolute path to sound files, not just a filename.
+  * This package includes a minor policy violation in that it places a
+    single file directly in /usr/share.  I could move it, but the
+    installation routine itself is broken and I want to try to fix one
+    thing at a time.
+  * This is a private test/courtesy release only, and is not meant for
+    inclusion into the Debian distribution.
+
+ -- Zed Pobre <zed@debian.org>  Sun, 13 Dec 1998 12:45:39 -0600
+
+licq (0.44-1) unstable; urgency=low
+
+  * New upstream version.
+  * Now that qt1g-dev no longer requires libstdc++2.8, entire package
+    recompiled for libstdc++2.9 (fixes bug#29032)
+  * Bumped Standards-Version to 2.5.0 (no changes needed)
+
+ -- Zed Pobre <zed@debian.org>  Fri, 27 Nov 1998 19:49:21 -0600
+
+licq (0.43-2) unstable; urgency=low
+
+  * Commented out two lines in licq.cpp that attempted to install a
+    nonexistent sample .uin file to .licq in the user's home directory
+    upon a first-time run.  Sent a copy of this fix to the upstream
+    author.  (fixes bug #28275)
+
+ -- Zed Pobre <zed@debian.org>  Fri, 23 Oct 1998 02:00:38 -0500
+
+licq (0.43-1) unstable; urgency=low
+
+  * New upstream version.  GPL license has been changed to
+    GPL-with-QT-exception-clause, which makes it legal to distribute. This
+    is the first version to be packaged for inclusion in Debian (it still
+    goes into contrib, though).
+
+ -- Zed Pobre <zed@debian.org>  Thu,  8 Oct 1998 18:15:24 -0500
+
+licq (0.42-1) unstable; urgency=low
+
+  * New upstream version.  This fixes the problem with ICQ Chat.
+
+ -- Zed Pobre <zed@debian.org>  Sun, 27 Sep 1998 21:00:49 -0500
+
+licq (0.41-1) unstable; urgency=low
+
+  * Initial Release.  Not uploaded.
+
+ -- Zed Pobre <zed@debian.org>  Sun,  6 Sep 1998 17:54:07 -0500
