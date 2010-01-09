@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,8 +21,9 @@
 #ifndef MULTICONTACTPROXY_H
 #define MULTICONTACTPROXY_H
 
-#include <QPair>
-#include <QSet>
+#include <licq_types.h>
+
+#include <set>
 
 #include "contactlist.h"
 #include "sortedcontactlistproxy.h"
@@ -65,18 +66,16 @@ public:
   /**
    * Add a contact to the list
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    */
-  void add(QString id, unsigned long ppid);
+  void add(const UserId& userId);
 
   /**
    * Remove a contact from the list
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    */
-  void remove(QString id, unsigned long ppid);
+  void remove(const UserId& userId);
 
   /**
    * Remove a list of contacts from the list
@@ -105,7 +104,7 @@ public:
    *
    * @return A set containing the contacts
    */
-  const QSet<QPair<QString, unsigned long> >& contacts() const
+  const std::set<UserId>& contacts() const
   { return myContacts; }
 
   /**
@@ -126,7 +125,7 @@ private:
    */
   bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const;
 
-  QSet<QPair<QString, unsigned long> > myContacts;
+  std::set<UserId> myContacts;
 };
 
 } // namespace LicqQtGui

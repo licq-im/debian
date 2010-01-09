@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,8 +53,8 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendFileEvent */
 
-UserSendFileEvent::UserSendFileEvent(QString id, unsigned long ppid, QWidget* parent)
-  : UserSendCommon(FileEvent, id, ppid, parent, "UserSendFileEvent")
+UserSendFileEvent::UserSendFileEvent(const UserId& userId, QWidget* parent)
+  : UserSendCommon(FileEvent, userId, parent, "UserSendFileEvent")
 {
   myMassMessageCheck->setChecked(false);
   myMassMessageCheck->setEnabled(false);
@@ -119,18 +119,18 @@ void UserSendFileEvent::addFile(const QString& file)
   myFileEdit->setText(QString(tr("%1 Files")).arg(myFileList.size()));
 }
 
-bool UserSendFileEvent::sendDone(ICQEvent* e)
+bool UserSendFileEvent::sendDone(const LicqEvent* e)
 {
   if (!e->ExtendedAck() || !e->ExtendedAck()->Accepted())
   {
-    const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(myUsers.front());
+    if (u == NULL)
+      return true;
     QString s = !e->ExtendedAck() ?
       tr("No reason provided") :
       myCodec->toUnicode(e->ExtendedAck()->Response());
     QString result = tr("File transfer with %1 refused:\n%2")
-      .arg(u == NULL ?
-          QString(myUsers.front().c_str()) :
-          QString::fromUtf8(u->GetAlias()))
+      .arg(QString::fromUtf8(u->GetAlias()))
       .arg(s);
     if (u != NULL)
       gUserManager.DropUser(u);
@@ -139,7 +139,7 @@ bool UserSendFileEvent::sendDone(ICQEvent* e)
   else
   {
     const CEventFile* f = dynamic_cast<const CEventFile*>(e->UserEvent());
-    FileDlg* fileDlg = new FileDlg(myUsers.front().c_str(), myPpid);
+    FileDlg* fileDlg = new FileDlg(myUsers.front());
     fileDlg->SendFiles(f->FileList(), e->ExtendedAck()->Port());
   }
 
@@ -212,7 +212,7 @@ void UserSendFileEvent::send()
   // Take care of typing notification now
   mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, false, myConvoId);
+  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
 
   if (myFileEdit->text().trimmed().isEmpty())
   {
@@ -222,10 +222,10 @@ void UserSendFileEvent::send()
 
   unsigned long icqEventTag;
   //TODO in daemon
-  icqEventTag = gLicqDaemon->icqFileTransfer(
-      myUsers.front().c_str(),
-      myCodec->fromUnicode(myFileEdit->text()),
-      myCodec->fromUnicode(myMessageEdit->toPlainText()),
+  icqEventTag = gLicqDaemon->fileTransferPropose(
+      myUsers.front(),
+      myCodec->fromUnicode(myFileEdit->text()).data(),
+      myCodec->fromUnicode(myMessageEdit->toPlainText()).data(),
       myFileList,
       myUrgentCheck->isChecked() ? ICQ_TCPxMSG_URGENT : ICQ_TCPxMSG_NORMAL,
       mySendServerCheck->isChecked());

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -66,16 +66,43 @@ public:
    */
   QString fileName() const;
 
+  /**
+   * Set a default path to use if opening dialog with no current file selected
+   *
+   * @param path New default path to use
+   */
+  void setDefaultPath(const QString& path) { myDefaultPath = path; }
+
 #ifndef USE_KDE
+  /**
+   * Set filter for the file dialog
+   * Note: This function uses the same filter syntax as KFileDialog::setFilter
+   * which is not the same as for QFileDialog.
+   *
+   * @param filter Filter(s) to use, example "*.txt|Text files (*.txt)"
+   */
+  void setFilter(const QString& filter);
+#endif
+
 private slots:
+#ifdef USE_KDE
+  /**
+   * File dialog is about to open
+   */
+  void dialogAboutToOpen();
+#else
   /**
    * Open a file dialog to browse for file
    */
   void browse();
+#endif
 
 private:
+#ifndef USE_KDE
   QLineEdit* editField;
+  QString myFilter;
 #endif
+  QString myDefaultPath;
 };
 
 } // namespace LicqQtGui

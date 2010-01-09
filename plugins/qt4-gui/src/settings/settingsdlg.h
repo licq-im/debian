@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +36,8 @@ namespace Settings
   class Events;
   class General;
   class Network;
+  class Shortcuts;
+  class Skin;
   class Status;
 }
 
@@ -51,13 +53,16 @@ public:
   {
     UnknownPage = -1,
     ContactListPage,
+    SkinPage,
     ColumnsPage,
     DockingPage,
     FontsPage,
+    MainwinShortcutsPage,
     ContactInfoPage,
     ChatPage,
     ChatDispPage,
     HistDispPage,
+    ChatShortcutsPage,
     OnEventPage,
     SoundsPage,
     NetworkPage,
@@ -89,7 +94,7 @@ public:
    * @param title Page title
    * @param parent Parent page if not a top level page
    */
-  void addPage(SettingsPage page, QWidget* widget, QString title, SettingsPage parent = UnknownPage);
+  void addPage(SettingsPage page, QWidget* widget, const QString& title, SettingsPage parent = UnknownPage);
 
 private slots:
   /**
@@ -128,6 +133,8 @@ private:
   Settings::Events* myEventsSettings;
   Settings::General* myGeneralSettings;
   Settings::Network* myNetworkSettings;
+  Settings::Shortcuts* myShortcutsSettings;
+  Settings::Skin* mySkinSettings;
   Settings::Status* myStatusSettings;
 };
 

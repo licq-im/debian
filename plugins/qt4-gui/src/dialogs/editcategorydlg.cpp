@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,9 +36,9 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::EditCategoryDlg */
 
-EditCategoryDlg::EditCategoryDlg(ICQUserCategory* cat, QWidget* parent)
+EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, QWidget* parent)
   : QDialog(parent),
-    myUserCat(cat->GetCategory())
+    myUserCat(cat)
 {
   Support::setWidgetProps(this, "EditCategoryDlg");
   setAttribute(Qt::WA_DeleteOnClose, true);
@@ -50,19 +50,19 @@ EditCategoryDlg::EditCategoryDlg(ICQUserCategory* cat, QWidget* parent)
   switch (myUserCat)
   {
     case CAT_INTERESTS:
-      myNumCats = MAX_CAT;
+      myNumCats = MAX_CATEGORIES;
       getEntry = GetInterestByIndex;
       tableSize = NUM_INTERESTS;
       title.replace("@", tr("Personal Interests"));
       break;
     case CAT_ORGANIZATION:
-      myNumCats = MAX_CAT - 1;
+      myNumCats = MAX_CATEGORIES - 1;
       getEntry = GetOrganizationByIndex;
       tableSize = NUM_ORGANIZATIONS;
       title.replace("@", tr("Organization, Affiliation, Group"));
       break;
     case CAT_BACKGROUND:
-      myNumCats = MAX_CAT - 1;
+      myNumCats = MAX_CATEGORIES - 1;
       getEntry = GetBackgroundByIndex;
       tableSize = NUM_BACKGROUNDS;
       title.replace("@", tr("Past Background"));
@@ -76,15 +76,22 @@ EditCategoryDlg::EditCategoryDlg(ICQUserCategory* cat, QWidget* parent)
 
   QGridLayout* top_lay = new QGridLayout(this);
 
+  UserCategoryMap::const_iterator it = category.begin();
   for (; i < myNumCats ; i++)
   {
     myCats[i] = new QComboBox();
     myCats[i]->addItem(tr("Unspecified"));
 
     int selected = 0;
-    const char* descr;
     unsigned short selection_id;
-    if (!cat->Get(i, &selection_id, &descr))
+    QString descr;
+    if (it != category.end())
+    {
+      selection_id = it->first;
+      descr = it->second.c_str();
+      ++it;
+    }
+    else
     {
       selection_id = 0;
       descr = "";
@@ -127,18 +134,17 @@ void EditCategoryDlg::ok()
   const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
   if (o != NULL)
   {
-    QTextCodec* codec = UserCodec::codecForICQUser(o);
+    const QTextCodec* codec = UserCodec::codecForUser(o);
     gUserManager.DropOwner(o);
 
-    ICQUserCategory* cat = new ICQUserCategory(myUserCat);
+    UserCategoryMap cat;
     for (unsigned short i = 0; i < myNumCats; i++)
     {
       if (myCats[i]->currentIndex() != 0)
-        cat->AddCategory(getEntry(myCats[i]->currentIndex() - 1)->nCode,
-            codec->fromUnicode(myDescr[i]->text()));
+        cat[getEntry(myCats[i]->currentIndex() - 1)->nCode] = codec->fromUnicode(myDescr[i]->text()).data();
     }
 
-    emit updated(cat);
+    emit updated(myUserCat, cat);
   }
   close();
 }

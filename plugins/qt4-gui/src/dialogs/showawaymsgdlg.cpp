@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,11 +49,9 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ShowAwayMsgDlg */
 
-ShowAwayMsgDlg::ShowAwayMsgDlg(QString id, unsigned long ppid,
-    bool fetch, QWidget* parent)
+ShowAwayMsgDlg::ShowAwayMsgDlg(const UserId& userId, bool fetch, QWidget* parent)
   : QDialog(parent),
-    myId(id),
-    myPpid(ppid),
+    myUserId(userId),
     icqEventTag(0)
 {
   Support::setWidgetProps(this, "ShowAwayMessageDialog");
@@ -80,8 +78,8 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(QString id, unsigned long ppid,
   connect(buttons, SIGNAL(rejected()), SLOT(close()));
   lay->addWidget(buttons);
 
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
-  QTextCodec* codec = UserCodec::codecForICQUser(u);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
+  const QTextCodec* codec = UserCodec::codecForUser(u);
   chkShowAgain->setChecked(u->ShowAwayMsg());
 
   setWindowTitle(QString(tr("%1 Response for %2"))
@@ -93,10 +91,12 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(QString id, unsigned long ppid,
     bool bSendServer =
       (u->SocketDesc(ICQ_CHNxNONE) <= 0 &&
        u->Version() > 6);
+    unsigned long myPpid = u->ppid();
+    QString myId = u->accountId().c_str();
     gUserManager.DropUser(u);
     mleAwayMsg->setEnabled(false);
     connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(ICQEvent*)), SLOT(doneEvent(ICQEvent*)));
+        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneEvent(const LicqEvent*)));
     icqEventTag = gLicqDaemon->icqFetchAutoResponse(
         myId.toLatin1(), myPpid, bSendServer);
   }
@@ -111,7 +111,7 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(QString id, unsigned long ppid,
 
 ShowAwayMsgDlg::~ShowAwayMsgDlg()
 {
-  ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   u->SetShowAwayMsg(chkShowAgain->isChecked());
   gUserManager.DropUser(u);
 
@@ -119,7 +119,7 @@ ShowAwayMsgDlg::~ShowAwayMsgDlg()
     gLicqDaemon->CancelEvent(icqEventTag);
 }
 
-void ShowAwayMsgDlg::doneEvent(ICQEvent* e)
+void ShowAwayMsgDlg::doneEvent(const LicqEvent* e)
 {
   if (!e->Equals(icqEventTag))
     return;
@@ -164,14 +164,14 @@ void ShowAwayMsgDlg::doneEvent(ICQEvent* e)
        e->SNAC() == MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SENDxSERVER) ||
        e->SNAC() == MAKESNAC(ICQ_SNACxFAM_LOCATION, ICQ_SNACxLOC_INFOxREQ)))
   {
-    const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
-    QTextCodec* codec = UserCodec::codecForICQUser(u);
+    const LicqUser* u = gUserManager.fetchUser(myUserId);
+    const QTextCodec* codec = UserCodec::codecForUser(u);
     const char* szAutoResp =
       (e->ExtendedAck() && !e->ExtendedAck()->Accepted()) ?
        e->ExtendedAck()->Response() :
        u->AutoResponse();
 
-    if (myPpid == LICQ_PPID && myId[0].isLetter())
+    if (u->ppid() == LICQ_PPID && QString(u->accountId().c_str())[0].isLetter())
     {
       // Strip HTML
       QString strResponse(codec->toUnicode(szAutoResp));

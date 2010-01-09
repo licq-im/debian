@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -94,6 +94,7 @@ OwnerEditDlg::OwnerEditDlg(CICQDaemon *s, const char *szId,
   if (szId && nPPID)
   {
     edtId->setText(szId);
+    edtId->setEnabled(false);
     ICQOwner *o = gUserManager.FetchOwner(nPPID, LOCK_R);
     if (o)
     {
@@ -178,7 +179,6 @@ void OwnerEditDlg::slot_ok()
   {
     if (szPassword)
       o->SetPassword(szPassword);
-    o->SetId(szUser);
   }
   else
   {
@@ -361,7 +361,7 @@ void OwnerManagerDlg::slot_doneregister(bool bSuccess, char *szNewId, unsigned l
   if (bSuccess)
   {
     updateOwners();
-    mainwin->callInfoTab(mnuUserGeneral, szNewId, nPPID);
+    mainwin->callInfoTab(mnuUserGeneral, LicqUser::makeUserId(szNewId, nPPID));
   }
 }
 
@@ -380,7 +380,7 @@ void OwnerManagerDlg::slot_doneRegisterUser(ICQEvent *e)
     InformUser(this, tr("Successfully registered, your user identification\n"
                         "number (UIN) is %1.\n"
                         "Now set your personal information.").arg(id));
-    mainwin->callInfoTab(mnuUserGeneral, id, LICQ_PPID);
+    mainwin->callInfoTab(mnuUserGeneral, LicqUser::makeUserId(id, LICQ_PPID));
   }
   else
   {

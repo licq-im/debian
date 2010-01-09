@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -75,7 +75,11 @@ void COnEventManager::Do(unsigned short _nEvent, ICQUser *u)
 {
   unsigned long nPPID = LICQ_PPID;
   if (u)
+  {
     nPPID = u->PPID();
+    if (u->onEventsBlocked())
+      return;
+  }
 
   // Check if globally command should be run
   const ICQOwner* o = gUserManager.FetchOwner(nPPID, LOCK_R);

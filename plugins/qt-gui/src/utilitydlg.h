@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,8 @@
 
 #include <vector>
 
+#include <licq_types.h>
+
 class QCheckBox;
 class QLineEdit;
 class QLabel;
@@ -44,14 +46,12 @@ class CUtilityDlg : public QWidget
 {
   Q_OBJECT
 public:
-  CUtilityDlg(CUtility *u, const char *szId, unsigned long nPPID,
-    CICQDaemon *server);
+  CUtilityDlg(CUtility *u, const UserId& userId, CICQDaemon *server);
   ~CUtilityDlg();
 protected:
   CUtility *m_xUtility;
   CICQDaemon *server;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   bool m_bIntWin, m_bStdOutClosed, m_bStdErrClosed;
   CUtilityInternalWindow *intwin;
 

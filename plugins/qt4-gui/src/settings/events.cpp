@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,6 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
-#include <QLineEdit>
 #include <QVBoxLayout>
 
 #include <licq_icqd.h>
@@ -38,6 +37,7 @@
 #include "config/general.h"
 #include "core/mainwin.h"
 #include "widgets/filenameedit.h"
+#include "widgets/shortcutedit.h"
 
 #include "settingsdlg.h"
 
@@ -110,15 +110,11 @@ QWidget* Settings::Events::createPageOnEvent(QWidget* parent)
   hotKeyLayout->addWidget(myHotKeyLabel);
   myHotKeyLabel->setToolTip(tr("Hotkey to pop up the next pending message.\n"
       "Enter the hotkey literally, like \"shift+f10\", or \"none\" for disabling."));
-  myHotKeyField = new QLineEdit();
-  myHotKeyField->setToolTip(myHotKeyLabel->toolTip());
-  myHotKeyLabel->setBuddy(myHotKeyField);
-  hotKeyLayout->addWidget(myHotKeyField);
+  myHotKeyEdit = new ShortcutEdit();
+  myHotKeyEdit->setToolTip(myHotKeyLabel->toolTip());
+  myHotKeyLabel->setBuddy(myHotKeyEdit);
+  hotKeyLayout->addWidget(myHotKeyEdit);
   myMsgActionsLayout->addLayout(hotKeyLayout, 3, 1);
-
-  // Make the columns evenly wide, otherwise the QLineEdit gets too wide
-  myMsgActionsLayout->setColumnStretch(0, 1);
-  myMsgActionsLayout->setColumnStretch(1, 1);
 
   myParanoiaBox = new QGroupBox(tr("Paranoia"));
   myParanoiaLayout = new QVBoxLayout(myParanoiaBox);
@@ -262,6 +258,9 @@ QWidget* Settings::Events::createPageSounds(QWidget* parent)
      "when logging on (this is different from how the Mirabilis client works)"));
   myAcceptEventsLayout->addWidget(myAlwaysOnlineNotifyCheck, 0, 1);
 
+  myNoSoundInActiveChatCheck = new QCheckBox(tr("Disable sound for active window"), myAcceptEventsBox);
+  myNoSoundInActiveChatCheck->setToolTip(tr("Don't perform OnEvent command if chat window for user is currently active."));
+  myAcceptEventsLayout->addWidget(myNoSoundInActiveChatCheck, 1, 1);
 
   myPageSoundsLayout->addLayout(mySndTopRowLayout);
   myPageSoundsLayout->addWidget(myEventParamsBox);
@@ -288,6 +287,7 @@ void Settings::Events::setOnEventsEnabled(bool enable)
   myOnEventOccupiedCheck->setEnabled(enable);
   myOnEventDndCheck->setEnabled(enable);
   myAlwaysOnlineNotifyCheck->setEnabled(enable);
+  myNoSoundInActiveChatCheck->setEnabled(enable);
 }
 
 void Settings::Events::load()
@@ -298,7 +298,7 @@ void Settings::Events::load()
 
   myAutoRaiseCheck->setChecked(generalConfig->autoRaiseMainwin());
   myBoldOnMsgCheck->setChecked(generalConfig->boldOnMsg());
-  myHotKeyField->setText(generalConfig->msgPopupKey().isEmpty() ? "none" : generalConfig->msgPopupKey());
+  myHotKeyEdit->setKeySequence(QKeySequence(generalConfig->msgPopupKey()));
 
   Config::ContactList::FlashMode flash = contactListConfig->flash();
   myFlashUrgentCheck->setChecked(flash == Config::ContactList::FlashUrgent || flash == Config::ContactList::FlashAll);
@@ -307,6 +307,7 @@ void Settings::Events::load()
   myAutoPopupCombo->setCurrentIndex(chatConfig->autoPopup());
   myAutoFocusCheck->setChecked(chatConfig->autoFocus());
   myFlashTaskbarCheck->setChecked(chatConfig->flashTaskbar());
+  myNoSoundInActiveChatCheck->setChecked(chatConfig->noSoundInActiveChat());
 
   myIgnoreNewUsersCheck->setChecked(gLicqDaemon->Ignore(IGNORE_NEWUSERS));
   myIgnoreMassMsgCheck->setChecked(gLicqDaemon->Ignore(IGNORE_MASSMSG));
@@ -316,14 +317,14 @@ void Settings::Events::load()
   COnEventManager* oem = gLicqDaemon->OnEventManager();
   myOnEventsCheck->setChecked(oem->CommandType() != ON_EVENT_IGNORE);
   oem->Lock();
-  mySndPlayerEdit->setFileName(QString::fromStdString(oem->command()));
-  mySndMsgEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_MSG)));
-  mySndUrlEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_URL)));
-  mySndChatEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_CHAT)));
-  mySndFileEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_FILE)));
-  mySndNotifyEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_NOTIFY)));
-  mySndSysMsgEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_SYSMSG)));
-  mySndMsgSentEdit->setFileName(QString::fromStdString(oem->parameter(ON_EVENT_MSGSENT)));
+  mySndPlayerEdit->setFileName(oem->command().c_str());
+  mySndMsgEdit->setFileName(oem->parameter(ON_EVENT_MSG).c_str());
+  mySndUrlEdit->setFileName(oem->parameter(ON_EVENT_URL).c_str());
+  mySndChatEdit->setFileName(oem->parameter(ON_EVENT_CHAT).c_str());
+  mySndFileEdit->setFileName(oem->parameter(ON_EVENT_FILE).c_str());
+  mySndNotifyEdit->setFileName(oem->parameter(ON_EVENT_NOTIFY).c_str());
+  mySndSysMsgEdit->setFileName(oem->parameter(ON_EVENT_SYSMSG).c_str());
+  mySndMsgSentEdit->setFileName(oem->parameter(ON_EVENT_MSGSENT).c_str());
   oem->Unlock();
 
   //TODO make general for all plugins
@@ -350,7 +351,7 @@ void Settings::Events::apply()
 
   generalConfig->setAutoRaiseMainwin(myAutoRaiseCheck->isChecked());
   generalConfig->setBoldOnMsg(myBoldOnMsgCheck->isChecked());
-  generalConfig->setMsgPopupKey(myHotKeyField->text() != "none" ? myHotKeyField->text() : QString());
+  generalConfig->setMsgPopupKey(myHotKeyEdit->keySequence().toString(QKeySequence::PortableText));
 
   if (myFlashAllCheck->isChecked())
     contactListConfig->setFlash(Config::ContactList::FlashAll);
@@ -362,6 +363,7 @@ void Settings::Events::apply()
   chatConfig->setAutoPopup(myAutoPopupCombo->currentIndex());
   chatConfig->setAutoFocus(myAutoFocusCheck->isChecked());
   chatConfig->setFlashTaskbar(myFlashTaskbarCheck->isChecked());
+  chatConfig->setNoSoundInActiveChat(myNoSoundInActiveChatCheck->isChecked());
 
   gLicqDaemon->SetIgnore(IGNORE_NEWUSERS, myIgnoreNewUsersCheck->isChecked());
   gLicqDaemon->SetIgnore(IGNORE_MASSMSG, myIgnoreMassMsgCheck->isChecked());
@@ -371,14 +373,14 @@ void Settings::Events::apply()
   COnEventManager* oem = gLicqDaemon->OnEventManager();
   oem->SetCommandType(myOnEventsCheck->isChecked() ? ON_EVENT_RUN : ON_EVENT_IGNORE);
 
-  oem->setCommand(mySndPlayerEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_MSG, mySndMsgEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_URL, mySndUrlEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_CHAT, mySndChatEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_FILE, mySndFileEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_NOTIFY, mySndNotifyEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_SYSMSG, mySndSysMsgEdit->fileName().toStdString());
-  oem->setParameter(ON_EVENT_MSGSENT, mySndMsgSentEdit->fileName().toStdString());
+  oem->setCommand(mySndPlayerEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_MSG, mySndMsgEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_URL, mySndUrlEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_CHAT, mySndChatEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_FILE, mySndFileEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_NOTIFY, mySndNotifyEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_SYSMSG, mySndSysMsgEdit->fileName().toLatin1().data());
+  oem->setParameter(ON_EVENT_MSGSENT, mySndMsgSentEdit->fileName().toLatin1().data());
 
   //TODO Make general for all plugins
   ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);

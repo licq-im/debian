@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -90,19 +90,17 @@
 
 // -----------------------------------------------------------------------------
 UserInfoDlg::UserInfoDlg(CICQDaemon *s, CSignalManager *theSigMan, CMainWindow *m,
-                         const char *szId, unsigned long nPPID, QWidget *parent)
+    const UserId& userId, QWidget *parent)
   : QWidget(parent, "UserInfoDialog", WDestructiveClose)
 {
   server = s;
   mainwin = m;
   sigman = theSigMan;
   icqEventTag = 0;
-  m_szId = szId ? strdup(szId) : 0;
-  m_nPPID = nPPID;
-  m_bOwner = (gUserManager.FindOwner(szId, nPPID) != NULL);
-  m_Interests = m_Organizations = m_Backgrounds = NULL;
+  myUserId = userId;
+  m_bOwner = gUserManager.isOwner(userId);
   m_PhoneBook = NULL;
- 
+
   CreateGeneralInfo();
   CreateMoreInfo();
   CreateMore2Info();
@@ -135,8 +133,8 @@ UserInfoDlg::UserInfoDlg(CICQDaemon *s, CSignalManager *theSigMan, CMainWindow *
 #endif
 
   connect (tabs, SIGNAL(selected(const QString &)), this, SLOT(updateTab(const QString &)));
-  connect (sigman, SIGNAL(signal_updatedUser(CICQSignal *)),
-           this, SLOT(updatedUser(CICQSignal *)));
+  connect (sigman, SIGNAL(signal_updatedUser(const UserId&, unsigned long, int, unsigned long)),
+      this, SLOT(updatedUser(const UserId&, unsigned long)));
 
   btnMain3 = new QPushButton(tr("&Update"), this);
   btnMain4 = new QPushButton(tr("&Close"), this);
@@ -184,26 +182,19 @@ UserInfoDlg::UserInfoDlg(CICQDaemon *s, CSignalManager *theSigMan, CMainWindow *
   timer = new QTimer(this, "history_filterTimer");
   connect(timer, SIGNAL(timeout()), this, SLOT(ShowHistory()));
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL)
   {
     m_sBasic = tr("Licq - Info ") + tr("INVALID USER");
     resetCaption();
-    setIconText(tr("INVALID USER"));
   }
   else
   {
     QTextCodec * codec = UserCodec::codecForICQUser(u);
-    QString tmp = codec->toUnicode(u->GetFirstName());
-    QString lastname = codec->toUnicode(u->GetLastName());
-    if ((!tmp.isEmpty()) && (!lastname.isEmpty()))
-      tmp = tmp + " " + lastname;
-    else
-      tmp = tmp + lastname;
+    QString tmp = codec->toUnicode(u->getFullName().c_str());
     if (!tmp.isEmpty()) tmp = " (" + tmp + ")";
-    m_sBasic = tr("Licq - Info ") + QString::fromUtf8(u->GetAlias()) + tmp;
+    m_sBasic = tr("Licq - Info ") + QString::fromUtf8(u->getAlias().c_str()) + tmp;
     resetCaption();
-    setIconText(u->GetAlias());
     gUserManager.DropUser(u);
   }
 
@@ -223,19 +214,9 @@ UserInfoDlg::~UserInfoDlg()
     icqEventTag = 0;
   }
 
-  if (m_Interests != NULL)
-    delete m_Interests;
-  if (m_Organizations != NULL)
-    delete m_Organizations;
-  if (m_Backgrounds != NULL)
-    delete m_Backgrounds;
-  if (m_PhoneBook != NULL)
-    delete m_PhoneBook;
+  emit finished(myUserId);
 
-  emit finished(m_szId, m_nPPID);
-  free(m_szId);
-
-  ICQUser::ClearHistory(m_lHistoryList);
+  LicqUser::ClearHistory(m_lHistoryList);
 }
 
 
@@ -378,7 +359,7 @@ void UserInfoDlg::CreateGeneralInfo()
   lay->setRowStretch(++CR, 5);
 }
 
-void UserInfoDlg::SetGeneralInfo(ICQUser *u)
+void UserInfoDlg::SetGeneralInfo(const LicqUser* u)
 {
   tabList[GeneralInfo].loaded = true;
   char buf[32];
@@ -386,7 +367,7 @@ void UserInfoDlg::SetGeneralInfo(ICQUser *u)
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL) return;
     bDropUser = true;
   }
@@ -396,13 +377,13 @@ void UserInfoDlg::SetGeneralInfo(ICQUser *u)
   if(m_bOwner)
     chkKeepAliasOnUpdate->hide();
   chkKeepAliasOnUpdate->setChecked(u->KeepAliasOnUpdate());
-  nfoAlias->setData(QString::fromUtf8(u->GetAlias()));
+  nfoAlias->setData(QString::fromUtf8(u->getAlias().c_str()));
   connect(nfoAlias, SIGNAL(textChanged(const QString &)), this, SLOT(slot_aliasChanged(const QString &)));
-  nfoFirstName->setData(codec->toUnicode(u->GetFirstName()));
-  nfoLastName->setData(codec->toUnicode(u->GetLastName()));
-  nfoEmailPrimary->setData(codec->toUnicode(u->GetEmailPrimary()));
-  nfoEmailSecondary->setData(codec->toUnicode(u->GetEmailSecondary()));
-  nfoEmailOld->setData(codec->toUnicode(u->GetEmailOld()));
+  nfoFirstName->setData(codec->toUnicode(u->getFirstName().c_str()));
+  nfoLastName->setData(codec->toUnicode(u->getLastName().c_str()));
+  nfoEmailPrimary->setData(codec->toUnicode(u->getUserInfoString("Email1").c_str()));
+  nfoEmailSecondary->setData(codec->toUnicode(u->getUserInfoString("Email2").c_str()));
+  nfoEmailOld->setData(codec->toUnicode(u->getUserInfoString("Email0").c_str()));
   nfoUin->setData(u->IdString());
   QString ip = QString(u->IpStr(buf));
   if (u->Ip() != u->IntIp() && u->IntIp() != 0)
@@ -416,12 +397,13 @@ void UserInfoDlg::SetGeneralInfo(ICQUser *u)
   nfoIp->setData(ip);
   tznZone->setData(u->GetTimezone());
   nfoStatus->setData(Strings::getStatus(u));
+  unsigned int countryCode = u->getUserInfoUint("Country");
   if (m_bOwner)
   {
     // Owner timezone is not editable, it is taken from system timezone instead
     tznZone->setEnabled(false);
 
-    const SCountry *c = GetCountryByCode(u->GetCountryCode());
+    const SCountry* c = GetCountryByCode(countryCode);
     if (c == NULL)
       cmbCountry->setCurrentItem(0);
     else
@@ -429,19 +411,19 @@ void UserInfoDlg::SetGeneralInfo(ICQUser *u)
   }
   else
   {
-    const SCountry *c = GetCountryByCode(u->GetCountryCode());
+    const SCountry* c = GetCountryByCode(countryCode);
     if (c == NULL)
-      nfoCountry->setData(tr("Unknown (%1)").arg(u->GetCountryCode()));
+      nfoCountry->setData(tr("Unknown (%1)").arg(countryCode));
     else  // known
       nfoCountry->setData(c->szName);
   }
-  nfoAddress->setData(codec->toUnicode(u->GetAddress()));
-  nfoCity->setData(codec->toUnicode(u->GetCity()));
-  nfoState->setData(codec->toUnicode(u->GetState()));
-  nfoPhone->setData(codec->toUnicode(u->GetPhoneNumber()));
-  nfoFax->setData(codec->toUnicode(u->GetFaxNumber()));
-  nfoCellular->setData(codec->toUnicode(u->GetCellularNumber()));
-  nfoZipCode->setData(codec->toUnicode(u->GetZipCode()));
+  nfoAddress->setData(codec->toUnicode(u->getUserInfoString("Address").c_str()));
+  nfoCity->setData(codec->toUnicode(u->getUserInfoString("City").c_str()));
+  nfoState->setData(codec->toUnicode(u->getUserInfoString("State").c_str()));
+  nfoPhone->setData(codec->toUnicode(u->getUserInfoString("PhoneNumber").c_str()));
+  nfoFax->setData(codec->toUnicode(u->getUserInfoString("FaxNumber").c_str()));
+  nfoCellular->setData(codec->toUnicode(u->getCellularNumber().c_str()));
+  nfoZipCode->setData(codec->toUnicode(u->getUserInfoString("Zipcode").c_str()));
 
   if (!u->StatusOffline())
     nfoLastOnline->setData(tr("Now"));
@@ -461,41 +443,40 @@ void UserInfoDlg::SetGeneralInfo(ICQUser *u)
 
 void UserInfoDlg::SaveGeneralInfo()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL) return;
 
   QTextCodec * codec = UserCodec::codecForICQUser(u);
 
   u->SetEnableSave(false);
 
-  u->SetAlias(nfoAlias->text().utf8());
+  u->setAlias(nfoAlias->text().utf8().data());
   u->SetKeepAliasOnUpdate(chkKeepAliasOnUpdate->isChecked());
-  u->SetFirstName(codec->fromUnicode(nfoFirstName->text()));
-  u->SetLastName(codec->fromUnicode(nfoLastName->text()));
-  u->SetEmailPrimary(codec->fromUnicode(nfoEmailPrimary->text()));
-  u->SetEmailSecondary(codec->fromUnicode(nfoEmailSecondary->text()));
-  u->SetEmailOld(codec->fromUnicode(nfoEmailOld->text()));
-  u->SetCity(codec->fromUnicode(nfoCity->text()));
-  u->SetState(codec->fromUnicode(nfoState->text()));
-  u->SetAddress(codec->fromUnicode(nfoAddress->text()));
-  u->SetPhoneNumber(codec->fromUnicode(nfoPhone->text()));
-  u->SetFaxNumber(codec->fromUnicode(nfoFax->text()));
-  u->SetCellularNumber(codec->fromUnicode(nfoCellular->text()));
-  u->SetZipCode(codec->fromUnicode(nfoZipCode->text()));
+  u->setUserInfoString("FirstName", codec->fromUnicode(nfoFirstName->text()).data());
+  u->setUserInfoString("LastName", codec->fromUnicode(nfoLastName->text()).data());
+  u->setUserInfoString("Email1", codec->fromUnicode(nfoEmailPrimary->text()).data());
+  u->setUserInfoString("Email2", codec->fromUnicode(nfoEmailSecondary->text()).data());
+  u->setUserInfoString("Email0", codec->fromUnicode(nfoEmailOld->text()).data());
+  u->setUserInfoString("City", codec->fromUnicode(nfoCity->text()).data());
+  u->setUserInfoString("State", codec->fromUnicode(nfoState->text()).data());
+  u->setUserInfoString("Address", codec->fromUnicode(nfoAddress->text()).data());
+  u->setUserInfoString("PhoneNumber", codec->fromUnicode(nfoPhone->text()).data());
+  u->setUserInfoString("FaxNumber", codec->fromUnicode(nfoFax->text()).data());
+  u->setUserInfoString("CellularNumber", codec->fromUnicode(nfoCellular->text()).data());
+  u->setUserInfoString("Zipcode", codec->fromUnicode(nfoZipCode->text()).data());
   if (m_bOwner)
   {
     unsigned short i = cmbCountry->currentItem();
-    u->SetCountryCode(GetCountryByIndex(i)->nCode);
+    u->setUserInfoUint("Country", GetCountryByIndex(i)->nCode);
   }
   u->SetTimezone(tznZone->data());
 
   u->SetEnableSave(true);
-  u->SaveGeneralInfo();
-
+  u->saveUserInfo();
   gUserManager.DropUser(u);
 
   if (!m_bOwner)
-    server->ProtoRenameUser(m_szId, m_nPPID);
+    server->updateUserAlias(myUserId);
 }
 
 // -----------------------------------------------------------------------------
@@ -613,14 +594,14 @@ void UserInfoDlg::CreateMoreInfo()
   lay->addMultiCellWidget(lblICQHomepage, CR, CR, 0, 4);
 }
 
-void UserInfoDlg::SetMoreInfo(ICQUser *u)
+void UserInfoDlg::SetMoreInfo(const LicqUser* u)
 {
   tabList[MoreInfo].loaded = true;
   bool bDropUser = false;
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL) return;
     bDropUser = true;
   }
@@ -628,56 +609,61 @@ void UserInfoDlg::SetMoreInfo(ICQUser *u)
   QTextCodec * codec = UserCodec::codecForICQUser(u);
 
   // Gender
+  unsigned int gender = u->getUserInfoUint("Gender");
   if (m_bOwner)
   {
-    cmbGender->setCurrentItem(u->GetGender());
+    cmbGender->setCurrentItem(gender);
   }
   else
   {
-    if (u->GetGender() == 1)
+    if (gender == 1)
       nfoGender->setData(tr("Female"));
-    else if (u->GetGender() == 2)
+    else if (gender == 2)
       nfoGender->setData(tr("Male"));
     else
       nfoGender->setData(tr("Unspecified"));
   }
 
   // Age
-  if (u->GetAge() == AGE_UNSPECIFIED)
+  unsigned int age = u->getUserInfoUint("Age");
+  if (age == AGE_UNSPECIFIED)
     nfoAge->setData(tr("Unspecified"));
   else
-    nfoAge->setData(u->GetAge());
+    nfoAge->setData(age);
 
   // Birthday
+  unsigned int birthDay = u->getUserInfoUint("BirthDay");
+  unsigned int birthMonth = u->getUserInfoUint("BirthMonth");
+  unsigned int birthYear = u->getUserInfoUint("BirthYear");
   if (m_bOwner)
   {
-    spnBirthDay->setValue((unsigned short)u->GetBirthDay());
-    spnBirthMonth->setValue((unsigned short)u->GetBirthMonth());
-    spnBirthYear->setValue(u->GetBirthYear());
+    spnBirthDay->setValue(birthDay);
+    spnBirthMonth->setValue(birthMonth);
+    spnBirthYear->setValue(birthYear);
   }
   else
   {
-    if (u->GetBirthMonth() == 0 || u->GetBirthDay() == 0)
+    if (birthMonth == 0 || birthDay == 0)
     {
       nfoBirthday->setData(tr("Unspecified"));
     }
     else
     {
-      QDate d(u->GetBirthYear(), u->GetBirthMonth(), u->GetBirthDay());
+      QDate d(birthYear, birthMonth, birthDay);
       nfoBirthday->setData(d.toString());
     }
   }
-  
-  nfoHomepage->setData(codec->toUnicode(u->GetHomepage()));
+
+  nfoHomepage->setData(codec->toUnicode(u->getUserInfoString("Homepage").c_str()));
 
   lvHomepageCategory->clear();
   mleHomepageDesc->clear();
-  if (u->GetHomepageCatPresent())
+  if (u->getUserInfoBool("HomepageCatPresent"))
   {
     if (m_bOwner)
       mleHomepageDesc->setReadOnly(false);
 
-    const SHomepageCat *c = GetHomepageCatByCode(u->GetHomepageCatCode());
+    const SHomepageCat* c = GetHomepageCatByCode(u->getUserInfoUint("HomepageCatCode"));
     if (c != NULL)
     {
       QListViewItem *lvi = new QListViewItem(lvHomepageCategory);
@@ -710,14 +696,15 @@ void UserInfoDlg::SetMoreInfo(ICQUser *u)
       lvHomepageCategory->setMaximumHeight(top->totalHeight() + 5);
       free(sTmp);
     }
-    QString descstr = codec->toUnicode(u->GetHomepageDesc());
+    QString descstr = codec->toUnicode(u->getUserInfoString("HomepageDesc").c_str());
     descstr.replace(QRegExp("\r"), "");
     mleHomepageDesc->setText(descstr);
   }
 
   for (unsigned short i = 0; i < 3; i++)
   {
-    const SLanguage *l = GetLanguageByCode(u->GetLanguage(i));
+    unsigned int language = u->getUserInfoUint(QString("Language%1").arg(i).latin1());
+    const SLanguage* l = GetLanguageByCode(language);
     if (m_bOwner)
     {
       if (l == NULL)
@@ -728,7 +715,7 @@ void UserInfoDlg::SetMoreInfo(ICQUser *u)
     else
     {
       if (l == NULL)
-        nfoLanguage[i]->setData(tr("Unknown (%1)").arg((unsigned short)u->GetLanguage(i)));
+        nfoLanguage[i]->setData(tr("Unknown (%1)").arg(language));
       else  // known
         nfoLanguage[i]->setData(l->szName);
     }
@@ -739,7 +726,7 @@ void UserInfoDlg::SetMoreInfo(ICQUser *u)
   else
     lblAuth->setText(tr("Authorization Not Required"));
 
-  if (u->GetICQHomepagePresent())
+  if (u->getUserInfoBool("ICQHomepagePresent"))
   {
     QString url;
     url.sprintf("(http://%s.homepage.icq.com/)", u->IdString());
@@ -753,26 +740,26 @@ void UserInfoDlg::SetMoreInfo(ICQUser *u)
 
 void UserInfoDlg::SaveMoreInfo()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL) return;
   u->SetEnableSave(false);
 
-  u->SetAge(nfoAge->text().toULong());
-  u->SetHomepage(nfoHomepage->text().local8Bit().data());
+  u->setUserInfoUint("Age", nfoAge->text().toULong());
+  u->setUserInfoString("Homepage", nfoHomepage->text().local8Bit().data());
   if (m_bOwner)
   {
-    u->SetGender(cmbGender->currentItem());
-    u->SetBirthYear(spnBirthYear->value());
-    u->SetBirthMonth(spnBirthMonth->value());
-    u->SetBirthDay(spnBirthDay->value());
+    u->setUserInfoUint("Gender", cmbGender->currentItem());
+    u->setUserInfoUint("BirthYear", spnBirthYear->value());
+    u->setUserInfoUint("BirthMonth", spnBirthMonth->value());
+    u->setUserInfoUint("BirthDay", spnBirthDay->value());
     for (unsigned short i = 0; i < 3; i++)
     {
-      u->SetLanguage(i, GetLanguageByIndex(cmbLanguage[i]->currentItem())->nCode);
+      u->setUserInfoUint(QString("Language%1").arg(i).latin1(), GetLanguageByIndex(cmbLanguage[i]->currentItem())->nCode);
     }
   }
 
   u->SetEnableSave(true);
-  u->SaveMoreInfo();
+  u->saveUserInfo();
   gUserManager.DropUser(u);
 }
 
@@ -858,68 +845,44 @@ int UserInfoDlg::SplitCategory(QListViewItem *parent, QTextCodec *codec,
   return 0;
 }
 
-void UserInfoDlg::SetMore2Info(ICQUser *u)
+void UserInfoDlg::SetMore2Info(const LicqUser* u)
 {
-  ICQUserCategory *cat;
   bool drop = false;
-  int i;
-  unsigned short id;
-  const char *descr;
 
   tabList[More2Info].loaded = true;
 
   if (u == NULL)
   {
     drop = true;
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL)
       return;
   }
 
   QTextCodec * codec = UserCodec::codecForICQUser(u);
 
-  if (m_Interests != NULL)
-    delete m_Interests;
-  m_Interests = new ICQUserCategory(CAT_INTERESTS);
-  cat = u->GetInterests();
-  for (i = 0; cat->Get(i, &id, &descr); i++)
-    m_Interests->AddCategory(id, descr);
-  UpdateMore2Info(codec, cat);
+  myInterests = u->getInterests();
+  UpdateMore2Info(codec, CAT_INTERESTS, myInterests);
 
-  if (m_Organizations != NULL)
-    delete m_Organizations;
-  m_Organizations = new ICQUserCategory(CAT_ORGANIZATION);
-  cat = u->GetOrganizations();
-  for (i = 0; cat->Get(i, &id, &descr); i++)
-    m_Organizations->AddCategory(id, descr);
-  UpdateMore2Info(codec, cat);
+  myOrganizations = u->getOrganizations();
+  UpdateMore2Info(codec, CAT_ORGANIZATION, myOrganizations);
 
-  if (m_Backgrounds != NULL)
-    delete m_Backgrounds;
-  m_Backgrounds = new ICQUserCategory(CAT_BACKGROUND);
-  cat = u->GetBackgrounds();
-  for (i = 0; cat->Get(i, &id, &descr); i++)
-    m_Backgrounds->AddCategory(id, descr);
-  UpdateMore2Info(codec, cat);
+  myBackgrounds = u->getBackgrounds();
+  UpdateMore2Info(codec, CAT_BACKGROUND, myBackgrounds);
 
   if (drop)
     gUserManager.DropUser(u);
 }
 
-void UserInfoDlg::UpdateMore2Info(QTextCodec *codec, ICQUserCategory *cat)
+void UserInfoDlg::UpdateMore2Info(QTextCodec *codec, UserCat cat, const UserCategoryMap& category)
 {
   QListViewItem *lvi = NULL, *lvChild;
-  unsigned short i, id;
-  const char *descr;
 
-  while ((lvChild = lviMore2Top[cat->GetCategory()]->firstChild()))
+  while ((lvChild = lviMore2Top[cat]->firstChild()))
     delete lvChild;
 
-  if (cat == NULL)
-    return;
-
   const struct SCategory *(*cat2str)(unsigned short);
-  switch (cat->GetCategory())
+  switch (cat)
   {
   case CAT_INTERESTS:
     cat2str = GetInterestByCode;
@@ -934,9 +897,10 @@ void UserInfoDlg::UpdateMore2Info(QTextCodec *codec, ICQUserCategory *cat)
     return;
   }
 
-  for (i = 0; cat->Get(i, &id, &descr); i++)
+  UserCategoryMap::const_iterator i;
+  for (i = category.begin(); i != category.end(); ++i)
   {
-    const struct SCategory *sCat = cat2str(id);
+    const struct SCategory* sCat = cat2str(i->first);
     QString name;
     if (sCat == NULL)
       name = tr("Unknown");
@@ -944,45 +908,26 @@ void UserInfoDlg::UpdateMore2Info(QTextCodec *codec, ICQUserCategory *cat)
       name = sCat->szName;
 
     if (lvi == NULL)
-      lvi = new QListViewItem(lviMore2Top[cat->GetCategory()], name);
+      lvi = new QListViewItem(lviMore2Top[cat], name);
     else
-      lvi = new QListViewItem(lviMore2Top[cat->GetCategory()], lvi, name);
-    SplitCategory(lvi, codec, descr);
+      lvi = new QListViewItem(lviMore2Top[cat], lvi, name);
+    SplitCategory(lvi, codec, i->second.c_str());
   }
 
-  if (i == 0)
-    lvi = new QListViewItem(lviMore2Top[cat->GetCategory()], tr("(none)"));
+  if (category.empty())
+    lvi = new QListViewItem(lviMore2Top[cat], tr("(none)"));
 }
 
 void UserInfoDlg::SaveMore2Info()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL)
     return;
 
-  int i;
-  unsigned short cat;
-  const char *descr;
-
-  u->SetEnableSave(false);
-  u->GetInterests()->Clean();
-  for (i = 0; m_Interests->Get(i, &cat, &descr); i++)
-    u->GetInterests()->AddCategory(cat, descr);
-  u->SetEnableSave(true);
-  u->SaveInterestsInfo();
-  u->SetEnableSave(false);
-  u->GetOrganizations()->Clean();
-  for (i = 0; m_Organizations->Get(i, &cat, &descr); i++)
-    u->GetOrganizations()->AddCategory(cat, descr);
-  u->SetEnableSave(true);
-  u->SaveOrganizationsInfo();
-
-  u->SetEnableSave(false);
-  u->GetBackgrounds()->Clean();
-  for (i = 0; m_Backgrounds->Get(i, &cat, &descr); i++)
-    u->GetBackgrounds()->AddCategory(cat, descr);
-  u->SetEnableSave(true);
-  u->SaveBackgroundsInfo();
+  u->getInterests() = myInterests;
+  u->getOrganizations() = myOrganizations;
+  u->getBackgrounds() = myBackgrounds;
+  u->saveUserInfo();
 
   gUserManager.DropUser(u);
 
@@ -1073,36 +1018,38 @@ void UserInfoDlg::CreateWorkInfo()
   lay->addMultiCellWidget(nfoCompanyHomepage, CR, CR, 1, 4);
 }
 
-void UserInfoDlg::SetWorkInfo(ICQUser *u)
+void UserInfoDlg::SetWorkInfo(const LicqUser* u)
 {
   tabList[WorkInfo].loaded = true;
   bool bDropUser = false;
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL) return;
     bDropUser = true;
   }
 
   QTextCodec * codec = UserCodec::codecForICQUser(u);
 
-  nfoCompanyName->setData(codec->toUnicode(u->GetCompanyName()));
-  nfoCompanyDepartment->setData(codec->toUnicode(u->GetCompanyDepartment()));
-  nfoCompanyPosition->setData(codec->toUnicode(u->GetCompanyPosition()));
-  nfoCompanyCity->setData(codec->toUnicode(u->GetCompanyCity()));
-  nfoCompanyState->setData(codec->toUnicode(u->GetCompanyState()));
-  nfoCompanyAddress->setData(codec->toUnicode(u->GetCompanyAddress()));
-  nfoCompanyZip->setData(codec->toUnicode(u->GetCompanyZip()));
+  nfoCompanyName->setData(codec->toUnicode(u->getUserInfoString("CompanyName").c_str()));
+  nfoCompanyDepartment->setData(codec->toUnicode(u->getUserInfoString("CompanyDepartment").c_str()));
+  nfoCompanyPosition->setData(codec->toUnicode(u->getUserInfoString("CompanyPosition").c_str()));
+  nfoCompanyCity->setData(codec->toUnicode(u->getUserInfoString("CompanyCity").c_str()));
+  nfoCompanyState->setData(codec->toUnicode(u->getUserInfoString("CompanyState").c_str()));
+  nfoCompanyAddress->setData(codec->toUnicode(u->getUserInfoString("CompanyAddress").c_str()));
+  nfoCompanyZip->setData(codec->toUnicode(u->getUserInfoString("CompanyZip").c_str()));
+  unsigned int companyCountry = u->getUserInfoUint("CompanyCountry");
+  unsigned int companyOccupation = u->getUserInfoUint("CompanyOccupation");
   if (m_bOwner)
   {
-    const SCountry *c = GetCountryByCode(u->GetCompanyCountry());
+    const SCountry* c = GetCountryByCode(companyCountry);
     if (c == NULL)
       cmbCompanyCountry->setCurrentItem(0);
     else
       cmbCompanyCountry->setCurrentItem(c->nIndex);
-      
-    const SOccupation *o = GetOccupationByCode(u->GetCompanyOccupation());
+
+    const SOccupation* o = GetOccupationByCode(companyOccupation);
     if (o == NULL)
       cmbCompanyOccupation->setCurrentItem(0);
     else
@@ -1110,55 +1057,55 @@ void UserInfoDlg::SetWorkInfo(ICQUser *u)
   }
   else
   {
-    const SCountry *c = GetCountryByCode(u->GetCompanyCountry());
+    const SCountry* c = GetCountryByCode(companyCountry);
     if (c == NULL)
-      nfoCompanyCountry->setData(tr("Unknown (%1)").arg(u->GetCompanyCountry()));
+      nfoCompanyCountry->setData(tr("Unknown (%1)").arg(companyCountry));
     else  // known
       nfoCompanyCountry->setData(c->szName);
-      
-    const SOccupation *o = GetOccupationByCode(u->GetCompanyOccupation());
+
+    const SOccupation* o = GetOccupationByCode(companyOccupation);
     if (o == NULL)
-      nfoCompanyOccupation->setData(tr("Unknown (%1)").arg(u->GetCompanyOccupation()));
+      nfoCompanyOccupation->setData(tr("Unknown (%1)").arg(companyOccupation));
     else
       nfoCompanyOccupation->setData(o->szName);
   }
-  nfoCompanyPhone->setData(codec->toUnicode(u->GetCompanyPhoneNumber()));
-  nfoCompanyFax->setData(codec->toUnicode(u->GetCompanyFaxNumber()));
-  nfoCompanyHomepage->setData(codec->toUnicode(u->GetCompanyHomepage()));
+  nfoCompanyPhone->setData(codec->toUnicode(u->getUserInfoString("CompanyPhoneNumber").c_str()));
+  nfoCompanyFax->setData(codec->toUnicode(u->getUserInfoString("CompanyFaxNumber").c_str()));
+  nfoCompanyHomepage->setData(codec->toUnicode(u->getUserInfoString("CompanyHomepage").c_str()));
 
   if (bDropUser) gUserManager.DropUser(u);
 }
 
 void UserInfoDlg::SaveWorkInfo()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL) return;
 
   QTextCodec * codec = UserCodec::codecForICQUser(u);
 
   u->SetEnableSave(false);
 
-  u->SetCompanyCity(codec->fromUnicode(nfoCompanyCity->text()));
-  u->SetCompanyState(codec->fromUnicode(nfoCompanyState->text()));
-  u->SetCompanyPhoneNumber(codec->fromUnicode(nfoCompanyPhone->text()));
-  u->SetCompanyFaxNumber(codec->fromUnicode(nfoCompanyFax->text()));
-  u->SetCompanyAddress(codec->fromUnicode(nfoCompanyAddress->text()));
-  u->SetCompanyZip(codec->fromUnicode(nfoCompanyZip->text()));
+  u->setUserInfoString("CompanyCity", codec->fromUnicode(nfoCompanyCity->text()).data());
+  u->setUserInfoString("CompanyState", codec->fromUnicode(nfoCompanyState->text()).data());
+  u->setUserInfoString("CompanyPhoneNumber", codec->fromUnicode(nfoCompanyPhone->text()).data());
+  u->setUserInfoString("CompanyFaxNumber", codec->fromUnicode(nfoCompanyFax->text()).data());
+  u->setUserInfoString("CompanyAddress", codec->fromUnicode(nfoCompanyAddress->text()).data());
+  u->setUserInfoString("CompanyZip", codec->fromUnicode(nfoCompanyZip->text()).data());
   if (m_bOwner)
   {
     unsigned short i = cmbCompanyCountry->currentItem();
-    u->SetCompanyCountry(GetCountryByIndex(i)->nCode);
-    
+    u->setUserInfoUint("CompanyCountry", GetCountryByIndex(i)->nCode);
+
     i = cmbCompanyOccupation->currentItem();
-    u->SetCompanyOccupation(GetOccupationByIndex(i)->nCode);
+    u->setUserInfoUint("CompanyOccupation", GetOccupationByIndex(i)->nCode);
   }
-  u->SetCompanyName(codec->fromUnicode(nfoCompanyName->text()));
-  u->SetCompanyDepartment(codec->fromUnicode(nfoCompanyDepartment->text()));
-  u->SetCompanyPosition(codec->fromUnicode(nfoCompanyPosition->text()));
-  u->SetCompanyHomepage(codec->fromUnicode(nfoCompanyHomepage->text()));
+  u->setUserInfoString("CompanyName", codec->fromUnicode(nfoCompanyName->text()).data());
+  u->setUserInfoString("CompanyDepartment", codec->fromUnicode(nfoCompanyDepartment->text()).data());
+  u->setUserInfoString("CompanyPosition", codec->fromUnicode(nfoCompanyPosition->text()).data());
+  u->setUserInfoString("CompanyHomepage", codec->fromUnicode(nfoCompanyHomepage->text()).data());
 
   u->SetEnableSave(true);
-  u->SaveWorkInfo();
+  u->saveUserInfo();
 
   gUserManager.DropUser(u);
 }
@@ -1183,14 +1130,14 @@ void UserInfoDlg::CreateAbout()
   connect(mlvAbout, SIGNAL(viewurl(QWidget*, QString)), mainwin, SLOT(slot_viewurl(QWidget *, QString)));
 }
 
-void UserInfoDlg::SetAbout(ICQUser *u)
+void UserInfoDlg::SetAbout(const LicqUser* u)
 {
   tabList[AboutInfo].loaded = true;
   bool bDropUser = false;
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL) return;
     bDropUser = true;
   }
@@ -1198,23 +1145,23 @@ void UserInfoDlg::SetAbout(ICQUser *u)
   QTextCodec * codec = UserCodec::codecForICQUser(u);
   bool bUseHTML = isalpha(u->IdString()[0]);
 
-  QString aboutstr = codec->toUnicode(u->GetAbout());
+  QString aboutstr = codec->toUnicode(u->getUserInfoString("About").c_str());
   aboutstr.replace(QRegExp("\r"), "");
   mlvAbout->clear();
-  mlvAbout->append(MLView::toRichText(codec->toUnicode(u->GetAbout()), true, bUseHTML));
+  mlvAbout->append(MLView::toRichText(aboutstr, true, bUseHTML));
   
   if (bDropUser) gUserManager.DropUser(u);
 }
 
 void UserInfoDlg::SaveAbout()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL) return;
 
   QTextCodec * codec = UserCodec::codecForICQUser(u);
   QString str = mlvAbout->text();
 
-  u->SetAbout(codec->fromUnicode(str.left(450)));
+  u->setUserInfoString("About", codec->fromUnicode(str.left(450)).data());
   gUserManager.DropUser(u);
 }
 
@@ -1262,14 +1209,14 @@ void UserInfoDlg::CreatePhoneBook()
   }
 }
 
-void UserInfoDlg::SetPhoneBook(ICQUser *u)
+void UserInfoDlg::SetPhoneBook(const LicqUser* u)
 {
   tabList[PhoneInfo].loaded = true;
   bool bDropUser = false;
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL) return;
     bDropUser = true;
   }
@@ -1404,7 +1351,7 @@ void UserInfoDlg::UpdatePhoneBook(QTextCodec *codec)
 
 void UserInfoDlg::SavePhoneBook()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL)
     return;
 
@@ -1438,7 +1385,7 @@ void UserInfoDlg::CreatePicture()
   lblPicture->setAlignment(lblPicture->alignment() | Qt::AlignHCenter);
 }
 
-void UserInfoDlg::SetPicture(ICQUser *u)
+void UserInfoDlg::SetPicture(const LicqUser* u)
 {
 
   if (!m_bOwner || !tabList[PictureInfo].loaded)
@@ -1446,7 +1393,7 @@ void UserInfoDlg::SetPicture(ICQUser *u)
     bool bDropUser = false;
     if (u == NULL)
     {
-      u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+      u = gUserManager.fetchUser(myUserId);
       if (u == NULL) return;
       bDropUser = true;
     }
@@ -1457,7 +1404,7 @@ void UserInfoDlg::SetPicture(ICQUser *u)
         m_sFilename.sprintf("%s/owner.pic", BASE_DIR);
       else
         //FIXME: other protocols
-        m_sFilename.sprintf("%s/%s/%s.pic", BASE_DIR, USER_DIR, m_szId);
+        m_sFilename.sprintf("%s/%s/%s.pic", BASE_DIR, USER_DIR, u->accountId().c_str());
     }
     else
       m_sFilename = QString::null;
@@ -1543,14 +1490,14 @@ void UserInfoDlg::CreateLastCountersInfo()
   lay->setRowStretch(++CR, 5);
 }
 
-void UserInfoDlg::SetLastCountersInfo(ICQUser *u)
+void UserInfoDlg::SetLastCountersInfo(const LicqUser* u)
 {
   tabList[LastCountersInfo].loaded = true;
   bool bDropUser = false;
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL)
       return;
     bDropUser = true;
@@ -1599,7 +1546,7 @@ void UserInfoDlg::CreateKABCInfo()
 #endif
 }
 
-void UserInfoDlg::SetKABCInfo(ICQUser *u)
+void UserInfoDlg::SetKABCInfo(const LicqUser* u)
 {
 #ifdef USE_KABC
   tabList[LastCountersInfo].loaded = true;
@@ -1607,14 +1554,14 @@ void UserInfoDlg::SetKABCInfo(ICQUser *u)
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+    u = gUserManager.fetchUser(myUserId);
     if (u == NULL) return;
     bDropUser = true;
   }
 
   if (m_kabcID.isEmpty())
   {
-    m_kabcID = mainwin->kdeIMInterface->kabcIDForUser(m_szId, m_nPPID);
+    m_kabcID = mainwin->kdeIMInterface->kabcIDForUser(u->accountId().c_str(), u->ppid());
   }
 
   if (!m_kabcID.isEmpty())
@@ -1659,6 +1606,13 @@ void UserInfoDlg::UpdateKABCInfo()
 void UserInfoDlg::SaveKABCInfo()
 {
 #ifdef USE_KABC
+  const LicqUser* user = gUserManager.fetchUser(myUserId);
+  if (user == NULL)
+    return;
+  QString m_szId = user->accountId().c_str();
+  unsigned long m_nPPID = user->ppid();
+  gUserManager.DropUser(user);
+
     mainwin->kdeIMInterface->setKABCIDForUser(m_szId, m_nPPID, m_kabcID);
 #endif
 }
@@ -1687,7 +1641,7 @@ void UserInfoDlg::CreateHistory()
   chkHistoryReverse->setFixedSize(chkHistoryReverse->sizeHint());
   l->addWidget(chkHistoryReverse);
 
-  mlvHistory = new CMessageViewWidget(m_szId, m_nPPID, mainwin, p, "history", true);
+  mlvHistory = new CMessageViewWidget(myUserId, mainwin, p, "history", true);
 
   connect(mlvHistory, SIGNAL(viewurl(QWidget*, QString)), mainwin, SLOT(slot_viewurl(QWidget *, QString)));
 
@@ -1734,54 +1688,48 @@ void UserInfoDlg::EditCategory(QListViewItem *selected)
 
   EditCategoryDlg *ecd;
   if (selected == lviMore2Top[CAT_INTERESTS])
-    ecd = new EditCategoryDlg(this, m_Interests);
+    ecd = new EditCategoryDlg(this, CAT_INTERESTS, myInterests);
   else if (selected == lviMore2Top[CAT_ORGANIZATION])
-    ecd = new EditCategoryDlg(this, m_Organizations);
+    ecd = new EditCategoryDlg(this, CAT_ORGANIZATION, myOrganizations);
   else if (selected == lviMore2Top[CAT_BACKGROUND])
-    ecd = new EditCategoryDlg(this, m_Backgrounds);
+    ecd = new EditCategoryDlg(this, CAT_BACKGROUND, myBackgrounds);
   else
     return;
 
-  connect(ecd,  SIGNAL(updated(ICQUserCategory *)),
-          this, SLOT(setCategory(ICQUserCategory *)));
+  connect(ecd, SIGNAL(updated(UserCat, const UserCategoryMap&)),
+      this, SLOT(setCategory(UserCat, const UserCategoryMap&)));
   ecd->show();
 }
 
-void UserInfoDlg::setCategory(ICQUserCategory *cat)
+void UserInfoDlg::setCategory(UserCat cat, const UserCategoryMap& category)
 {
-  switch (cat->GetCategory())
+  switch (cat)
   {
   case CAT_INTERESTS:
-    if (m_Interests != NULL)
-      delete m_Interests;
-    m_Interests = cat;
+      myInterests = category;
     break;
   case CAT_ORGANIZATION:
-    if (m_Organizations != NULL)
-      delete m_Organizations;
-    m_Organizations = cat;
+      myOrganizations = category;
     break;
   case CAT_BACKGROUND:
-    if (m_Backgrounds != NULL)
-      delete m_Backgrounds;
-    m_Backgrounds = cat;
+      myBackgrounds = category;
     break;
   default:
     return;
   }
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL)
     return;
 
   QTextCodec *codec = UserCodec::codecForICQUser(u);
-  UpdateMore2Info(codec, cat);
+  UpdateMore2Info(codec, cat, category);
   gUserManager.DropUser(u);
 }
 
 void UserInfoDlg::PhoneBookUpdated(struct PhoneBookEntry pbe, int entryNum)
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL)
     return;
 
@@ -1831,7 +1779,7 @@ void UserInfoDlg::ChangeActivePhone(int index)
 {
   m_PhoneBook->SetActive(index - 1);
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL)
     return;
 
@@ -1845,7 +1793,7 @@ void UserInfoDlg::SetupHistory()
 {
   tabList[HistoryInfo].loaded = true;
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL) return;
 
   if (!u->GetHistory(m_lHistoryList))
@@ -1885,7 +1833,7 @@ void UserInfoDlg::SetupHistory()
 
 void UserInfoDlg::HistoryReload()
 {
-  ICQUser::ClearHistory(m_lHistoryList);
+  LicqUser::ClearHistory(m_lHistoryList);
   SetupHistory();
 }
 
@@ -1969,21 +1917,23 @@ void UserInfoDlg::ShowHistory()
   QDateTime date;
   QString contactName = tr("server");
   QTextCodec * codec = QTextCodec::codecForLocale();
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   bool bUseHTML = false;
+  unsigned long m_nPPID = 0;
   if (u != NULL)
   {
       codec = UserCodec::codecForICQUser(u);
       if (!m_bOwner)
-         contactName = QString::fromUtf8(u->GetAlias());
-      for (unsigned int x = 0; x < strlen(m_szId); x++)
+      contactName = QString::fromUtf8(u->getAlias().c_str());
+    for (unsigned int x = 0; x < u->accountId().size(); x++)
+    {
+      if (!isdigit(u->accountId()[x]))
       {
-        if (!isdigit(m_szId[x]))
-        {
           bUseHTML = true;
           break;
-        }
       }
+    }
+    m_nPPID = u->ppid();
       gUserManager.DropUser(u);
   }
   barFiltering->setTotalSteps(NUM_MSG_PER_HISTORY);
@@ -1997,7 +1947,7 @@ void UserInfoDlg::ShowHistory()
     // Don't use this codec to decode our conversation with the contact
     // since we're using the contact's encoding, not ours.
     QTextCodec *ownerCodec = UserCodec::codecForICQUser(o);
-    ownerName = ownerCodec->toUnicode(o->GetAlias());
+    ownerName = ownerCodec->toUnicode(o->getAlias().c_str());
     gUserManager.DropOwner(o);
   }
 
@@ -2073,7 +2023,7 @@ void UserInfoDlg::ShowHistory()
 
 void UserInfoDlg::SaveHistory()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL) return;
 
   QTextCodec * codec = UserCodec::codecForICQUser(u);
@@ -2221,8 +2171,7 @@ void UserInfoDlg::SaveSettings()
   case GeneralInfo:
   {
     SaveGeneralInfo();
-    CICQSignal s(SIGNAL_UPDATExUSER, USER_GENERAL, m_szId, m_nPPID);
-    gMainWindow->slot_updatedUser(&s);
+    gMainWindow->slot_updatedUser(myUserId, USER_GENERAL);
     break;
   }
   case MoreInfo:
@@ -2278,7 +2227,14 @@ void UserInfoDlg::slotRetrieve()
     return;
   }
 #endif
-  
+
+  const LicqUser* user = gUserManager.fetchUser(myUserId);
+  if (user == NULL)
+    return;
+  QCString m_szId = user->accountId().c_str();
+  unsigned long m_nPPID = user->ppid();
+  gUserManager.DropUser(user);
+
   ICQOwner *o = gUserManager.FetchOwner(m_nPPID, LOCK_R);
   if(o == NULL)  return;
   unsigned short status = o->Status();
@@ -2322,33 +2278,33 @@ void UserInfoDlg::slotRetrieve()
       // Before retrieving the meta data we have to 
       // save current status of "chkKeepAliasOnUpdate"
       // and the alias
-      ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+      LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
       if (u == NULL) return;
       u->SetEnableSave(false);
-      u->SetAlias(nfoAlias->text().utf8());
+      u->setAlias(nfoAlias->text().utf8().data());
       u->SetKeepAliasOnUpdate(chkKeepAliasOnUpdate->isChecked());
       u->SetEnableSave(true);
-      u->SaveGeneralInfo();
+      u->saveUserInfo();
       gUserManager.DropUser(u);
-      
-      icqEventTag = server->ProtoRequestInfo(m_szId, m_nPPID);
+
+      icqEventTag = server->requestUserInfo(myUserId);
       break;
     }
     case MoreInfo:
-      icqEventTag = server->ProtoRequestInfo(m_szId, m_nPPID);
+      icqEventTag = server->requestUserInfo(myUserId);
       break;
     case More2Info:
-      icqEventTag = server->ProtoRequestInfo(m_szId, m_nPPID);
+      icqEventTag = server->requestUserInfo(myUserId);
       break;
     case WorkInfo:
-      icqEventTag = server->ProtoRequestInfo(m_szId, m_nPPID);
+      icqEventTag = server->requestUserInfo(myUserId);
       break;
     case AboutInfo:
-      icqEventTag = server->ProtoRequestInfo(m_szId, m_nPPID);
+      icqEventTag = server->requestUserInfo(myUserId);
       break;
     case PhoneInfo:
     {
-      ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser(myUserId);
       if (u == NULL) return;
       bool bSendServer = (u->SocketDesc(ICQ_CHNxINFO) < 0);
       gUserManager.DropUser(u);
@@ -2357,7 +2313,7 @@ void UserInfoDlg::slotRetrieve()
     }
     case PictureInfo:
     {
-      icqEventTag = server->ProtoRequestPicture(m_szId, m_nPPID);
+      icqEventTag = server->requestUserPicture(myUserId);
       break;
     }
   }
@@ -2366,7 +2322,7 @@ void UserInfoDlg::slotRetrieve()
   {
     setCursor(waitCursor);
     m_sProgressMsg = tr("Updating...");
-    connect (sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)), this, SLOT(doneFunction(ICQEvent *)));
+    connect(sigman, SIGNAL(signal_doneUserFcn(LicqEvent*)), SLOT(doneFunction(LicqEvent*)));
     setCaption(m_sBasic + " [" + m_sProgressMsg +"]");
   }
 }
@@ -2377,6 +2333,9 @@ void UserInfoDlg::slotUpdate()
   if (currentTab == LastCountersInfo) return;
 
   QTextCodec * codec = QTextCodec::codecForLocale();
+
+  // This function is only called for owner so we can use user id
+  unsigned long m_nPPID = LicqUser::getUserProtocolId(myUserId);
 
   if (currentTab != HistoryInfo && currentTab != PhoneInfo &&
       currentTab != PictureInfo)
@@ -2429,8 +2388,8 @@ void UserInfoDlg::slotUpdate()
                                          GetLanguageByIndex(cmbLanguage[2]->currentItem())->nCode);
   break;
   case More2Info:
-    server->icqSetInterestsInfo(m_Interests);
-    icqEventTag = server->icqSetOrgBackInfo(m_Organizations, m_Backgrounds);
+      server->icqSetInterestsInfo(myInterests);
+      icqEventTag = server->icqSetOrgBackInfo(myOrganizations, myBackgrounds);
   break;
   case WorkInfo:
     i = cmbCompanyCountry->currentItem();
@@ -2517,7 +2476,7 @@ void UserInfoDlg::slotUpdate()
   {
     m_sProgressMsg = tr("Updating server...");
     setCursor(waitCursor);
-    connect (sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)), this, SLOT(doneFunction(ICQEvent *)));
+    connect(sigman, SIGNAL(signal_doneUserFcn(LicqEvent*)), SLOT(doneFunction(LicqEvent*)));
     setCaption(m_sBasic + " [" + m_sProgressMsg +"]");
   }
 }
@@ -2556,18 +2515,19 @@ void UserInfoDlg::doneFunction(ICQEvent* e)
   QTimer::singleShot(5000, this, SLOT(resetCaption()));
   setCursor(arrowCursor);
   icqEventTag = 0;
-  disconnect (sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)), this, SLOT(doneFunction(ICQEvent *)));
+  disconnect(sigman, SIGNAL(signal_doneUserFcn(LicqQEvent*)), this, SLOT(doneFunction(LicqEvent*)));
 }
 
 
-void UserInfoDlg::updatedUser(CICQSignal *sig)
+void UserInfoDlg::updatedUser(const UserId& userId, unsigned long subSignal)
 {
-  if (m_nPPID != sig->PPID() || strcmp(m_szId, sig->Id())) return;
+  if (myUserId != userId)
+    return;
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL) return;
 
-  switch (sig->SubSignal())
+  switch (subSignal)
   {
   case USER_GENERAL:
   case USER_BASIC:

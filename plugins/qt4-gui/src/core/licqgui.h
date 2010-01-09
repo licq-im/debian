@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,11 +32,12 @@
 #include <QStringList>
 #include <QTimer>
 
-#include <licq_user.h>
+#include <licq_types.h>
+
+class QMimeData;
 
 class CICQDaemon;
-class CICQSignal;
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -100,42 +101,38 @@ public:
   /**
    * Remove a contact from the list
    *
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    * @param parent Parent window to use for confirmation box or NULL to use mainwin
    * @return true if contact was removed
    */
-  bool removeUserFromList(QString id, unsigned long ppid, QWidget* parent = NULL);
+  bool removeUserFromList(const UserId& userId, QWidget* parent = NULL);
 
   /**
    * Show contact info dialog
    *
    * @param fcn Tab to show
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    * @param toggle True to close dialog if already open
    * @param updateNow True to make the dialog contents update
    */
-  void showInfoDialog(int fcn, QString id, unsigned long ppid, bool toggle = false, bool updateNow = false);
+  void showInfoDialog(int fcn, const UserId& userId, bool toggle = false, bool updateNow = false);
 
   /**
    * Show contact view event dialog (used when chat mode is disabled)
    *
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    */
-  UserViewEvent* showViewEventDialog(QString id, unsigned long ppid);
+  UserViewEvent* showViewEventDialog(const UserId& userid);
 
   /**
    * Show contact event dialog
    *
    * @param fcn Type of event to open
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    * @param convoId Conversation id
    * @param autoPopup True if the dialog was triggered automatically, false if triggered by the user
    */
-  UserEventCommon* showEventDialog(int fcn, QString id, unsigned long ppid, int convoId = -1, bool autoPopup = false);
+  UserEventCommon* showEventDialog(int fcn, const UserId& userId, int convoId = -1, bool autoPopup = false);
 
   /**
    * Replace event dialog
@@ -143,27 +140,24 @@ public:
    *
    * @param oldDialog Old (current) event dialog
    * @param newDialog New event dialog
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    */
-  void replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, QString id, unsigned long ppid);
+  void replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, const UserId& userId);
 
   /**
    * Toggle floaty for a contact
    *
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    */
-  void toggleFloaty(QString id, unsigned long ppid);
+  void toggleFloaty(const UserId& userId);
 
   /**
    * Trigger contact data to be reread from daemon
    * Needed since daemon won't generate signals for some changes.
    *
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    */
-  void updateUserData(QString id, unsigned long ppid);
+  void updateUserData(const UserId& userId);
 
   /**
    * Set new status for all owners
@@ -187,7 +181,7 @@ public:
    *
    * @param url The URL to open
    */
-  void viewUrl(QString url);
+  void viewUrl(const QString& url);
 
 public slots:
   /**
@@ -199,9 +193,9 @@ public slots:
   /**
    * Show next available event
    *
-   * @param id Contact id or "0" for any contact
+   * @param userId Contact id or negative for any contact
    */
-  void showNextEvent(QString id = "0");
+  void showNextEvent(const UserId& userId = USERID_NONE);
 
   /**
    * Open dialogs for all owner events
@@ -213,10 +207,41 @@ public slots:
    */
   void showAllEvents();
 
-  void showDefaultEventDialog(QString id, unsigned long ppid);
-  void sendMsg(QString id, unsigned long ppid, const QString& message);
-  void sendFileTransfer(QString id, unsigned long ppid, const QString& filename, const QString& description);
-  void sendChatRequest(QString id, unsigned long ppid);
+  void showDefaultEventDialog(const UserId& userId);
+
+  /**
+   * Open a send message dialog and set message text
+   *
+   * @param userId User to send message to
+   * @param message Text to put in input area
+   */
+  void sendMsg(const UserId& userId, const QString& message);
+
+  /**
+   * Open a file transfer dialog for a specified file
+   *
+   * @param userId User to send file to
+   * @param filename Path to file to sendof
+   * @param description Text to put in description area
+   */
+  void sendFileTransfer(const UserId& userId, const QString& filename, const QString& description);
+
+  /**
+   * Open a chat request dialog
+   *
+   * @param userId User to open chat request dialog for
+   */
+  void sendChatRequest(const UserId& userId);
+
+  /**
+   * Act on object being dropped on a user
+   * This is a common function to handle drops both in contact list and in dialogs
+   *
+   * @param userId User data was dropped on
+   * @param mimeData Dropped data
+   * @return true if data was accepted
+   */
+  bool userDropEvent(const UserId& userId, const QMimeData& mimeData);
 
 signals:
   /**
@@ -226,37 +251,81 @@ signals:
    *
    * @param event Event object that was sent
    */
-  void eventSent(const ICQEvent* event);
+  void eventSent(const LicqEvent* event);
 
 private slots:
 #ifdef Q_WS_X11
-  void grabKey(QString key);
+  void grabKey(const QString& key);
 #endif
 
   void userDlgFinished(UserDlg* dialog);
   void userEventTabDlgDone();
-  void userEventFinished(QString id, unsigned long ppid);
-  void sendEventFinished(QString id, unsigned long ppid);
-  void showMessageDialog(QString id, unsigned long ppid);
-  void addEventTag(QString id, unsigned long ppid, unsigned long eventTag);
+
+  /**
+   * A view user event dialog has finished
+   *
+   * @param userId User dialog was opened for
+   */
+  void userEventFinished(const UserId& userId);
+
+  /**
+   * A send user event dialog has finished
+   *
+   * @param userId User dialog was opened for
+   */
+  void sendEventFinished(const UserId& userId);
+
+  /**
+   * Open a message dialog
+   *
+   * @param userId User to open dialog for
+   */
+  void showMessageDialog(const UserId& userId);
 
   /**
    * Act on changes to the contact list
    *
-   * @param sig Signal from daemon
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
+   * @param userId Id for affected user, if applicable
    */
-  void listUpdated(CICQSignal* sig);
+  void listUpdated(unsigned long subSignal, int argument, const UserId& userId);
 
   /**
    * Act on changes to a contact
    *
-   * @param sig Signal from daemon
+   * @param userId Id for affected user
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
+   * @param cid Conversation id
    */
-  void userUpdated(CICQSignal* sig);
+  void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
-  void convoSet(QString id, unsigned long ppid, unsigned long convoId);
-  void convoJoin(QString id, unsigned long ppid, unsigned long convoId);
-  void convoLeave(QString id, unsigned long ppid, unsigned long convoId);
+  /**
+   * Set conversation id for user event dialog
+   *
+   * @param userId User to find dialog for
+   * @param convoId Conversation id to set
+   */
+  void convoSet(const UserId& userId, unsigned long convoId);
+
+  /**
+   * Someone joined an ongoing conversation
+   *
+   * @param userId User that joined conversation
+   * @param ppid Protocol of conversation
+   * @param convoId Id of conversation
+   */
+  void convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId);
+
+  /**
+   * Someone left an ongoing conversation
+   *
+   * @param userId User that left conversation
+   * @param ppid Protocol of conversation
+   * @param convoId Id of conversation
+   */
+  void convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId);
   void autoAway();
   void updateDockIcon();
 
@@ -266,8 +335,8 @@ private:
   void loadGuiConfig();
   void loadFloatiesConfig();
 
-  void createFloaty(QString id, unsigned long ppid,
-    unsigned short x = 0, unsigned short y = 0, unsigned short w = 0);
+  void createFloaty(const UserId& userId, unsigned short x = 0, unsigned short y = 0,
+      unsigned short w = 0);
 
   CICQDaemon* myLicqDaemon;
 
@@ -296,10 +365,6 @@ private:
   QStringList myCmdLineParams;
   int grabKeysym;
   QTimer myAutoAwayTimer;
-
-#ifndef USE_KDE
-  QStyle* createStyle(const char* name) const;
-#endif
 };
 
 } // namespace LicqQtGui

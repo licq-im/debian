@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2001-2006 Licq developers
+ * Copyright (C) 2001-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -80,9 +80,9 @@ UserCodec::encoding_t UserCodec::m_encodings[] = {
   { 0, 0, 0, 0, false } // end marker
 };
 
-QTextCodec* UserCodec::defaultEncoding()
+const QTextCodec* UserCodec::defaultEncoding()
 {
-  QTextCodec* codec = QTextCodec::codecForName(gUserManager.DefaultUserEncoding());
+  const QTextCodec* codec = QTextCodec::codecForName(gUserManager.DefaultUserEncoding());
 
   if (codec != NULL)
     return codec;
@@ -90,13 +90,13 @@ QTextCodec* UserCodec::defaultEncoding()
   return QTextCodec::codecForLocale();
 }
 
-QTextCodec* UserCodec::codecForICQUser(const ICQUser* u)
+const QTextCodec* UserCodec::codecForUser(const LicqUser* u)
 {
   const char* preferred_encoding = u->UserEncoding();
 
   if (preferred_encoding && *preferred_encoding)
   {
-    QTextCodec* codec = QTextCodec::codecForName(preferred_encoding);
+    const QTextCodec* codec = QTextCodec::codecForName(preferred_encoding);
 
     if (codec != NULL)
       return codec;
@@ -105,21 +105,21 @@ QTextCodec* UserCodec::codecForICQUser(const ICQUser* u)
   return defaultEncoding();
 }
 
-QTextCodec* UserCodec::codecForProtoUser(const QString& id, unsigned long ppid)
+const QTextCodec* UserCodec::codecForUserId(const UserId& userId)
 {
-  QTextCodec* codec = defaultEncoding();
+  const QTextCodec* codec = defaultEncoding();
 
-  const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u != NULL)
   {
-    codec = UserCodec::codecForICQUser(u);
+    codec = UserCodec::codecForUser(u);
     gUserManager.DropUser(u);
   }
 
   return codec;
 }
 
-QTextCodec* UserCodec::codecForCChatUser(CChatUser* u)
+const QTextCodec* UserCodec::codecForCChatUser(CChatUser* u)
 {
   if (u == NULL)
     return defaultEncoding();
@@ -130,7 +130,7 @@ QTextCodec* UserCodec::codecForCChatUser(CChatUser* u)
     return QTextCodec::codecForName(name);
 
   // return default encoding
-  return codecForProtoUser(u->Id(), u->PPID());
+  return codecForUserId(u->userId());
 }
 
 QByteArray UserCodec::encodingForMib(int mib)

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,8 +60,9 @@ public:
    * Change filter for threaded or flat view
    *
    * @param enable True for threaded view, false for flat group view
+   * @param mode2 Use mode 2 view, ignored if threaded view is disabled
    */
-  void setThreadedView(bool enable);
+  void setThreadedView(bool enable, bool mode2);
 
 private slots:
   /**
@@ -80,7 +81,10 @@ private:
    */
   bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const;
 
+  ContactListModel* myContactList;
   bool myThreadedView;
+  bool myMode2View;
+  QAbstractProxyModel* myProxy;
 };
 
 } // namespace LicqQtGui

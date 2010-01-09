@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,8 +45,7 @@ CForwardDlg::CForwardDlg(CSignalManager *sigMan, CUserEvent *e, QWidget *p)
   sigman = sigMan;
 
   m_nEventType = e->SubCommand();
-  m_szId = 0;
-  m_nPPID = 0;
+  myUserId = USERID_NONE;
 
   QString t;
   switch (e->SubCommand())
@@ -97,21 +96,20 @@ CForwardDlg::CForwardDlg(CSignalManager *sigMan, CUserEvent *e, QWidget *p)
 
 CForwardDlg::~CForwardDlg()
 {
-  if (m_szId) free(m_szId);
 }
 
 
 void CForwardDlg::slot_ok()
 {
-  if (m_szId == 0) return;
+  if (!USERID_ISVALID(myUserId))
+    return;
 
   switch(m_nEventType)
   {
     case ICQ_CMDxSUB_MSG:
     {
       s1.prepend(tr("Forwarded message:\n"));
-      UserSendMsgEvent *e = new UserSendMsgEvent(gLicqDaemon, sigman, gMainWindow, m_szId,
-        m_nPPID);
+      UserSendMsgEvent* e = new UserSendMsgEvent(gLicqDaemon, sigman, gMainWindow, myUserId);
       e->setText(s1);
       e->show();
       break;
@@ -119,8 +117,7 @@ void CForwardDlg::slot_ok()
     case ICQ_CMDxSUB_URL:
     {
       s1.prepend(tr("Forwarded URL:\n"));
-      UserSendUrlEvent *e = new UserSendUrlEvent(gLicqDaemon, sigman, gMainWindow, m_szId,
-        m_nPPID);
+      UserSendUrlEvent* e = new UserSendUrlEvent(gLicqDaemon, sigman, gMainWindow, myUserId);
       e->setUrl(s2, s1);
       e->show();
       break;
@@ -147,10 +144,10 @@ void CForwardDlg::dropEvent(QDropEvent * de)
     return;
 
   if (text.length() == 0) return;
-  m_szId = strdup(text.latin1());
-  m_nPPID = LICQ_PPID; //TODO dropevent needs the ppid
+  myUserId = LicqUser::makeUserId(text.latin1(), LICQ_PPID);
+  //TODO dropevent needs the ppid
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
 
   edtUser->setText(QString::fromUtf8(u->GetAlias()) + " (" + text + ")");
   gUserManager.DropUser(u);

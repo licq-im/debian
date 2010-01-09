@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -173,7 +173,7 @@ void AwayMsgDlg::selectAutoResponse(unsigned short status, bool autoClose,
       .arg(LicqStrings::getStatus(myStatus, false))
       .arg(QString::fromUtf8(o->GetAlias())));
 
-  QTextCodec* codec = UserCodec::defaultEncoding();
+  const QTextCodec* codec = UserCodec::defaultEncoding();
   if (*o->AutoResponse())
     myAwayMsg->setText(codec->toUnicode(o->AutoResponse()));
   else
@@ -254,7 +254,7 @@ void AwayMsgDlg::ok()
   ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
   if (o != NULL)
   {
-    QTextCodec* codec = UserCodec::defaultEncoding();
+    const QTextCodec* codec = UserCodec::defaultEncoding();
     o->SetAutoResponse(codec->fromUnicode(s));
     gUserManager.DropOwner(o);
   }

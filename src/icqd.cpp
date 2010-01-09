@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -390,11 +390,11 @@ bool CICQDaemon::Start()
   ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
   if (o != NULL)
   {
-    o->SetIntIp(s->LocalIp());
-    o->SetPort(s->LocalPort());
+    o->SetIntIp(s->getLocalIpInt());
+    o->SetPort(s->getLocalPort());
     gUserManager.DropOwner(o);
   }
-  CPacket::SetLocalPort(s->LocalPort());
+  CPacket::SetLocalPort(s->getLocalPort());
   gSocketManager.DropSocket(s);
 
 
@@ -759,7 +759,6 @@ pthread_t *CICQDaemon::Shutdown()
   if (m_bShuttingDown) return(&thread_shutdown);
   m_bShuttingDown = true;
   // Small race condition here if multiple plugins call shutdown at the same time
-  SaveUserList();
   pthread_create (&thread_shutdown, NULL, &Shutdown_tep, this);
   return (&thread_shutdown);
 }
@@ -849,9 +848,7 @@ void CICQDaemon::SaveConf()
   licqConf.FlushFile();
 
   licqConf.SetSection("owners");
-  OwnerList *ol = gUserManager.LockOwnerList(LOCK_R);
-  licqConf.WriteNum("NumOfOwners", (unsigned long)ol->size());
-  gUserManager.UnlockOwnerList();
+  licqConf.WriteNum("NumOfOwners", (unsigned long)gUserManager.NumOwners());
 
   int n = 1;
   FOR_EACH_OWNER_START(LOCK_R)
@@ -877,6 +874,15 @@ void CICQDaemon::SaveConf()
   FOR_EACH_OWNER_END
 
   licqConf.FlushFile();
+}
+
+bool CICQDaemon::haveGpgSupport() const
+{
+#ifdef HAVE_LIBGPGME
+  return true;
+#else
+  return false;
+#endif
 }
 
 //++++++NOT MT SAFE+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -955,7 +961,7 @@ int CICQDaemon::StartTCPServer(TCPSocket *s)
   char sz[64];
   if (s->Descriptor() != -1)
   {
-    gLog.Info(tr("%sLocal TCP server started on port %d.\n"), L_TCPxSTR, s->LocalPort());
+    gLog.Info(tr("%sLocal TCP server started on port %d.\n"), L_TCPxSTR, s->getLocalPort());
   }
   else if (s->Error() == EADDRINUSE)
   {
@@ -1059,79 +1065,6 @@ unsigned short VersionToUse(unsigned short v_in)
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-
-//-----SaveUserList-------------------------------------------------------------
-void CICQDaemon::SaveUserList()
-{
-  static const char suffix[] = ".new";
-  static const char file[] = "users.conf";
-
-  size_t nLen = strlen(BASE_DIR) + sizeof(file) + sizeof(suffix) + 2;
-  char szTmpName[nLen], szFilename[nLen], buff[128];
-  int nRet, n, fd;
- 
-  snprintf(szFilename, nLen, "%s/%s", BASE_DIR, file);
-  szFilename[nLen - 1] = '\0';
-  strcpy(szTmpName, szFilename);
-  strcat(szTmpName, suffix);
-
-  fd = open(szTmpName, O_WRONLY | O_CREAT | O_TRUNC, 00600);
-  if (fd == -1)
-  {
-    // Avoid sending the message to the plugins, a race exists if we are
-    // shutting down
-    if (!m_bShuttingDown)
-      gLog.Error("%sFailed updating %s: `%s'\n", L_ERRORxSTR,
-                 szFilename, strerror(errno));
-    return;
-  }
-     
-  // Don't save the temporary "Not In List" users
-  int nNumUsers = 0;
-  FOR_EACH_USER_START(LOCK_R)
-  {
-    if (!pUser->NotInList())
-      nNumUsers++;
-  }
-  FOR_EACH_USER_END
-
-  n = sprintf(buff, "[users]\nNumOfUsers = %d\n", nNumUsers);
-  nRet = write(fd, buff, n);
-
-  unsigned short i = 1;
-  FOR_EACH_USER_START(LOCK_R)
-  {
-    if (pUser->NotInList())
-      FOR_EACH_USER_CONTINUE
-
-    char szPPID[5];
-    unsigned long nPPID = pUser->PPID();
-    szPPID[0] = (nPPID & 0xFF000000) >> 24;
-    szPPID[1] = (nPPID & 0x00FF0000) >> 16;
-    szPPID[2] = (nPPID & 0x0000FF00) >> 8;
-    szPPID[3] = (nPPID & 0x000000FF);
-    szPPID[4] = '\0';
-    n = sprintf(buff, "User%d = %s.%s\n", i, pUser->IdString(), szPPID);
-    nRet = write(fd, buff, n);
-    if (nRet == -1)
-      FOR_EACH_USER_BREAK
-
-    i++;
-  }
-  FOR_EACH_USER_END
-
-  close(fd);
-
-  if (nRet != -1)
-  {
-    if (rename(szTmpName, szFilename))
-      unlink(szTmpName);
-  }
-  else if (!m_bShuttingDown)
-    gLog.Error("%sFailed updating %s: `%s'\n", L_ERRORxSTR,
-               szFilename, strerror(errno));
-}
-
 void CICQDaemon::SetIgnore(unsigned short n, bool b)
 {
   if (b)
@@ -1157,120 +1090,6 @@ void CICQDaemon::SetUseServerSideBuddyIcons(bool b)
   }
   else
     m_bUseBART = b;
-}
-                                    
-bool CICQDaemon::AddUserToList(const char *szId, unsigned long nPPID,
-                               bool bNotify, bool bTempUser, unsigned short groupId)
-{
-  // Don't add invalid uins
-  if (szId == 0 || nPPID == 0) return false;
-
-  // Don't add a user we already have
-  if (gUserManager.IsOnList(szId, nPPID))
-  {
-    gLog.Warn(tr("%sUser %s already on contact list.\n"), L_WARNxSTR, szId);
-    return false;
-  }
-
-  ICQUser *u = new ICQUser(szId, nPPID, bTempUser);
-  gUserManager.AddUser(u);
-  gUserManager.DropUser(u);
-  if (!bTempUser)
-    SaveUserList();
-
-  // this notify is for local only adds
-  if (nPPID == LICQ_PPID && m_nTCPSrvSocketDesc != -1 && bNotify && !bTempUser)
-    icqAddUser(szId, false, groupId);
-  else if (nPPID != LICQ_PPID && bNotify)
-    PushProtoSignal(new CAddUserSignal(szId, false), nPPID);
-  
-  PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_ADD, szId, nPPID, groupId));
-
-  return true;
-}
-
-//---AddUserToList-------------------------------------------------------------
-/*! \brief Adds Uin to contact list
- *
- * Adds the given uin to the contact list.
- *
- * \return Returns true on success, else returns false. Please note that when 
- * this call returns the user is not locked.
- */
-bool CICQDaemon::AddUserToList(unsigned long nUin, bool bNotify, bool bTempUser,
-                               unsigned short groupId)
-{
-  // Don't add invalid uins
-  if (nUin == 0) return false;
-
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  return AddUserToList(szUin, LICQ_PPID, bNotify, bTempUser, groupId);
-}
-
-
-//---AddUserToList-------------------------------------------------------------
-/*! \brief Adds User to contact list
- *
- * Adds the given user to the contact list. NOTE: When this call returns the 
- * user is write locked and will need to be dropped! When calling this 
- * function it is important that the user not be locked in any way.
- *
- * \return Returns true on success, else returns false.
- */
-void CICQDaemon::AddUserToList(ICQUser *nu)
-{
-  // Don't add a user we already have
-  if (gUserManager.IsOnList(nu->IdString(), nu->PPID()))
-  {
-    gLog.Warn(tr("%sUser %s already on contact list.\n"), L_WARNxSTR, nu->IdString());
-    return;
-  }
-
-  const char *szId = nu->IdString();
-  unsigned long nPPID = nu->PPID();
-  gUserManager.AddUser(nu);
-  gUserManager.DropUser(nu);
-  SaveUserList();
-  nu = gUserManager.FetchUser(szId, nPPID, LOCK_W);
-
-  if (nPPID == LICQ_PPID && m_nTCPSrvSocketDesc != -1)
-  {
-    // XXX if adding to server list, it will get write lock FIX THAT SHIT!
-    gUserManager.DropUser(nu);
-    icqAddUser(szId);
-    nu = gUserManager.FetchUser(szId, nPPID, LOCK_W);
-  }
-
-  PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_ADD, nu->IdString(), nu->PPID()));
-}
-
-//-----RemoveUserFromList-------------------------------------------------------
-void CICQDaemon::RemoveUserFromList(unsigned long _nUin)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", _nUin);
-  RemoveUserFromList(szUin, LICQ_PPID);
-}
-
-void CICQDaemon::RemoveUserFromList(const char *szId, unsigned long nPPID)
-{
-  const ICQUser* u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
-  if (!u) return;
-  bool bTempUser = u->NotInList();
-  gUserManager.DropUser(u);
-  
-  if (nPPID == LICQ_PPID && m_nTCPSrvSocketDesc != -1 && !bTempUser)
-    icqRemoveUser(szId);
-  else if (nPPID != LICQ_PPID)
-    ProtoRemoveUser(szId, nPPID);
-
-  gUserManager.RemoveUser(szId, nPPID);
-  if (!bTempUser)
-    SaveUserList();
-
-  PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_REMOVE, szId,
-    nPPID));
 }
 
 //-----ChangeUserStatus-------------------------------------------------------
@@ -1310,9 +1129,7 @@ void CICQDaemon::ChangeUserStatus(ICQUser *u, unsigned long s)
   if(oldstatus != s)
   {
     u->Touch();
-    PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-                                    USER_STATUS, u->IdString(),
-                                    u->PPID(), arg));
+    pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_STATUS, u->id(), arg));
   }
 }
 
@@ -1320,7 +1137,8 @@ void CICQDaemon::ChangeUserStatus(ICQUser *u, unsigned long s)
 //-----AddUserEvent-----------------------------------------------------------
 bool CICQDaemon::AddUserEvent(ICQUser *u, CUserEvent *e)
 {
-  if (u->User()) e->AddToHistory(u, LICQ_PPID, D_RECEIVER);
+  if (u->User())
+    e->AddToHistory(u, D_RECEIVER);
   // Don't log a user event if this user is on the ignore list
   if (u->IgnoreList() ||
       (e->IsMultiRec() && Ignore(IGNORE_MASSMSG)) ||
@@ -1334,25 +1152,11 @@ bool CICQDaemon::AddUserEvent(ICQUser *u, CUserEvent *e)
   //u->Touch();
   m_sStats[STATS_EventsReceived].Inc();
 
-  //PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_EVENTS,
-  //   u->Uin(), e->Id()));
+  //pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_EVENTS, u->id()));
   return true;
 }
 
-
-
-/*----------------------------------------------------------------------------
- * CICQDaemon::RejectEvent
- *
- *--------------------------------------------------------------------------*/
-void CICQDaemon::RejectEvent(unsigned long nUin, CUserEvent *e)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  RejectEvent(szUin, e);
-}
-
-void CICQDaemon::RejectEvent(const char* id, CUserEvent* e)
+void CICQDaemon::RejectEvent(const UserId& userId, CUserEvent* e)
 {
   if (m_szRejectFile == NULL) return;
 
@@ -1364,7 +1168,7 @@ void CICQDaemon::RejectEvent(const char* id, CUserEvent* e)
   else
   {
     fprintf(f, "Event from new user (%s) rejected: \n%s\n--------------------\n\n",
-        id, e->Text());
+        LicqUser::getUserAccountId(userId).c_str(), e->Text());
     chmod(m_szRejectFile, 00600);
     fclose(f);
   }
@@ -1381,7 +1185,7 @@ void CICQDaemon::RejectEvent(const char* id, CUserEvent* e)
 void CICQDaemon::SendEvent_Server(CPacket *packet)
 {
 #if 1
-  ICQEvent *e = new ICQEvent(this, m_nTCPSrvSocketDesc, packet, CONNECT_SERVER, 0, NULL);
+  LicqEvent* e = new LicqEvent(this, m_nTCPSrvSocketDesc, packet, CONNECT_SERVER);
 
   if (e == NULL)  return;
  
@@ -1402,7 +1206,7 @@ void CICQDaemon::SendEvent_Server(CPacket *packet)
 #endif
 }
 
-ICQEvent *CICQDaemon::SendExpectEvent_Server(const char *szId, unsigned long /* nPPID */,
+ICQEvent *CICQDaemon::SendExpectEvent_Server(const UserId& userId,
    CPacket *packet, CUserEvent *ue, bool bExtendedEvent)
 {
   // If we are already shutting down, don't start any events
@@ -1414,8 +1218,7 @@ ICQEvent *CICQDaemon::SendExpectEvent_Server(const char *szId, unsigned long /* 
   }
 
   if (ue != NULL) ue->m_eDir = D_SENDER;
-  ICQEvent *e = new ICQEvent(this, m_nTCPSrvSocketDesc, packet, CONNECT_SERVER, szId,
-    LICQ_PPID, ue);
+  LicqEvent* e = new LicqEvent(this, m_nTCPSrvSocketDesc, packet, CONNECT_SERVER, userId, ue);
 
 	if (e == NULL)  return NULL;
 
@@ -1442,14 +1245,6 @@ ICQEvent *CICQDaemon::SendExpectEvent_Server(const char *szId, unsigned long /* 
   return result;
 }
 
-ICQEvent *CICQDaemon::SendExpectEvent_Server(unsigned long nUin, CPacket *packet,
-   CUserEvent *ue, bool bExtendedEvent)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  return SendExpectEvent_Server(szUin, LICQ_PPID, packet, ue, bExtendedEvent);
-}
-
 ICQEvent* CICQDaemon::SendExpectEvent_Client(const ICQUser* pUser, CPacket* packet,
    CUserEvent *ue)
 {
@@ -1462,8 +1257,8 @@ ICQEvent* CICQDaemon::SendExpectEvent_Client(const ICQUser* pUser, CPacket* pack
   }
 
   if (ue != NULL) ue->m_eDir = D_SENDER;
-  ICQEvent *e = new ICQEvent(this, pUser->SocketDesc(packet->Channel()), packet,
-     CONNECT_USER, pUser->IdString(), pUser->PPID(), ue);
+  LicqEvent* e = new LicqEvent(this, pUser->SocketDesc(packet->Channel()), packet,
+     CONNECT_USER, pUser->id(), ue);
 
   if (e == NULL) return NULL;
 
@@ -1822,7 +1617,7 @@ void CICQDaemon::ProcessDoneEvent(ICQEvent *e)
     const ICQUser* u = gUserManager.FetchUser(e->m_nDestinationUin, LOCK_R);
     if (u != NULL)
     {
-      e->m_pUserEvent->AddToHistory(u, LICQ_PPID, D_SENDER);
+      e->m_pUserEvent->AddToHistory(u, D_SENDER);
       u->SetLastSentEvent();
       m_xOnEventManager.Do(ON_EVENT_MSGSENT, u);
       gUserManager.DropUser(u);
@@ -2067,42 +1862,29 @@ void CICQDaemon::PushPluginEvent(ICQEvent *e)
   pthread_mutex_unlock(&licq->mutex_plugins);
 }
 
-
-/*------------------------------------------------------------------------------
- * PushPluginSignal
- *
- * Sticks the given event into the gui signal queue.  Then signals that it is
- * there by sending data on the pipe.
- *----------------------------------------------------------------------------*/
-void CICQDaemon::PushPluginSignal(CICQSignal *s)
+void CICQDaemon::pushPluginSignal(LicqSignal* s)
 {
   PluginsListIter iter;
   pthread_mutex_lock(&licq->mutex_plugins);
   for (iter = licq->list_plugins.begin(); iter != licq->list_plugins.end(); ++iter)
   {
     if ( (*iter)->CompareMask(s->Signal()) )
-      (*iter)->PushSignal(new CICQSignal(s));
+      (*iter)->pushSignal(new LicqSignal(s));
   }
   pthread_mutex_unlock(&licq->mutex_plugins);
   delete s;
 }
 
-
-/*------------------------------------------------------------------------------
- * PopPluginSignal
- *
- * Pops an event from the gui signal queue.
- *----------------------------------------------------------------------------*/
-CICQSignal *CICQDaemon::PopPluginSignal()
+LicqSignal* CICQDaemon::popPluginSignal()
 {
   PluginsListIter iter;
-  CICQSignal *s = NULL;
+  LicqSignal* s = NULL;
   pthread_mutex_lock(&licq->mutex_plugins);
   for (iter = licq->list_plugins.begin(); iter != licq->list_plugins.end(); ++iter)
   {
     if ( (*iter)->CompareThread(pthread_self()) )
     {
-      s = (*iter)->PopSignal();
+      s = (*iter)->popSignal();
       break;
     }
   }
@@ -2214,11 +1996,11 @@ void CICQDaemon::CancelEvent(ICQEvent *e)
   e->m_eResult = EVENT_CANCELLED;
 
   if (e->m_nSubCommand == ICQ_CMDxSUB_CHAT)
-    icqChatRequestCancel(e->Id(), e->m_nSequence);
+    icqChatRequestCancel(LicqUser::getUserAccountId(e->userId()).c_str(), e->m_nSequence);
   else if (e->m_nSubCommand == ICQ_CMDxSUB_FILE)
-    icqFileTransferCancel(e->Id(), e->m_nSequence);
+    icqFileTransferCancel(LicqUser::getUserAccountId(e->userId()).c_str(), e->m_nSequence);
   else if (e->m_nSubCommand == ICQ_CMDxSUB_SECURExOPEN)
-    icqOpenSecureChannelCancel(e->Id(), e->m_nSequence);
+    icqOpenSecureChannelCancel(LicqUser::getUserAccountId(e->userId()).c_str(), e->m_nSequence);
 
   ProcessDoneEvent(e);
 }
@@ -2496,15 +2278,12 @@ void CICQDaemon::ProcessMessage(ICQUser *u, CBuffer &packet, char *message,
     packet >> nFilenameLen;
     if (!bIsAck)
     {
-      char szFilename[nFilenameLen+1];
-      for (unsigned short i = 0; i < nFilenameLen; i++)
-        packet >> szFilename[i];
-      szFilename[nFilenameLen] = '\0'; // be safe
+        string filename = packet.unpackRawString(nFilenameLen);
       packet >> nFileSize;
       ConstFileList filelist;
-      filelist.push_back(strdup(szFilename));
+        filelist.push_back(strdup(filename.c_str()));
 
-      CEventFile *e = new CEventFile(szFilename, message, nFileSize,
+        CEventFile* e = new CEventFile(filename.c_str(), message, nFileSize,
                                      filelist, nSequence, TIME_NOW, nFlags,
                                      0, nMsgID[0], nMsgID[1]);
       nEventType = ON_EVENT_FILE;
@@ -2587,9 +2366,8 @@ void CICQDaemon::ProcessMessage(ICQUser *u, CBuffer &packet, char *message,
     m_sStats[STATS_AutoResponseChecked].Inc();
     u->SetLastCheckedAutoResponse();
 
-      PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_EVENTS,
-          u->IdString(), u->PPID()));
-    }
+        pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_EVENTS, u->id()));
+      }
     u->Unlock();
     return;
     
@@ -2604,33 +2382,30 @@ void CICQDaemon::ProcessMessage(ICQUser *u, CBuffer &packet, char *message,
     packet >> nLen;
     packet.incDataPosRead(18);
     packet >> nLongLen; // plugin len
-    char szPlugin[nLongLen+1];
-    for (unsigned long i = 0; i < nLongLen; i++)
-      packet >> szPlugin[i];
-    szPlugin[nLongLen] = '\0';
+      string plugin = packet.unpackRawString(nLongLen);
 
     packet.incDataPosRead(nLen - 22 - nLongLen); // unknown
     packet >> nLongLen; // bytes remaining
 
     int nCommand = 0;
-    if (strstr(szPlugin, "File"))
+      if (plugin.find("File") != string::npos)
       nCommand = ICQ_CMDxSUB_FILE;
-    else if (strstr(szPlugin, "URL"))
+      else if (plugin.find("URL") != string::npos)
       nCommand = ICQ_CMDxSUB_URL;
-    else if (strstr(szPlugin, "Chat"))
+      else if (plugin.find("Chat") != string::npos)
       nCommand = ICQ_CMDxSUB_CHAT;
-    else if (strstr(szPlugin, "Contacts"))
+      else if (plugin.find("Contacts") != string::npos)
       nCommand = ICQ_CMDxSUB_CONTACTxLIST;
 
     if (nCommand == 0)
     {
-      gLog.Warn(tr("%sUnknown ICBM plugin type: %s\n"), L_SRVxSTR, szPlugin);
+        gLog.Warn(tr("%sUnknown ICBM plugin type: %s\n"), L_SRVxSTR, plugin.c_str());
       u->Unlock();
       return;
     }
 
     packet >> nLongLen;
-    char szMessage[nLongLen+1];
+      char* szMessage = new char[nLongLen+1];
     for (unsigned long i = 0; i < nLongLen; i++)
       packet >> szMessage[i];
     szMessage[nLongLen] = '\0';
@@ -2643,6 +2418,7 @@ void CICQDaemon::ProcessMessage(ICQUser *u, CBuffer &packet, char *message,
     u->Unlock();
     ProcessMessage(u, packet, msg, nCommand, nMask, nMsgID,
                    nSequence, bIsAck, bNewUser);
+      delete [] szMessage;
     return;
 
     break; // bah!
@@ -2686,13 +2462,13 @@ void CICQDaemon::ProcessMessage(ICQUser *u, CBuffer &packet, char *message,
           gLog.Info(tr("%s%s from new user (%s), ignoring.\n"), L_SRVxSTR,
                     szType, u->IdString());
           if (szType)  free(szType);
-          RejectEvent(u->IdString(), pEvent);
+          RejectEvent(u->id(), pEvent);
           u->Unlock();
           return;
         }
         gLog.Info(tr("%s%s from new user (%s).\n"), L_SRVxSTR, szType, u->IdString());
         u->Unlock();
-        AddUserToList(u->IdString(), u->PPID(), false, true);
+        gUserManager.addUser(u->id(), false);
         bNewUser = false;
       }
       else

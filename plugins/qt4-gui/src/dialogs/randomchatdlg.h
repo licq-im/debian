@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 class QListWidget;
 class QPushButton;
 
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -47,7 +47,7 @@ private:
 
 private slots:
   void okPressed();
-  void userEventDone(ICQEvent* event);
+  void userEventDone(const LicqEvent* event);
 };
 
 class SetRandomChatGroupDlg : public QDialog
@@ -66,7 +66,7 @@ private:
 
 private slots:
   void okPressed();
-  void userEventDone(ICQEvent* event);
+  void userEventDone(const LicqEvent* event);
 };
 
 } // namespace LicqQtGui

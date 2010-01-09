@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,9 +30,7 @@ class QLabel;
 class QPushButton;
 class QSplitter;
 
-class CICQSignal;
-class ICQEvent;
-class ICQUser;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -44,14 +42,33 @@ class UserSendCommon : public UserEventCommon
 {
   Q_OBJECT
 public:
-
-  UserSendCommon(int type, QString id, unsigned long ppid, QWidget* parent = 0, const char* name = 0);
+  /**
+   * Constructor, create and open send event dialog
+   *
+   * @param type Type of event
+   * @param userId User to open dialog for
+   * @param parent Parent widget
+   * @param name Object name of widget
+   */
+  UserSendCommon(int type, const UserId& userId, QWidget* parent = 0, const char* name = 0);
   virtual ~UserSendCommon();
   virtual bool eventFilter(QObject* watched, QEvent* e);
 
   void setText(const QString& text);
-  void convoJoin(QString id, unsigned long convoId);
-  void convoLeave(QString id, unsigned long convoId);
+
+  /**
+   * Someone joined the conversation
+   *
+   * @param userId User that joined conversation
+   */
+  void convoJoin(const UserId& userId);
+
+  /**
+   * Someone left the conversation
+   *
+   * @param userId User that left conversation
+   */
+  void convoLeave(const UserId& userId);
 
   virtual void windowActivationChange(bool oldActive);
   int clearDelay;
@@ -67,10 +84,16 @@ signals:
    *
    * @param event Event object that was sent
    */
-  void eventSent(const ICQEvent* event);
+  void eventSent(const LicqEvent* event);
 
 public slots:
-  void changeEventType(int type);
+  /**
+   * Convert dialog to a specified event type
+   *
+   * @param type Type of event to switch to
+   * @return Pointer to new window (if replaced), otherwise to this window
+   */
+  UserSendCommon* changeEventType(int type);
 
 protected:
   CICQColor myIcqColor;
@@ -91,10 +114,21 @@ protected:
   QString myTempMessage;
   QTimer* mySendTypingTimer;
   int myType;
+  std::list<unsigned long> myEventTag;
 
-  void retrySend(ICQEvent* e, bool online, unsigned short level);
-  virtual void userUpdated(CICQSignal* sig, QString id = QString::null, unsigned long ppid = 0);
-  void updatePicture(const ICQUser* u = NULL);
+  void retrySend(const LicqEvent* e, bool online, unsigned short level);
+
+  /**
+   * A user has been update, this virtual function allows subclasses to add additional handling
+   * This function will only be called if user is in this conversation
+   *
+   * @param userId Updated user
+   * @param subSignal Type of update
+   * @param argument Signal specific argument
+   * @param cid Conversation id
+   */
+  virtual void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  void updatePicture(const LicqUser* u = NULL);
   bool checkSecure();
 
   /**
@@ -106,7 +140,22 @@ protected:
   const QPixmap& iconForType(int type) const;
 
   virtual void resetSettings() = 0;
-  virtual bool sendDone(ICQEvent* e) = 0;
+  virtual bool sendDone(const LicqEvent* e) = 0;
+
+  /**
+   * Widget is about to be closed
+   * Overloaded to make sure widget is always removed from tab dialog before it's destroyed
+   *
+   * @parame event Close event
+   */
+  virtual void closeEvent(QCloseEvent* event);
+
+  /**
+   * Overloaded resize event to save new dialog size
+   *
+   * @param event Resize event
+   */
+  virtual void resizeEvent(QResizeEvent* event);
 
 protected slots:
   /**
@@ -114,8 +163,22 @@ protected slots:
    */
   virtual void updateIcons();
 
+  /**
+   * Update keyboard shortcuts
+   */
+  virtual void updateShortcuts();
+
   virtual void send();
-  virtual void eventDoneReceived(ICQEvent* e);
+  virtual void eventDoneReceived(const LicqEvent* e);
+
+  /**
+   * An event tag was generated
+   * Used by protocols that cannot return event id from event send function
+   *
+   * @param userId User event belongs to
+   * @param eventTag Id for event
+   */
+  void addEventTag(const UserId& userId, unsigned long eventTag);
 
   void cancelSend();
   void changeEventType(QAction* action);
@@ -133,6 +196,22 @@ protected slots:
   void messageTextChanged();
   void textChangedTimeout();
   void sendTrySecure();
+
+  /**
+   * A dragged object has entered this widget
+   * Overloaded to accept files, URLs and users to be sent by dragging them
+   *
+   * @param event The drag event
+   */
+  void dragEnterEvent(QDragEnterEvent* event);
+
+  /**
+   * A dragged object was dropped on this widget
+   * Overloaded to accept files, URLs and users to be sent by dragging them
+   *
+   * @param event The drop event
+   */
+  void dropEvent(QDropEvent* event);
 };
 
 } // namespace LicqQtGui

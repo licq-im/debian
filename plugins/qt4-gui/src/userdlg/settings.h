@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 
 #include <QObject>
 
-#include <licq_user.h>
+#include <licq_types.h>
 
 class QCheckBox;
 class QGridLayout;
@@ -37,8 +37,7 @@ class QTableWidget;
 class QVBoxLayout;
 class QWidget;
 
-class CICQSignal;
-class ICQUser;
+class LicqUser;
 
 
 namespace LicqQtGui
@@ -56,25 +55,24 @@ public:
   Settings(bool isOwner, UserDlg* parent);
   virtual ~Settings() {}
 
-  void load(const ICQUser* user);
-  void apply(ICQUser* user);
+  void load(const LicqUser* user);
+  void apply(LicqUser* user);
 
   /**
    * Save user data for pages
    * Call this function without user locked
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    */
-  void apply2(const QString& id, unsigned long ppid);
+  void apply2(const UserId& userId);
 
   /**
    * User was updated
    *
-   * @param sig Signal from daemon
    * @param user User locked for read access
+   * @param subSignal Sub signal telling what the change was
    */
-  void userUpdated(const CICQSignal* sig, const ICQUser* user);
+  void userUpdated(const LicqUser* user, unsigned long subSignal);
 
 private slots:
   /**

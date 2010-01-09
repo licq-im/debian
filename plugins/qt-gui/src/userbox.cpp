@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,6 +59,8 @@
 
 extern char *PPIDSTRING(unsigned long);
 
+using std::string;
+
 QColor  *CUserViewItem::s_cOnline = NULL,
         *CUserViewItem::s_cAway = NULL,
         *CUserViewItem::s_cOffline = NULL,
@@ -68,24 +70,15 @@ QColor  *CUserViewItem::s_cOnline = NULL,
         *CUserViewItem::s_cGroupBack = 0;
 
 //-----CUserViewItem::constructor-----------------------------------------------
-CUserViewItem::CUserViewItem(ICQUser *_cUser, QListView *parent)
+CUserViewItem::CUserViewItem(const LicqUser* _cUser, QListView *parent)
   : QListViewItem(parent)
 {
   if(listView()->parent() == NULL)
     listView()->setCaption(CUserView::tr("%1 Floaty (%2)")
                            .arg(QString::fromUtf8(_cUser->GetAlias())).arg(_cUser->IdString()));
 
-  if (_cUser->IdString())
-  {
-    char *szRealId = 0;
-    ICQUser::MakeRealId(_cUser->IdString(), _cUser->PPID(), szRealId);
-    m_szId = strdup(szRealId);
-    delete [] szRealId;
-  }
-  else
-    m_szId = 0;
+  myUserId = _cUser->id();
   m_szAlias = _cUser->GetAlias();
-  m_nPPID = _cUser->PPID();
   m_bUrgent = false;
   m_bSecure = false;
   m_bBirthday = false;
@@ -101,23 +94,13 @@ CUserViewItem::CUserViewItem(ICQUser *_cUser, QListView *parent)
 }
 
 
-CUserViewItem::CUserViewItem (ICQUser *_cUser, CUserViewItem* item)
+CUserViewItem::CUserViewItem(const LicqUser* _cUser, CUserViewItem* item)
   : QListViewItem(item),
     m_sGroupName()
 {
   m_nGroupId = (unsigned short)(-1);
-  if (_cUser->IdString())
-  {
-    char *szRealId = 0;
-    ICQUser::MakeRealId(_cUser->IdString(), _cUser->PPID(), szRealId);
-    m_szId = strdup(szRealId);
-    delete [] szRealId;
-  }
-  else
-    m_szId = 0;
-
+  myUserId = _cUser->id();
   m_szAlias = _cUser->GetAlias();
-  m_nPPID = _cUser->PPID();
   m_bUrgent = false;
   m_bSecure = false;
   m_bBirthday = false;
@@ -137,8 +120,7 @@ CUserViewItem::CUserViewItem(unsigned short Id, const char* name, unsigned short
     m_nGroupId(Id),
     m_sGroupName(name)
 {
-  m_szId = 0;
-  m_nPPID =0;
+  myUserId = USERID_NONE;
   m_pIcon = NULL;
   m_cBack = s_cGroupBack;
   m_cFore = s_cGridLines;
@@ -171,8 +153,7 @@ CUserViewItem::CUserViewItem(BarType barType, QListView *parent)
     m_sGroupName()
 {
   m_nGroupId = (unsigned short)(-1);
-  m_szId = 0;
-  m_nPPID = 0;
+  myUserId = USERID_NONE;
   m_nOnlCount = 0;
   m_nEvents = 0;
   m_nStatus = 0;
@@ -213,9 +194,6 @@ CUserViewItem::~CUserViewItem()
 {
   CUserView *v = (CUserView *)listView();
 
-  if (m_szId)
-    free(m_szId);
-
   if (v == NULL) return;
 
   if (this == v->barOffline || this == v->barOnline || this == v->barNotInList)
@@ -234,7 +212,7 @@ CUserViewItem::~CUserViewItem()
   if (parent())
   {
     CUserViewItem *i = static_cast<CUserViewItem*>(parent());
-    if (m_nPPID && m_nStatus != ICQ_STATUS_OFFLINE) i->m_nOnlCount--;
+    if (USERID_ISVALID(myUserId) && m_nStatus != ICQ_STATUS_OFFLINE) i->m_nOnlCount--;
     i->m_nEvents -= m_nEvents;
     i->SetThreadViewGroupTitle();
   }
@@ -260,7 +238,7 @@ CUserViewItem::~CUserViewItem()
 }
 
 //-----CUserViewItem::setGraphics-----------------------------------------------
-void CUserViewItem::setGraphics(ICQUser *u)
+void CUserViewItem::setGraphics(const LicqUser* u)
 {
    char *sTemp;
    CUserView *v = (CUserView *)listView();
@@ -291,8 +269,8 @@ void CUserViewItem::setGraphics(ICQUser *u)
    m_bSecure = u->Secure();
    m_bUrgent = false;
    m_bBirthday =  (u->Birthday() == 0);
-   m_bPhone  = u->GetPhoneNumber()[0] != '\0';
-   m_bCellular = u->GetCellularNumber()[0] !='\0';
+   m_bPhone  = !u->getUserInfoString("PhoneNumber").empty();
+   m_bCellular = !u->getCellularNumber().empty();
    m_bGPGKey = ( u->GPGKey()!=NULL ) && ( strcmp( u->GPGKey(), "" )!=0 );
    m_bGPGKeyEnabled = ( u->UseGPG() );
 
@@ -498,9 +476,8 @@ void CUserViewItem::paintCell( QPainter *p, const QColorGroup & cgdefault, int c
   }
   p->setFont(newFont);
 
-  bool onlBlink = (listView()->onlTimerId && listView()->onlId && m_szId &&
-                   strcmp(listView()->onlId, m_szId) == 0 &&
-                   listView()->onlPPID == m_nPPID && listView()->onlCounter & 1);
+  bool onlBlink = (listView()->onlTimerId && USERID_ISVALID(myUserId) &&
+      listView()->myOnlUserId == myUserId && listView()->onlCounter & 1);
 
   QColorGroup cg(cgdefault);
   cg.setColor(QColorGroup::Text, (onlBlink ? *s_cOffline : *m_cFore));
@@ -524,7 +501,7 @@ void CUserViewItem::paintCell( QPainter *p, const QColorGroup & cgdefault, int c
   else
     p->fillRect( 0, 0, width, height(), cg.base());
 
-  if (m_szId || isGroupItem())
+  if (isUserItem() || isGroupItem())
   {
     cg.setBrush(QColorGroup::Base, QBrush(NoBrush));
     // If this is a floaty then don't draw the highlight box
@@ -698,7 +675,7 @@ void CUserViewItem::paintCell( QPainter *p, const QColorGroup & cgdefault, int c
           p->drawPixmap(w, 0, gMainWindow->pmSharedFiles);
           w = (align == RIGHT) ? w - 2 : w + gMainWindow->pmSharedFiles.width() + 2;
         }
-        if (width - w > 8 && m_bStatusTyping && m_nPPID == LICQ_PPID)
+        if (width - w > 8 && m_bStatusTyping)
         {
           if (align == RIGHT)
             w -= gMainWindow->pmTyping.width();
@@ -769,17 +746,15 @@ void CUserViewItem::paintCell( QPainter *p, const QColorGroup & cgdefault, int c
   }
 
   // add line to bottom and right side
-  if (listView()->parent() && gMainWindow->m_bGridLines && m_szId)
+  if (listView()->parent() && gMainWindow->m_bGridLines && isUserItem())
   {
     p->setPen(*s_cGridLines);
     p->drawLine(0, height() - 1, width - 1, height() - 1);
     p->drawLine(width - 1, 0, width - 1, height() - 1);
   }
 
-  if ((listView()->carTimerId > 0) && 
-      (m_szId != NULL) &&        // Be careful, can be null when repainting a group seperator
-      (strcmp(listView()->carId, m_szId) == 0) &&
-      (listView()->carPPID == m_nPPID))
+  if ((listView()->carTimerId > 0) &&
+      isUserItem() && listView()->myCarUserId == myUserId)
     drawCAROverlay(p);
 }
 
@@ -825,39 +800,27 @@ void CUserView::timerEvent(QTimerEvent* e)
   {
     QListViewItemIterator it(this);
 
-    if (carCounter > 0 && carId)
+    if (carCounter > 0 && USERID_ISVALID(myCarUserId))
     {
       QPainter p(viewport());
       for(; it.current(); ++it)
       {
         CUserViewItem* item = static_cast<CUserViewItem*>(it.current());
 
-        char *szRealId = 0;
-        ICQUser::MakeRealId(item->ItemId(), item->ItemPPID(), szRealId);
-        if (item->ItemId() && (strcmp(szRealId, carId) == 0) &&
-            item->ItemPPID() == carPPID)
+        if (item->userId() == myCarUserId)
         {
-          if(carCounter == 1)
-            item->repaint();
-          else
-            item->drawCAROverlay(&p);
-          if(!doGroupView)
-          {
-            delete [] szRealId;
-            break;
-          }
+            if(carCounter == 1)
+              item->repaint();
+            else
+              item->drawCAROverlay(&p);
+            if(!doGroupView)
+              break;
         }
-        delete [] szRealId;
       }
     }
 
     if(--carCounter == 0) {
-      if (carId)
-      {
-        free(carId);
-        carId = 0;
-      }
-      carPPID = 0;
+      myCarUserId = USERID_NONE;
       killTimer(carTimerId);
       carTimerId = 0;
     }
@@ -867,39 +830,24 @@ void CUserView::timerEvent(QTimerEvent* e)
     QListViewItemIterator it(this);
     bool found = false;
 
-    if (onlId)
+    if (USERID_ISVALID(myOnlUserId))
     {
       for(; it.current(); ++it)
       {
         CUserViewItem* item = static_cast<CUserViewItem*>(it.current());
 
-        char *szRealId = 0;
-        ICQUser::MakeRealId(item->ItemId(), item->ItemPPID(), szRealId);
-
-        if (szRealId && (strcmp(szRealId, onlId) == 0) &&
-            item->ItemPPID() == onlPPID)
+        if (item->userId() == myOnlUserId)
         {
-          found = true;
-          item->repaint();
-          if(!doGroupView)
-          {
-            delete [] szRealId;
-            break;
-          }
+            found = true;
+            item->repaint();
+            if(!doGroupView)
+              break;
         }
-
-        if (szRealId)
-          delete [] szRealId;
       }
     }
 
     if(!found || (--onlCounter == 0)) {
-      if (onlId)
-      {
-        free(onlId);
-        onlId = 0;
-      }
-      onlPPID = 0;
+      myOnlUserId = USERID_NONE;
       killTimer(onlTimerId);
       onlTimerId = 0;
     }
@@ -913,7 +861,7 @@ void CUserView::timerEvent(QTimerEvent* e)
       {
         CUserViewItem *item = static_cast<CUserViewItem*>(it.current());
 
-        if (item->ItemId() && item->m_bFlash && item->m_pIconStatus != NULL)
+        if (item->isUserItem() && item->m_bFlash && item->m_pIconStatus != NULL)
         {
           item->setPixmap(0, *item->m_pIconStatus);
         }
@@ -929,7 +877,7 @@ void CUserView::timerEvent(QTimerEvent* e)
       {
         CUserViewItem* item = static_cast<CUserViewItem*>(it.current());
 
-        if (item->ItemId() && item->m_bFlash && item->m_pIcon != NULL)
+        if (item->isUserItem() && item->m_bFlash && item->m_pIcon != NULL)
         {
           foundIcon = true;
           item->setPixmap(0, *item->m_pIcon);
@@ -1018,7 +966,8 @@ CUserView::CUserView(QPopupMenu *m, QWidget *parent, const char *name)
     floaties->insert(floaties->size()-1, this);
   }
 
-  carId = onlId = 0;
+  myCarUserId = USERID_NONE;
+  myOnlUserId = USERID_NONE;
 
   // Redraw once a minute in case there are cells showing timestamps
   tmrRefresh = new QTimer(this);
@@ -1050,18 +999,15 @@ CUserView::~CUserView()
     if(floaties->size())
         floaties->resize(floaties->size()-1);
   }
-
-  if (carId)  free(carId);
-  if (onlId)  free(onlId);
 }
 
-CUserView *CUserView::FindFloaty(const char *szId, unsigned long nPPID)
+CUserView *CUserView::FindFloaty(const UserId& userId)
 {
   unsigned int i = 0;
   for (; i < floaties->size(); i++)
   {
     CUserViewItem *p = static_cast<CUserViewItem *>(floaties->at(i)->firstChild());
-    if (p->ItemId() && (strcmp(p->ItemId(), szId) == 0) && p->ItemPPID() == nPPID)
+    if (p->isUserItem() && p->userId() == userId)
       break;
   }
   if (i < floaties->size()) return floaties->at(i);
@@ -1117,13 +1063,12 @@ void CUserView::setShowHeader(bool isHeader)
 }
 
 
-bool CUserView::MainWindowSelectedItemUser(char *&_szId, unsigned long &_nPPID)
+UserId CUserView::currentUserId() const
 {
   CUserViewItem *i = (CUserViewItem *)currentItem();
-  if (i == NULL) return false;
-  _nPPID = i->ItemPPID();
-  _szId = i->ItemId() ? strdup(i->ItemId()) : 0;
-  return true;
+  if (i == NULL)
+    return USERID_NONE;
+  return i->userId();
 }
 
 //-----CUserList::mousePressEvent---------------------------------------------
@@ -1165,9 +1110,9 @@ void CUserView::contentsContextMenuEvent ( QContextMenuEvent* e )
     m_typePos = 0;
     setSelected(clickedItem, true);
     setCurrentItem(clickedItem);
-    if (clickedItem->ItemId())
+    if (clickedItem->isUserItem())
     {
-      gMainWindow->SetUserMenuUser(clickedItem->ItemId(), clickedItem->ItemPPID());
+      gMainWindow->SetUserMenuUser(clickedItem->userId());
       mnuUser->popup(viewport()->mapToGlobal(contentsToViewport(e->pos())), 1);
     }
   }
@@ -1186,7 +1131,7 @@ void CUserView::viewportDragEnterEvent(QDragEnterEvent* e)
  * @returns a pointer to a send event dialog of type @a T, or NULL on error.
  */
 template<typename T>
-static T* getSendEventDialog(UserEventCommon::type type, const char *szId, unsigned long nPPID)
+static T* getSendEventDialog(UserEventCommon::type type, const UserId& userId)
 {
   int function;
   if (type == UserEventCommon::UC_CONTACT)
@@ -1200,7 +1145,7 @@ static T* getSendEventDialog(UserEventCommon::type type, const char *szId, unsig
   else
     return NULL;
 
-  UserEventCommon *common = gMainWindow->callFunction(function, szId, nPPID);
+  UserEventCommon *common = gMainWindow->callFunction(function, userId);
   if (!common)
     return NULL;
 
@@ -1212,7 +1157,7 @@ static T* getSendEventDialog(UserEventCommon::type type, const char *szId, unsig
       return NULL;
 
     base->changeEventType(type);
-    dialog = dynamic_cast<T *>(gMainWindow->callFunction(function, szId, nPPID));
+    dialog = dynamic_cast<T *>(gMainWindow->callFunction(function, userId));
     if (!dialog)
       return NULL;
   }
@@ -1221,24 +1166,24 @@ static T* getSendEventDialog(UserEventCommon::type type, const char *szId, unsig
 }
 
 /// Convenient, wrapper functions for getSendEventDialog.
-static inline UserSendContactEvent* getSendContactEventDialog(const char *szId, unsigned long nPPID)
+static inline UserSendContactEvent* getSendContactEventDialog(const UserId& userId)
 {
-  return getSendEventDialog<UserSendContactEvent>(UserEventCommon::UC_CONTACT, szId, nPPID);
+  return getSendEventDialog<UserSendContactEvent>(UserEventCommon::UC_CONTACT, userId);
 }
 
-static inline UserSendFileEvent* getSendFileEventDialog(const char *szId, unsigned long nPPID)
+static inline UserSendFileEvent* getSendFileEventDialog(const UserId& userId)
 {
-  return getSendEventDialog<UserSendFileEvent>(UserEventCommon::UC_FILE, szId, nPPID);
+  return getSendEventDialog<UserSendFileEvent>(UserEventCommon::UC_FILE, userId);
 }
 
-static inline UserSendMsgEvent* getSendMsgEventDialog(const char *szId, unsigned long nPPID)
+static inline UserSendMsgEvent* getSendMsgEventDialog(const UserId& userId)
 {
-  return getSendEventDialog<UserSendMsgEvent>(UserEventCommon::UC_MESSAGE, szId, nPPID);
+  return getSendEventDialog<UserSendMsgEvent>(UserEventCommon::UC_MESSAGE, userId);
 }
 
-static inline UserSendUrlEvent* getSendUrlEventDialog(const char *szId, unsigned long nPPID)
+static inline UserSendUrlEvent* getSendUrlEventDialog(const UserId& userId)
 {
-  return getSendEventDialog<UserSendUrlEvent>(UserEventCommon::UC_URL, szId, nPPID);
+  return getSendEventDialog<UserSendUrlEvent>(UserEventCommon::UC_URL, userId);
 }
 
 void CUserView::viewportDropEvent(QDropEvent* e)
@@ -1251,7 +1196,7 @@ void CUserView::viewportDropEvent(QDropEvent* e)
   if (!it)
     return;
 
-  if (it->ItemId())
+  if (it->isUserItem())
   {
     QString text;
     QStrList lst;
@@ -1260,7 +1205,7 @@ void CUserView::viewportDropEvent(QDropEvent* e)
       QStrListIterator strIter(lst);
       if (!(text = QUriDrag::uriToLocalFile(strIter)).isEmpty())
       {
-        UserSendFileEvent *sendFile = getSendFileEventDialog(it->ItemId(), it->ItemPPID());
+        UserSendFileEvent *sendFile = getSendFileEventDialog(it->userId());
         if (!sendFile)
           return;
 
@@ -1278,7 +1223,7 @@ void CUserView::viewportDropEvent(QDropEvent* e)
       }
       else
       {
-        UserSendUrlEvent *sendUrl = getSendUrlEventDialog(it->ItemId(), it->ItemPPID());
+        UserSendUrlEvent *sendUrl = getSendUrlEventDialog(it->userId());
         if (!sendUrl)
           return;
 
@@ -1303,31 +1248,20 @@ void CUserView::viewportDropEvent(QDropEvent* e)
       if (nPPID && text.length() > 4)
       {
         char *szId = strdup(text.mid(4).latin1());
-        if (strcmp(szId, it->ItemId()) == 0 && nPPID == it->ItemPPID())
-        {
-          free(szId);
+        UserId userId = LicqUser::makeUserId(szId, nPPID);
+        if (userId == it->userId())
           return;
-        }
 
-        UserSendContactEvent* sendContact = getSendContactEventDialog(it->ItemId(), it->ItemPPID());
+        UserSendContactEvent* sendContact = getSendContactEventDialog(it->userId());
         if (!sendContact)
-        {
-          free(szId);
           return;
-        }
 
-        ICQUser* u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
-        QString alias = u ? u->GetAlias() : "";
-        gUserManager.DropUser(u);
-
-        sendContact->setContact(szId, nPPID, alias);
+        sendContact->setContact(userId);
         sendContact->show();
-
-        free(szId);
       }
       else
       {
-        UserSendMsgEvent* sendMsg = getSendMsgEventDialog(it->ItemId(), it->ItemPPID());
+        UserSendMsgEvent* sendMsg = getSendMsgEventDialog(it->userId());
         if (!sendMsg)
           return;
 
@@ -1399,8 +1333,9 @@ void CUserView::keyPressEvent(QKeyEvent *e)
       }
 
       // user divider
-      if (item->ItemId() == 0)  return;
-      gMainWindow->SetUserMenuUser(item->ItemId(), item->ItemPPID());
+      if (!item->isUserItem())
+        return;
+      gMainWindow->SetUserMenuUser(item->userId());
       mnuUser->popup(viewport()->mapToGlobal(QPoint(40, itemPos(item))));
       return;
     }
@@ -1410,8 +1345,8 @@ void CUserView::keyPressEvent(QKeyEvent *e)
 
       QListViewItemIterator it(this);
 
-      while (it.current() != NULL &&
-            ((CUserViewItem *)(it.current()))->ItemId() == 0) ++it;
+      while (it.current() != NULL && !((CUserViewItem *)(it.current()))->isUserItem())
+        ++it;
       setSelected(it.current(), true);
       ensureItemVisible(it.current());
       m_typeAhead = "";
@@ -1431,7 +1366,8 @@ void CUserView::keyPressEvent(QKeyEvent *e)
       }
       it = lastitem;
 
-      while (it.current() && ((CUserViewItem *)(it.current()))->ItemId() == 0) --it;
+      while (it.current() && !((CUserViewItem *)(it.current()))->isUserItem())
+        --it;
       setSelected(it.current(), true);
       ensureItemVisible(it.current());
       m_typeAhead = "";
@@ -1509,19 +1445,18 @@ void CUserView::resizeEvent(QResizeEvent *e)
   }
 }
 
-void CUserView::AnimationAutoResponseCheck(const char *szId, unsigned long nPPID)
+void CUserView::AnimationAutoResponseCheck(const UserId& userId)
 {
   if(carTimerId == 0) {
     // no animation yet running, so start the timer
     carTimerId = startTimer(FLASH_TIME);
     carCounter = 5*1000/FLASH_TIME; // run about 5 seconds
-    carId = szId ? strdup(szId) : 0;
-    carPPID = nPPID;
+    myCarUserId = userId;
   }
   // well, maybe we should move the animation to the other user
 }
 
-void CUserView::AnimationOnline(const char *szId, unsigned long nPPID)
+void CUserView::AnimationOnline(const UserId& userId)
 {
   if(onlTimerId == 0) {
     onlTimerId = startTimer(FLASH_TIME);
@@ -1529,31 +1464,17 @@ void CUserView::AnimationOnline(const char *szId, unsigned long nPPID)
     // actual "flashing" starts with a delay, because of the
     // logon case.
     onlCounter = ((5*1000/FLASH_TIME)+1)&(-2);
-    onlId = szId ? strdup(szId) : 0;
-    onlPPID = nPPID;
+    myOnlUserId = userId;
   }
   else if((onlCounter & 1) == 0)
   {
-    if (onlPPID == nPPID)
-    {
-      if (onlId && strcmp(szId, onlId) != 0)
-      {
+    if (myOnlUserId != userId)
         // whoops, another user went online
         // we just block here the blinking for the
         // rest of the time
-        free(onlId);
-        onlId = 0;
-        onlPPID = 0;
+      myOnlUserId = USERID_NONE;
         // no need for a redraw, as the user is already shown
         // correctly.
-      }
-    }
-    else
-    {
-      if (onlId) free(onlId);
-      onlId = 0;
-      onlPPID = 0;
-    }
   }
 }
 
@@ -1573,7 +1494,7 @@ void CUserView::UpdateFloaties()
   for (unsigned int i = 0; i<floaties->size(); i++)
   {
     CUserViewItem* item = static_cast<CUserViewItem*>(floaties->at(i)->firstChild());
-    ICQUser *u = gUserManager.FetchUser(item->ItemId(), item->ItemPPID(), LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(item->userId());
     if (u == NULL) return;
     item->setGraphics(u);
     gUserManager.DropUser(u);
@@ -1589,7 +1510,9 @@ void CUserView::updateItems()
   {
     CUserViewItem* item = static_cast<CUserViewItem*>(it.current());
 
-    ICQUser *u = gUserManager.FetchUser(item->ItemId(), item->ItemPPID(), LOCK_R);
+    if (!item->isUserItem())
+      continue;
+    const LicqUser* u = gUserManager.fetchUser(item->userId());
     if (u == 0)
       continue;
     item->setGraphics(u);
@@ -1606,13 +1529,15 @@ void CUserView::viewportMouseMoveEvent(QMouseEvent * me)
   QListView::viewportMouseMoveEvent(me);
 
   if (parent() && (me->state() & LeftButton) && (i = (CUserViewItem *)currentItem())
-      && !mousePressPos.isNull() && i->ItemId() &&
+      && !mousePressPos.isNull() && i->isUserItem() &&
       (QPoint(me->pos() - mousePressPos).manhattanLength() > 8))
   {
-    char *p = PPIDSTRING(i->ItemPPID());
+    const LicqUser* u = gUserManager.fetchUser(i->userId());
+    char* p = PPIDSTRING(u->ppid());
     QString data(p);
-    data += i->ItemId();
+    data += u->accountId().c_str();
     delete [] p;
+    gUserManager.DropUser(u);
     QTextDrag *d = new QTextDrag(data, this);
     d->dragCopy();
   }
@@ -1651,7 +1576,7 @@ void CUserView::itemCollapsed(QListViewItem* i)
 void CUserView::maybeTip(const QPoint& c)
 {
   CUserViewItem* item = static_cast<CUserViewItem*>(itemAt(c));
-  if (item == NULL || item->m_szId == NULL)
+  if (item == NULL || !item->isUserItem())
     return;
 
   QString s = "<nobr>";
@@ -1659,7 +1584,7 @@ void CUserView::maybeTip(const QPoint& c)
 
   QRect r(itemRect(item));
 
-  ICQUser* u = gUserManager.FetchUser(item->m_szId, item->m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(item->userId());
   if (u != NULL)
   {
     if (u->GetPicturePresent() && gMainWindow->m_bPopPicture)
@@ -1679,15 +1604,11 @@ void CUserView::maybeTip(const QPoint& c)
     if (*u->GetAlias() && gMainWindow->m_bPopAlias)
       s += "<br>" + QString::fromUtf8(u->GetAlias());
 
-    if ((*u->GetFirstName() || *u->GetLastName()) && gMainWindow->m_bPopName)
+    if (gMainWindow->m_bPopName)
     {
-      s += "<br>";
-      if (*u->GetFirstName())
-        s += codec->toUnicode(u->GetFirstName());
-      if (*u->GetFirstName() && *u->GetLastName())
-        s += " ";
-      if (*u->GetLastName())
-        s += codec->toUnicode(u->GetLastName());
+      string fullName = u->getFullName();
+      if (!fullName.empty())
+        s += "<br>" + codec->toUnicode(fullName.c_str());
     }
 
     if (item->m_nStatusFull & ICQ_STATUS_FxBIRTHDAY)
@@ -1728,17 +1649,25 @@ void CUserView::maybeTip(const QPoint& c)
         item->m_nStatus != ICQ_STATUS_ONLINE)
       s += "<br><u>" + tr("Auto Response:") + "</u>" + codec->toUnicode(u->AutoResponse());
 
-    if (*u->GetEmailPrimary() && gMainWindow->m_bPopEmail)
-      s += "<br>" + tr("E: ") + codec->toUnicode(u->GetEmailPrimary());
+    if (gMainWindow->m_bPopEmail)
+    {
+      string email = u->getEmail();
+      if (!email.empty())
+        s += "<br>" + tr("E: ") + codec->toUnicode(email.c_str());
+    }
 
     if (item->m_bPhone && gMainWindow->m_bPopPhone)
-      s += "<br>" + tr("P: ") + codec->toUnicode(u->GetPhoneNumber());
+      s += "<br>" + tr("P: ") + codec->toUnicode(u->getUserInfoString("PhoneNumber").c_str());
 
     if (item->m_bCellular && gMainWindow->m_bPopCellular)
-      s += "<br>" + tr("C: ") + codec->toUnicode(u->GetCellularNumber());
+      s += "<br>" + tr("C: ") + codec->toUnicode(u->getCellularNumber().c_str());
 
-    if ((u->GetFaxNumber()[0] != '\0') && gMainWindow->m_bPopEmail)
-      s += "<br>" + tr("F: ") + codec->toUnicode(u->GetFaxNumber());
+    if (gMainWindow->m_bPopFax)
+    {
+      string faxNumber = u->getUserInfoString("FaxNumber");
+      if (!faxNumber.empty())
+        s += "<br>" + tr("F: ") + codec->toUnicode(faxNumber.c_str());
+    }
 
     if ((u->Ip() || u->IntIp()) && gMainWindow->m_bPopIP)
     {

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -16,6 +16,7 @@
 #include "config.h"
 #endif
 
+#include <arpa/inet.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -25,10 +26,6 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-#ifdef HAVE_INET_ATON
-#include <arpa/inet.h>
-#endif
 
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
@@ -123,7 +120,7 @@ unsigned long ProxyServer::GetIpByName(const char *_szHostName)
 {
   // check if the hostname is in dot and number notation
   struct in_addr ina;
-  if (inet_aton(_szHostName, &ina))
+  if (inet_pton(AF_INET, _szHostName, &ina) > 0)
      return(ina.s_addr);
 
   // try and resolve hostname
@@ -320,8 +317,8 @@ bool HTTPProxyServer::HTTPOpenProxyConnection(const char *_szRemoteName, unsigne
     char *cmd_b64 = new char[base64_length(strlen(cmd_b)) + 1];
     base64_encode(cmd_b, cmd_b64, strlen(cmd_b));
     snprintf(cmd, sizeof(cmd) - 1, "Proxy-Authorization: Basic %s\r\n", cmd_b64);
-    delete cmd_b;
-    delete cmd_b64;
+    delete [] cmd_b;
+    delete [] cmd_b64;
     if (send(m_nDescriptor, cmd, strlen(cmd), 0) < 0)
     {
       m_nErrorType = PROXY_ERROR_errno;

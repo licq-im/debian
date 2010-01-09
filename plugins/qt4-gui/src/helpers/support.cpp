@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2006-2006 Licq developers
+ * Copyright (C) 2006-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -335,6 +335,7 @@ unsigned Support::keyToXSym(int keyCode)
   return keysym;
 }
 
+#if defined(Q_WS_X11)
 unsigned char* Support::getWindowProperty(WId win, const char* prop)
 {
   Display* dsp = QX11Info::display();
@@ -397,3 +398,4 @@ unsigned char* Support::getWindowProperty(WId win, const char* prop)
 
   return retValue;
 }
+#endif /* defined(Q_WS_X11) */

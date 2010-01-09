@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,19 +42,18 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UtilityDlg */
 
-UtilityDlg::UtilityDlg(CUtility* u, const QString& szId, unsigned long nPPID)
+UtilityDlg::UtilityDlg(CUtility* u, const UserId& userId)
+  : myUserId(userId)
 {
   setObjectName("UtilityDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
 
-  m_szId = szId;
-  m_nPPID = nPPID;
   m_xUtility = u;
   m_bIntWin = false;
   intwin = NULL;
   snOut = snErr = NULL;
 
-  m_xUtility->SetFields(m_szId.toLatin1(), m_nPPID);
+  m_xUtility->setFields(myUserId);
 
   QGridLayout* lay = new QGridLayout(this);
   lay->setColumnStretch(2, 2);
@@ -239,7 +238,7 @@ void UtilityDlg::slot_run()
   if (nSystemResult == -1)
   {
     lblUtility->setText(tr("Failed:"));
-    m_xUtility->SetFields(m_szId.toLatin1(), m_nPPID);
+    m_xUtility->setFields(myUserId);
   }
   else
   {

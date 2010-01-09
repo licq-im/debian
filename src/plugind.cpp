@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -11,6 +11,7 @@
 #include <cstring>
 #include <unistd.h>
 
+#include "licq_events.h"
 #include "licq_socket.h"
 
 
@@ -42,7 +43,7 @@ CPlugin::~CPlugin()
 }
 
 
-void CPlugin::PushSignal(CICQSignal *s)
+void CPlugin::pushSignal(LicqSignal* s)
 {
   pthread_mutex_lock(&mutex_signals);
   list_signals.push_back(s);
@@ -85,10 +86,9 @@ bool CPlugin::CompareMask(unsigned long n)
   return (n & m_nSignalMask);
 }
 
-
-CICQSignal *CPlugin::PopSignal()
+LicqSignal* CPlugin::popSignal()
 {
-  CICQSignal *s = NULL;
+  LicqSignal* s = NULL;
   pthread_mutex_lock(&mutex_signals);
   if (list_signals.size() != 0)
   {

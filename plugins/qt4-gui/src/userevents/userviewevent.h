@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ class QSplitter;
 class QTreeWidgetItem;
 
 class CUserEvent;
-class ICQEvent;
+class LicqEvent;
 
 
 namespace LicqQtGui
@@ -45,8 +45,22 @@ class UserViewEvent : public UserEventCommon
   Q_OBJECT
 
 public:
-  UserViewEvent(QString id, unsigned long ppid, QWidget* parent = 0);
+  /**
+   * Constructor, create and open dialog to view user events
+   *
+   * @param userId User to open dialog for
+   * @param parent Parent widget
+   */
+  UserViewEvent(const UserId& userId, QWidget* parent = 0);
   virtual ~UserViewEvent();
+
+protected:
+  /**
+   * Overloaded resize event to save new dialog size
+   *
+   * @param event Resize event
+   */
+  virtual void resizeEvent(QResizeEvent* event);
 
 private:
   QSplitter* myReadSplitter;
@@ -68,7 +82,17 @@ private:
   void generateReply();
   void sendMsg(QString text);
   void updateNextButton();
-  virtual void userUpdated(CICQSignal* sig, QString id = QString::null, unsigned long ppid = 0);
+
+  /**
+   * A user has been update, this virtual function allows subclasses to add additional handling
+   * This function will only be called if user is in this conversation
+   *
+   * @param userId Updated user
+   * @param subSignal Type of update
+   * @param argument Signal specific argument
+   * @param cid Conversation id
+   */
+  virtual void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
 private slots:
   void autoClose();
@@ -81,7 +105,7 @@ private slots:
   void closeDialog();
   void msgTypeChanged(UserSendCommon* from, UserSendCommon* to);
   void printMessage(QTreeWidgetItem* item);
-  void sentEvent(const ICQEvent* e);
+  void sentEvent(const LicqEvent* e);
   void setEncoding();
 };
 

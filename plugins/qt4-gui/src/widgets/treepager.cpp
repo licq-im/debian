@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2006 Licq developers
+ * Copyright (C) 2006-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@ TreePager::TreePager(QWidget* parent)
       SLOT(flipPage(QTreeWidgetItem*)));
 }
 
-void TreePager::addPage(QWidget* page, QString title, /* QIcon icon, */ QWidget* parent)
+void TreePager::addPage(QWidget* page, const QString& title, /* const QIcon& icon, */ QWidget* parent)
 {
   QTreeWidgetItem* parentItem = NULL;
   if (parent != NULL)

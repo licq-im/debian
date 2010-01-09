@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -97,11 +97,11 @@ QWidget* UserPages::Settings::createPageSettings(QWidget* parent)
   myAutoSecureCheck->setToolTip(tr("Automatically request secure channel to this contact."));
   mySettingsLayout->addWidget(myAutoSecureCheck, 2, 1);
 
-#ifdef HAVE_LIBGPGME
   myUseGpgCheck = new QCheckBox(tr("Use GPG encryption"));
   myUseGpgCheck->setToolTip(tr("Use GPG encryption for messages with this contact."));
   mySettingsLayout->addWidget(myUseGpgCheck, 3, 1);
-#endif
+  if (!gLicqDaemon->haveGpgSupport())
+    myUseGpgCheck->setVisible(false);
 
   myUseRealIpCheck = new QCheckBox(tr("Use real ip (LAN)"));
   myUseRealIpCheck->setToolTip(tr("Use real IP for when sending to this contact."));
@@ -228,7 +228,7 @@ QWidget* UserPages::Settings::createPageGroups(QWidget* parent)
   return w;
 }
 
-void UserPages::Settings::load(const ICQUser* user)
+void UserPages::Settings::load(const LicqUser* user)
 {
   if (myIsOwner)
     return;
@@ -240,9 +240,7 @@ void UserPages::Settings::load(const ICQUser* user)
   myAutoAcceptFileCheck->setChecked(user->AutoFileAccept());
   myAutoAcceptChatCheck->setChecked(user->AutoChatAccept());
   myAutoSecureCheck->setChecked(user->AutoSecure());
-#ifdef HAVE_LIBGPGME
   myUseGpgCheck->setChecked(user->UseGPG());
-#endif
   myUseRealIpCheck->setChecked(user->SendRealIp());
 
   unsigned short statusToUser = user->StatusToUser();
@@ -253,7 +251,7 @@ void UserPages::Settings::load(const ICQUser* user)
   myStatusOccupiedRadio->setChecked(statusToUser == ICQ_STATUS_OCCUPIED);
   myStatusDndRadio->setChecked(statusToUser == ICQ_STATUS_DND);
 
-  for (unsigned short i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
     mySystemGroupCheck[i]->setChecked(user->GetInGroup(GROUPS_SYSTEM, i));
 
   unsigned int ppid = user->PPID();
@@ -286,12 +284,12 @@ void UserPages::Settings::load(const ICQUser* user)
 
   myGroupsTable->clearContents();
   myGroupsTable->setRowCount(0);
-  unsigned short serverGroup = (user->GetSID() ? gUserManager.GetGroupFromID(user->GetGSID()) : 0);
+  int serverGroup = (user->GetSID() ? gUserManager.GetGroupFromID(user->GetGSID()) : 0);
   int i = 0;
   FOR_EACH_GROUP_START_SORTED(LOCK_R)
   {
     QString name = QString::fromLocal8Bit(pGroup->name().c_str());
-    unsigned short gid = pGroup->id();
+    int gid = pGroup->id();
 
     myGroupsTable->setRowCount(i+1);
 
@@ -323,7 +321,7 @@ void UserPages::Settings::load(const ICQUser* user)
   myGroupsTable->resizeColumnsToContents();
 }
 
-void UserPages::Settings::apply(ICQUser* user)
+void UserPages::Settings::apply(LicqUser* user)
 {
   if (myIsOwner)
     return;
@@ -336,9 +334,7 @@ void UserPages::Settings::apply(ICQUser* user)
   user->SetAutoFileAccept(myAutoAcceptFileCheck->isChecked());
   user->SetAutoChatAccept(myAutoAcceptChatCheck->isChecked());
   user->SetAutoSecure(myAutoSecureCheck->isChecked());
-#ifdef HAVE_LIBGPGME
   user->SetUseGPG(myUseGpgCheck->isChecked());
-#endif
   user->SetSendRealIp(myUseRealIpCheck->isChecked());
 
   // Set status to user
@@ -359,12 +355,12 @@ void UserPages::Settings::apply(ICQUser* user)
   user->SetCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toLocal8Bit());
 }
 
-void UserPages::Settings::apply2(const QString& id, unsigned long ppid)
+void UserPages::Settings::apply2(const UserId& userId)
 {
   if (myIsOwner)
     return;
 
-  const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
   if (u == NULL)
     return;
 
@@ -380,37 +376,37 @@ void UserPages::Settings::apply2(const QString& id, unsigned long ppid)
   // First set server group
   for (int i = 0; i < myGroupsTable->rowCount(); ++i)
   {
-    unsigned short gid = myGroupsTable->item(i, 0)->data(Qt::UserRole).toUInt();
+    int gid = myGroupsTable->item(i, 0)->data(Qt::UserRole).toInt();
 
     if (dynamic_cast<QRadioButton*>(myGroupsTable->cellWidget(i, 2))->isChecked())
     {
       if (gid != serverGroup)
-        gUserManager.SetUserInGroup(id.toLatin1().data(), ppid, GROUPS_USER, gid, true, true);
+        gUserManager.setUserInGroup(userId, GROUPS_USER, gid, true, true);
     }
   }
 
   // Set local user groups
   for (int i = 0; i < myGroupsTable->rowCount(); ++i)
   {
-    unsigned short gid = myGroupsTable->item(i, 0)->data(Qt::UserRole).toUInt();
+    int gid = myGroupsTable->item(i, 0)->data(Qt::UserRole).toInt();
 
     bool inLocal = dynamic_cast<QCheckBox*>(myGroupsTable->cellWidget(i, 1))->isChecked();
     if ((userGroups.count(gid) > 0) != inLocal)
-      gUserManager.SetUserInGroup(id.toLatin1().data(), ppid, GROUPS_USER, gid, inLocal, false);
+      gUserManager.setUserInGroup(userId, GROUPS_USER, gid, inLocal, false);
   }
 
   // Set system groups
-  for (unsigned short i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
   {
     bool inGroup = mySystemGroupCheck[i]->isChecked();
     if (((systemGroups & (1L << (i - 1))) != 0) != inGroup)
-      gUserManager.SetUserInGroup(id.toLatin1().data(), ppid, GROUPS_SYSTEM, i, inGroup, true);
+      gUserManager.setUserInGroup(userId, GROUPS_SYSTEM, i, inGroup, true);
   }
 }
 
-void UserPages::Settings::userUpdated(const CICQSignal* sig, const ICQUser* user)
+void UserPages::Settings::userUpdated(const LicqUser* user, unsigned long subSignal)
 {
-  switch (sig->SubSignal())
+  switch (subSignal)
   {
     case USER_GENERAL:
       load(user);

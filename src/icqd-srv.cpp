@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -27,6 +27,7 @@
 
 #include "time-fix.h"
 
+#include "licq_byteorder.h"
 #include "licq_icqd.h"
 #include "licq_translate.h"
 #include "licq_oscarservice.h"
@@ -45,22 +46,22 @@
 
 using namespace std;
 
-void CICQDaemon::ProtoAddUser(const char *_szId, unsigned long _nPPID,
-                              bool _bAuthRequired, unsigned short groupId)
+void CICQDaemon::protoAddUser(const string& accountId, unsigned long ppid, int groupId)
 {
-  if (_nPPID == LICQ_PPID)
-    icqAddUser(_szId, _bAuthRequired, groupId);
+  if (ppid == LICQ_PPID)
+    icqAddUser(accountId.c_str(), false, groupId);
   else
-    PushProtoSignal(new CAddUserSignal(_szId, _bAuthRequired), _nPPID);
+    PushProtoSignal(new CAddUserSignal(accountId.c_str(), false), ppid);
 }
 
 //-----icqAddUser----------------------------------------------------------
 void CICQDaemon::icqAddUser(const char *_szId, bool _bAuthRequired, unsigned short groupId)
 {
+  UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   CSrvPacketTcp *p = new CPU_GenericUinList(_szId, ICQ_SNACxFAM_BUDDY, ICQ_SNACxBDY_ADDxTOxLIST);
   gLog.Info(tr("%sAlerting server to new user (#%hu)...\n"), L_SRVxSTR,
              p->Sequence());
-  SendExpectEvent_Server(_szId, LICQ_PPID, p, NULL);
+  SendExpectEvent_Server(userId, p, NULL);
 
   // Server side list add, and update of group
   if (UseServerContactList())
@@ -70,15 +71,6 @@ void CICQDaemon::icqAddUser(const char *_szId, bool _bAuthRequired, unsigned sho
 
   icqUserBasicInfo(_szId);
 }
-
-void CICQDaemon::icqAddUser(unsigned long _nUin, bool _bAuthRequired, unsigned short groupId)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", _nUin);
-
-  icqAddUser(szUin, _bAuthRequired, groupId);
-}
-
 
 //-----icqAddUserServer--------------------------------------------------------
 void CICQDaemon::icqAddUserServer(const char *_szId, bool _bAuthRequired,
@@ -106,16 +98,6 @@ void CICQDaemon::icqAddUserServer(const char *_szId, bool _bAuthRequired,
   SendEvent_Server(pEnd);
 }
 
-void CICQDaemon::icqAddUserServer(unsigned long _nUin, bool _bAuthRequired,
-    unsigned short groupId)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = 0;
-
-  icqAddUserServer(szUin, _bAuthRequired, groupId);
-}
-
 //-----CheckExport-------------------------------------------------------------
 void CICQDaemon::CheckExport()
 {
@@ -132,24 +114,13 @@ void CICQDaemon::CheckExport()
     icqExportGroups(groups);
 
   // Just upload all of the users now
-  StringList doneUsers;
-  StringList users;
+  list<UserId> users;
   FOR_EACH_PROTO_USER_START(LICQ_PPID, LOCK_R)
   {
     // If they aren't a current server user and not in the ingore list,
     // let's import them!
     if (pUser->GetSID() == 0 && !pUser->IgnoreList())
-    {
-      StringList::const_iterator p = std::find(doneUsers.begin(), doneUsers.end(),
-        pUser->IdString());
-
-      if (p == doneUsers.end())
-      {
-        // Keep track of who has been done
-        users.push_back(pUser->IdString());
-        doneUsers.push_back(pUser->IdString());
-      }
-    }
+      users.push_back(pUser->id());
   }
   FOR_EACH_PROTO_USER_END
 
@@ -160,24 +131,20 @@ void CICQDaemon::CheckExport()
   }
 
   // Export visible/invisible/ignore list
-  StringList visibleUsers, invisibleUsers, ignoredUsers;
+  list<UserId> visibleUsers, invisibleUsers, ignoredUsers;
   FOR_EACH_PROTO_USER_START(LICQ_PPID, LOCK_R)
   {
     if (pUser->IgnoreList() && pUser->GetSID() == 0)
     {
-      ignoredUsers.push_back(pUser->IdString());
+      ignoredUsers.push_back(pUser->id());
     }
     else
     {
       if (pUser->InvisibleList() && pUser->GetInvisibleSID() == 0)
-      {
-        invisibleUsers.push_back(pUser->IdString());
-      }
+        invisibleUsers.push_back(pUser->id());
 
       if (pUser->VisibleList() && pUser->GetVisibleSID() == 0)
-      {
-        visibleUsers.push_back(pUser->IdString());
-      }
+        visibleUsers.push_back(pUser->id());
     }
   }
   FOR_EACH_PROTO_USER_END
@@ -193,7 +160,7 @@ void CICQDaemon::CheckExport()
 }
 
 //-----icqExportUsers----------------------------------------------------------
-void CICQDaemon::icqExportUsers(const StringList& users, unsigned short _nType)
+void CICQDaemon::icqExportUsers(const list<UserId>& users, unsigned short _nType)
 {
   if (!UseServerContactList())  return;
 
@@ -250,18 +217,6 @@ void CICQDaemon::icqAddGroup(const char *_szName)
   gLog.Info(tr("%sAdding group %s (%d) to server list ...\n"), L_SRVxSTR, _szName, nGSID);
   addToModifyUsers(pAdd->SubSequence(), _szName);
   SendExpectEvent_Server(pAdd, NULL);
-}
-
-//-----icqChangeGroup-----------------------------------------------------------
-void CICQDaemon::icqChangeGroup(unsigned long _nUin, unsigned short _nNewGroup,
-                                unsigned short _nOldGSID, unsigned short _nNewType,
-                                unsigned short _nOldType)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = '\0';
-
-  icqChangeGroup(szUin, LICQ_PPID, _nNewGroup, _nOldGSID, _nNewType, _nOldType);
 }
 
 void CICQDaemon::icqChangeGroup(const char *_szId, unsigned long _nPPID,
@@ -341,16 +296,25 @@ void CICQDaemon::icqCreatePDINFO()
 }
 
 //-----icqRemoveUser-------------------------------------------------------
-void CICQDaemon::ProtoRemoveUser(const char *_szId, unsigned long _nPPID)
+void CICQDaemon::protoRemoveUser(const UserId& userId)
 {
-  if (_nPPID == LICQ_PPID)
-    icqRemoveUser(_szId);
-  else
-    PushProtoSignal(new CRemoveUserSignal(_szId), _nPPID);
+  const LicqUser* u = gUserManager.fetchUser(userId);
+  if (u == NULL)
+    return;
+  unsigned long ppid = u->ppid();
+  string accountId = u->accountId();
+  bool tempUser = u->NotInList();
+  gUserManager.DropUser(u);
+
+  if (ppid == LICQ_PPID && tempUser)
+    icqRemoveUser(accountId.c_str());
+  else if(ppid != LICQ_PPID)
+    PushProtoSignal(new CRemoveUserSignal(accountId.c_str()), ppid);
 }
 
 void CICQDaemon::icqRemoveUser(const char *_szId)
 {
+  UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   // Remove from the SSList and update groups
   if (UseServerContactList())
   {
@@ -358,7 +322,7 @@ void CICQDaemon::icqRemoveUser(const char *_szId)
       ICQ_SNACxLIST_ROSTxEDITxSTART);
     SendEvent_Server(pStart);
 
-    ICQUser *u = gUserManager.FetchUser(_szId, LICQ_PPID, LOCK_W);
+    LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
     // When we remove a user, we remove them from all parts of the list:
     // Visible, Invisible and Ignore lists as well.
     unsigned short nGSID = u->GetGSID();
@@ -411,15 +375,7 @@ void CICQDaemon::icqRemoveUser(const char *_szId)
   CSrvPacketTcp *p = new CPU_GenericUinList(_szId, ICQ_SNACxFAM_BUDDY, ICQ_SNACxBDY_REMOVExFROMxLIST);
   gLog.Info(tr("%sAlerting server to remove user (#%hu)...\n"), L_SRVxSTR,
             p->Sequence());
-  SendExpectEvent_Server(_szId, LICQ_PPID, p, NULL);
-}
-
-void CICQDaemon::icqRemoveUser(unsigned long _nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = 0;
-  icqRemoveUser(szUin);
+  SendExpectEvent_Server(userId, p, NULL);
 }
 
 //-----icqRemoveGroup----------------------------------------------------------
@@ -451,80 +407,74 @@ void CICQDaemon::icqRenameGroup(const char *_szNewName, unsigned short _nGSID)
   SendExpectEvent_Server(pUpdate, NULL);
 }
 
-//-----icqRenameUser------------------------------------------------------------
-void CICQDaemon::icqRenameUser(unsigned long _nUin)
+void CICQDaemon::updateUserAlias(const UserId& userId)
 {
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = '\0'; 
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user == NULL)
+    return;
+  string accountId = user->accountId();
+  unsigned long ppid = user->ppid();
+  string newAlias = user->GetAlias();
+  gUserManager.DropUser(user);
 
-  icqRenameUser(szUin);
-}
-
-void CICQDaemon::ProtoRenameUser(const char *_szId, unsigned long _nPPID)
-{
-  if (_nPPID == LICQ_PPID)
-    icqRenameUser(_szId);
+  if (ppid == LICQ_PPID)
+    icqRenameUser(accountId, newAlias);
   else
-    PushProtoSignal(new CRenameUserSignal(_szId), _nPPID);
+    PushProtoSignal(new CRenameUserSignal(accountId.c_str()), ppid);
 }
 
-void CICQDaemon::icqRenameUser(const char *_szId)
+void CICQDaemon::icqRenameUser(const string& accountId, const string& newAlias)
 {
   if (!UseServerContactList() || m_nTCPSrvSocketDesc == -1) return;
 
-  const ICQUser* u = gUserManager.FetchUser(_szId, LICQ_PPID, LOCK_R);
-  if (u == NULL) return;
-  const char* szNewAlias = u->GetAlias();
-  gUserManager.DropUser(u);
-
-  CSrvPacketTcp *pUpdate = new CPU_UpdateToServerList(_szId, ICQ_ROSTxNORMAL);
-  gLog.Info(tr("%sRenaming %s to %s...\n"), L_SRVxSTR, _szId, szNewAlias);
-  addToModifyUsers(pUpdate->SubSequence(), _szId);
+  CSrvPacketTcp *pUpdate = new CPU_UpdateToServerList(accountId.c_str(), ICQ_ROSTxNORMAL);
+  gLog.Info(tr("%sRenaming %s to %s...\n"), L_SRVxSTR, accountId.c_str(), newAlias.c_str());
+  addToModifyUsers(pUpdate->SubSequence(), accountId.c_str());
   SendExpectEvent_Server(pUpdate, NULL);
 }
 
-//-----icqAlertUser-------------------------------------------------------------
-void CICQDaemon::icqAlertUser(unsigned long _nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = '\0';
-  icqAlertUser(szUin, LICQ_PPID);
-}
-
-void CICQDaemon::icqAlertUser(const char* id, unsigned long ppid)
+void CICQDaemon::icqAlertUser(const UserId& userId)
 {
   const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
   char sz[MAX_MESSAGE_SIZE];
-  sprintf(sz, "%s%c%s%c%s%c%s%c%c%c", o->GetAlias(), 0xFE, o->GetFirstName(),
-          0xFE, o->GetLastName(), 0xFE, o->GetEmailPrimary(), 0xFE,
+  sprintf(sz, "%s%c%s%c%s%c%s%c%c%c", o->GetAlias(), 0xFE, o->getFirstName().c_str(),
+      0xFE, o->getLastName().c_str(), 0xFE, o->getEmail().c_str(), 0xFE,
           o->GetAuthorization() ? '0' : '1', 0xFE);
   gUserManager.DropOwner(o);
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* id = accountId.c_str();
   CPU_ThroughServer *p = new CPU_ThroughServer(id, ICQ_CMDxSUB_ADDEDxTOxLIST, sz);
   gLog.Info(tr("%sAlerting user they were added (#%hu)...\n"), L_SRVxSTR, p->Sequence());
-  SendExpectEvent_Server(id, ppid, p, NULL);
+  SendExpectEvent_Server(userId, p, NULL);
 }
-//-----icqFetchAutoResponseServer-----------------------------------------------
-unsigned long CICQDaemon::ProtoFetchAutoResponseServer(const char *_szId, unsigned long _nPPID)
+
+unsigned long CICQDaemon::requestUserAutoResponse(const UserId& userId)
 {
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user == NULL)
+    return 0;
+  string accountId = user->accountId();
+  unsigned long ppid = user->ppid();
+  gUserManager.DropUser(user);
+
   unsigned long nRet = 0;
 
-  if (_nPPID == LICQ_PPID)
-    nRet = icqFetchAutoResponseServer(_szId);
+  if (ppid == LICQ_PPID)
+    nRet = icqFetchAutoResponseServer(accountId.c_str());
 
   return nRet;
 }
 
 unsigned long CICQDaemon::icqFetchAutoResponseServer(const char *_szId)
 {
+  UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   CPU_CommonFamily *p = 0;
 
   if (isalpha(_szId[0]))
     p = new CPU_AIMFetchAwayMessage(_szId);
   else
   {
-    const ICQUser* u = gUserManager.FetchUser(_szId, LICQ_PPID, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(userId);
     if (!u) return 0;
 
     int nCmd;
@@ -551,21 +501,12 @@ unsigned long CICQDaemon::icqFetchAutoResponseServer(const char *_szId)
   if (!p) return 0;
 
   gLog.Info(tr("%sRequesting auto response from %s (%hu).\n"), L_SRVxSTR,
-        _szId, p->Sequence());
+      USERID_TOSTR(userId), p->Sequence());
 
-  ICQEvent *result = SendExpectEvent_Server(_szId, LICQ_PPID, p, NULL);
+  LicqEvent* result = SendExpectEvent_Server(userId, p, NULL);
   if (result != NULL)
     return result->EventId();
   return 0;
-}
-
-unsigned long CICQDaemon::icqFetchAutoResponseServer(unsigned long _nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = '\0';
-
-  return icqFetchAutoResponseServer(szUin);
 }
 
 //-----icqSetRandomChatGroup----------------------------------------------------
@@ -671,69 +612,65 @@ void CICQDaemon::icqRelogon()
 //  m_eStatus = STATUS_OFFLINE_FORCED;
 }
 
-//-----ProtoRequestInfo------------------------------------------------------
-unsigned long CICQDaemon::ProtoRequestInfo(const char *_szId, unsigned long _nPPID)
+unsigned long CICQDaemon::requestUserInfo(const UserId& userId)
 {
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user == NULL)
+    return 0;
+  string accountId = user->accountId();
+  unsigned long ppid = user->ppid();
+  gUserManager.DropUser(user);
+
   unsigned long nRet = 0;
-  if (_nPPID == LICQ_PPID)
-    nRet = icqRequestMetaInfo(_szId);
+  if (ppid == LICQ_PPID)
+    nRet = icqRequestMetaInfo(accountId.c_str());
   else
-    PushProtoSignal(new CRequestInfo(_szId), _nPPID);
-  
+    PushProtoSignal(new CRequestInfo(accountId.c_str()), ppid);
+
   return nRet;
 }
 
 //-----icqRequestMetaInfo----------------------------------------------------
 unsigned long CICQDaemon::icqRequestMetaInfo(const char *_szId)
 {
+  UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   CPU_CommonFamily *p = 0;
   bool bIsAIM = isalpha(_szId[0]);
   if (bIsAIM)
     p = new CPU_RequestInfo(_szId);
   else
     p = new CPU_Meta_RequestAllInfo(_szId);
-  gLog.Info(tr("%sRequesting meta info for %s (#%hu/#%d)...\n"), L_SRVxSTR, _szId,
-            p->Sequence(), p->SubSequence());
-  ICQEvent *e = SendExpectEvent_Server(_szId, LICQ_PPID, p, NULL, !bIsAIM);
+  gLog.Info(tr("%sRequesting meta info for %s (#%hu/#%d)...\n"), L_SRVxSTR,
+      USERID_TOSTR(userId), p->Sequence(), p->SubSequence());
+  LicqEvent* e = SendExpectEvent_Server(userId, p, NULL, !bIsAIM);
   if (e != NULL)
     return e->EventId();
   return 0;
 }
 
-unsigned long CICQDaemon::icqRequestMetaInfo(unsigned long nUin)
+unsigned long CICQDaemon::requestUserPicture(const UserId& userId)
 {
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = 0;
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user == NULL)
+    return 0;
+  string accountId = user->accountId();
+  unsigned long ppid = user->ppid();
+  size_t iconHashSize = strlen(user->BuddyIconHash());
+  bool sendServer = (user->SocketDesc(ICQ_CHNxINFO) < 0);
+  gUserManager.DropUser(user);
 
-  return icqRequestMetaInfo(szUin);
-}
-
-//-----ProtoRequestPicture------------------------------------------------------
-unsigned long CICQDaemon::ProtoRequestPicture(const char *_szId, unsigned long _nPPID)
-{
   unsigned long nRet = 0;
 
-  if (_nPPID == LICQ_PPID)
+  if (ppid == LICQ_PPID)
   {
-    const ICQUser* u = gUserManager.FetchUser(_szId, LICQ_PPID, LOCK_R);
-    if (u == NULL) return 0;
-
-    if (UseServerSideBuddyIcons() && strlen(u->BuddyIconHash()) > 0)
-    {
-      gUserManager.DropUser(u);
-      nRet = m_xBARTService->SendEvent(_szId, ICQ_SNACxBART_DOWNLOADxREQUEST, true);
-    }
+    if (UseServerSideBuddyIcons() && iconHashSize > 0)
+      nRet = m_xBARTService->SendEvent(userId, ICQ_SNACxBART_DOWNLOADxREQUEST, true);
     else
-    {
-      bool bSendServer = (u->SocketDesc(ICQ_CHNxINFO) < 0);
-      gUserManager.DropUser(u);
-      nRet = icqRequestPicture(_szId, bSendServer);
-    }
+      nRet = icqRequestPicture(accountId.c_str(), sendServer);
   }
   else
-    PushProtoSignal(new CRequestPicture(_szId), _nPPID);
-  
+    PushProtoSignal(new CRequestPicture(accountId.c_str()), ppid);
+
   return nRet;
 }
 
@@ -747,15 +684,46 @@ void CICQDaemon::icqRequestService(unsigned short nFam)
 }
 
 //-----icqSetStatus-------------------------------------------------------------
-unsigned long CICQDaemon::ProtoSetStatus(unsigned long _nPPID,
-                                         unsigned short _nNewStatus)
+unsigned long CICQDaemon::protoSetStatus(const UserId& ownerId, unsigned short newStatus)
 {
+  bool isOffline;
+  unsigned long ppid;
+
+  {
+    LicqUserReadGuard u(ownerId);
+    if (!u.isLocked() || u->User())
+      return 0;
+
+    isOffline = u->StatusOffline();
+    ppid = u->ppid();
+  }
+
   unsigned long nRet = 0;
 
-  if (_nPPID == LICQ_PPID)
-    nRet = icqSetStatus(_nNewStatus);
+  if (newStatus == ICQ_STATUS_OFFLINE)
+  {
+    if (isOffline)
+      return 0;
+
+    if (ppid == LICQ_PPID)
+      icqLogoff();
+    else
+      PushProtoSignal(new CLogoffSignal(), ppid);
+  }
+  else if(isOffline)
+  {
+    if (ppid == LICQ_PPID)
+      nRet = icqLogon(newStatus);
+    else
+      PushProtoSignal(new CLogonSignal(newStatus), ppid);
+  }
   else
-    PushProtoSignal(new CChangeStatusSignal(_nNewStatus), _nPPID);
+  {
+    if (ppid == LICQ_PPID)
+      nRet = icqSetStatus(newStatus);
+    else
+      PushProtoSignal(new CChangeStatusSignal(newStatus), ppid);
+  }
 
   return nRet;
 }
@@ -922,7 +890,7 @@ unsigned long CICQDaemon::icqSetMoreInfo(unsigned short nAge,
 }
 
 //-----icqSetInterestsInfo------------------------------------------------------
-unsigned long CICQDaemon::icqSetInterestsInfo(const ICQUserCategory* interests)
+unsigned long CICQDaemon::icqSetInterestsInfo(const UserCategoryMap& interests)
 {
   CPU_Meta_SetInterestsInfo *p = new CPU_Meta_SetInterestsInfo(interests);
   gLog.Info("%sUpdating Interests info (#%hu/#%d)..\n", L_SRVxSTR,
@@ -935,8 +903,8 @@ unsigned long CICQDaemon::icqSetInterestsInfo(const ICQUserCategory* interests)
 }
 
 //-----icqSetOrgBackInfo--------------------------------------------------------
-unsigned long CICQDaemon::icqSetOrgBackInfo(const ICQUserCategory* orgs,
-                                            const ICQUserCategory* background)
+unsigned long CICQDaemon::icqSetOrgBackInfo(const UserCategoryMap& orgs,
+    const UserCategoryMap& background)
 {
   CPU_Meta_SetOrgBackInfo *p =
     new CPU_Meta_SetOrgBackInfo(orgs, background);
@@ -989,29 +957,23 @@ unsigned long CICQDaemon::icqSetAbout(const char *_szAbout)
 }
 
 //-----icqAuthorizeGrant-------------------------------------------------------
-unsigned long CICQDaemon::ProtoAuthorizeGrant(const char *szId,
-  unsigned long nPPID, const char *szMessage)
+unsigned long CICQDaemon::authorizeGrant(const UserId& userId, const string& message)
 {
   unsigned long nRet = 0;
+  unsigned long nPPID = LicqUser::getUserProtocolId(userId);
+  string accountId = LicqUser::getUserAccountId(userId);
 
   if (nPPID == LICQ_PPID)
-    nRet = icqAuthorizeGrant(szId, szMessage);
+    nRet = icqAuthorizeGrant(userId, message);
   else
-    PushProtoSignal(new CGrantAuthSignal(szId, szMessage), nPPID);
+    PushProtoSignal(new CGrantAuthSignal(accountId.c_str(), message.c_str()), nPPID);
   return nRet;
 }
 
-unsigned long CICQDaemon::icqAuthorizeGrant(unsigned long nUin, const char *szMessage)
+unsigned long CICQDaemon::icqAuthorizeGrant(const UserId& userId, const string& /* message */)
 {
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-
-  return icqAuthorizeGrant(szUin, szMessage);
-}
-
-unsigned long CICQDaemon::icqAuthorizeGrant(const char *szId,
-  const char* /* szMessage*/)
-{
+  const string accountId = LicqUser::getUserAccountId(userId);
+  const char* szId = accountId.c_str();
   CPU_Authorize *p = new CPU_Authorize(szId);
   gLog.Info(tr("%sAuthorizing user %s\n"), L_SRVxSTR, szId);
   SendEvent_Server(p);
@@ -1020,33 +982,28 @@ unsigned long CICQDaemon::icqAuthorizeGrant(const char *szId,
 }
 
 //-----icqAuthorizeRefuse------------------------------------------------------
-unsigned long CICQDaemon::ProtoAuthorizeRefuse(const char *szId,
-  unsigned long nPPID, const char *szMessage)
+unsigned long CICQDaemon::authorizeRefuse(const UserId& userId, const string& message)
 {
   unsigned long nRet = 0;
+  unsigned long nPPID = LicqUser::getUserProtocolId(userId);
+  string accountId = LicqUser::getUserAccountId(userId);
 
   if (nPPID == LICQ_PPID)
-    nRet = icqAuthorizeRefuse(szId, szMessage);
+    nRet = icqAuthorizeRefuse(userId, message);
   else
-    PushProtoSignal(new CRefuseAuthSignal(szId, szMessage), nPPID);
+    PushProtoSignal(new CRefuseAuthSignal(accountId.c_str(), message.c_str()), nPPID);
 
   return nRet;
 }
 
-unsigned long CICQDaemon::icqAuthorizeRefuse(unsigned long nUin, const char *szMessage)
+unsigned long CICQDaemon::icqAuthorizeRefuse(const UserId& userId, const string& message)
 {
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  return icqAuthorizeRefuse(szUin, szMessage);
-}
-
-unsigned long CICQDaemon::icqAuthorizeRefuse(const char *szId,
-  const char *szMessage)
-{
+  const string accountId = LicqUser::getUserAccountId(userId);
+  const char* szId = accountId.c_str();
   char *sz = NULL;
-  if (szMessage != NULL)
+  if (!message.empty())
   {
-    sz = gTranslator.NToRN(szMessage);
+    sz = gTranslator.NToRN(message.c_str());
     gTranslator.ClientToServer(sz);
   }
   CPU_ThroughServer *p = new CPU_ThroughServer(szId, ICQ_CMDxSUB_AUTHxREFUSED, sz);
@@ -1058,14 +1015,6 @@ unsigned long CICQDaemon::icqAuthorizeRefuse(const char *szId,
   if (e != NULL)
     return e->EventId();
   return 0;
-}
-
-//-----icqRequestAuth--------------------------------------------------------
-void CICQDaemon::icqRequestAuth(unsigned long _nUin, const char *_szMessage)
-{
-  char id[16];
-  snprintf(id, 16, "%lu", _nUin);
-  icqRequestAuth(id, _szMessage);
 }
 
 void CICQDaemon::icqRequestAuth(const char* id, const char *_szMessage)
@@ -1137,6 +1086,7 @@ unsigned long CICQDaemon::icqSearchByUin(unsigned long nUin)
 //-----icqGetUserBasicInfo------------------------------------------------------
 unsigned long CICQDaemon::icqUserBasicInfo(const char *_szId)
 {
+  UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   CPU_CommonFamily *p = 0;
   bool bIsAIM = isalpha(_szId[0]);
   if (bIsAIM)
@@ -1145,19 +1095,10 @@ unsigned long CICQDaemon::icqUserBasicInfo(const char *_szId)
     p = new CPU_Meta_RequestAllInfo(_szId);
   gLog.Info(tr("%sRequesting user info (#%hu/#%d)...\n"), L_SRVxSTR,
             p->Sequence(), p->SubSequence());
-  ICQEvent *e = SendExpectEvent_Server(_szId, LICQ_PPID, p, NULL, !bIsAIM);
+  LicqEvent* e = SendExpectEvent_Server(userId, p, NULL, !bIsAIM);
   if (e != NULL)
     return e->EventId();
   return 0;
-}
-
-unsigned long CICQDaemon::icqUserBasicInfo(unsigned long _nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", _nUin);
-  szUin[12] = 0;
-
-  return icqUserBasicInfo(szUin);
 }
 
 //-----icqPing------------------------------------------------------------------
@@ -1258,8 +1199,9 @@ void CICQDaemon::icqTypingNotification(const char *_szId, bool _bActive)
 //-----icqCheckInvisible--------------------------------------------------------
 void CICQDaemon::icqCheckInvisible(const char *_szId)
 {
+  UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   CSrvPacketTcp *p = new CPU_CheckInvisible(_szId);
-  SendExpectEvent_Server(_szId, LICQ_PPID, p, NULL);
+  SendExpectEvent_Server(userId, p, NULL);
 }
 
 //-----icqSendVisibleList-------------------------------------------------------
@@ -1297,15 +1239,6 @@ void CICQDaemon::icqSendInvisibleList()
   SendEvent_Server(p);
 }
 
-//----- icqToggleVisibleList (deprecated!) -------------------------------------
-void CICQDaemon::icqToggleVisibleList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  ProtoToggleVisibleList(szUin, LICQ_PPID);
-}
-
 //-----ProtoToggleVisibleList------------------------------------------------
 void CICQDaemon::ProtoToggleVisibleList(const char* _szId, unsigned long _nPPID)
 {
@@ -1313,30 +1246,24 @@ void CICQDaemon::ProtoToggleVisibleList(const char* _szId, unsigned long _nPPID)
   if (u == NULL) return;
   bool b = u->VisibleList();
   gUserManager.DropUser(u);
-  ProtoSetInVisibleList(_szId, _nPPID, !b);
+  visibleListSet(LicqUser::makeUserId(_szId, _nPPID), !b);
 }
 
-void CICQDaemon::ProtoSetInVisibleList(const char* _szId, unsigned long _nPPID, bool visible)
+void CICQDaemon::visibleListSet(const UserId& userId, bool visible)
 {
+  unsigned long _nPPID = LicqUser::getUserProtocolId(userId);
+  string accountId = LicqUser::getUserAccountId(userId);
+
   if (!visible)
     if (_nPPID == LICQ_PPID)
-      icqRemoveFromVisibleList(_szId, _nPPID);
+      icqRemoveFromVisibleList(userId);
     else
-      PushProtoSignal(new CUnacceptUserSignal(_szId), _nPPID);
+      PushProtoSignal(new CUnacceptUserSignal(accountId.c_str()), _nPPID);
   else
     if (_nPPID == LICQ_PPID)
-      icqAddToVisibleList(_szId, _nPPID);
+      icqAddToVisibleList(userId);
     else
-      PushProtoSignal(new CAcceptUserSignal(_szId), _nPPID);
-}
-
-//-----icqToggleInvisibleList (deprecated!)-------------------------------------
-void CICQDaemon::icqToggleInvisibleList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  ProtoToggleInvisibleList(szUin, LICQ_PPID);
+      PushProtoSignal(new CAcceptUserSignal(accountId.c_str()), _nPPID);
 }
 
 //-----ProtoToggleInvisibleList-------------------------------------------------
@@ -1346,30 +1273,24 @@ void CICQDaemon::ProtoToggleInvisibleList(const char *_szId, unsigned long _nPPI
   if (u == NULL) return;
   bool b = u->InvisibleList();
   gUserManager.DropUser(u);
-  ProtoSetInInvisibleList(_szId, _nPPID, !b);
+  invisibleListSet(LicqUser::makeUserId(_szId, _nPPID), !b);
 }
 
-void CICQDaemon::ProtoSetInInvisibleList(const char* _szId, unsigned long _nPPID, bool invisible)
+void CICQDaemon::invisibleListSet(const UserId& userId, bool invisible)
 {
+  unsigned long _nPPID = LicqUser::getUserProtocolId(userId);
+  string accountId = LicqUser::getUserAccountId(userId);
+
   if (!invisible)
     if (_nPPID == LICQ_PPID)
-      icqRemoveFromInvisibleList(_szId, _nPPID);
+      icqRemoveFromInvisibleList(userId);
     else
-      PushProtoSignal(new CUnblockUserSignal(_szId), _nPPID);
+      PushProtoSignal(new CUnblockUserSignal(accountId.c_str()), _nPPID);
   else
     if (_nPPID == LICQ_PPID)
-      icqAddToInvisibleList(_szId, _nPPID);
+      icqAddToInvisibleList(userId);
     else
-      PushProtoSignal(new CBlockUserSignal(_szId), _nPPID);
-}
-
-//-----icqToggleIgnoreList (deprecated!)----------------------------------------
-void CICQDaemon::icqToggleIgnoreList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqToggleIgnoreList(szUin, LICQ_PPID);
+      PushProtoSignal(new CBlockUserSignal(accountId.c_str()), _nPPID);
 }
 
 //-----icqToggleIgnoreList------------------------------------------------------
@@ -1379,40 +1300,36 @@ void CICQDaemon::icqToggleIgnoreList(const char *_szId, unsigned long _nPPID)
   if (u == NULL) return;
   bool b = u->IgnoreList();
   gUserManager.DropUser(u);
-  ProtoSetInIgnoreList(_szId, _nPPID, b);
+  ignoreListSet(LicqUser::makeUserId(_szId, _nPPID), b);
 }
 
-void CICQDaemon::ProtoSetInIgnoreList(const char* _szId, unsigned long _nPPID, bool b)
+void CICQDaemon::ignoreListSet(const UserId& userId, bool b)
 {
+  unsigned long _nPPID = LicqUser::getUserProtocolId(userId);
+  string accountId = LicqUser::getUserAccountId(userId);
+
   if (_nPPID == LICQ_PPID)
   {
     if (b)
-      icqAddToIgnoreList(_szId, _nPPID);
+      icqAddToIgnoreList(userId);
     else
-      icqRemoveFromIgnoreList(_szId, _nPPID);
+      icqRemoveFromIgnoreList(userId);
   }
   else
   {
     if (b)
-      PushProtoSignal(new CIgnoreUserSignal(_szId), _nPPID);
+      PushProtoSignal(new CIgnoreUserSignal(accountId.c_str()), _nPPID);
     else
-      PushProtoSignal(new CUnignoreUserSignal(_szId), _nPPID);
+      PushProtoSignal(new CUnignoreUserSignal(accountId.c_str()), _nPPID);
   }
 }
 
-//-----icqAddToVisibleList (deprecated!)----------------------------------------
-void CICQDaemon::icqAddToVisibleList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqAddToVisibleList(szUin, LICQ_PPID);
-}
-
 //-----icqAddToVisibleList------------------------------------------------------
-void CICQDaemon::icqAddToVisibleList(const char* _szId, unsigned long _nPPID)
+void CICQDaemon::icqAddToVisibleList(const UserId& userId)
 {
-  ICQUser *u = gUserManager.FetchUser(_szId, _nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* _szId = accountId.c_str();
   if (u != NULL)
   {
     u->SetVisibleList(true);
@@ -1431,56 +1348,42 @@ void CICQDaemon::icqAddToVisibleList(const char* _szId, unsigned long _nPPID)
   }
 }
 
-//-----icqRemoveFromVisibleList (deprecated!)-----------------------------------
-void CICQDaemon::icqRemoveFromVisibleList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqRemoveFromVisibleList(szUin, LICQ_PPID);
-}
-
 //-----icqRemoveFromVisibleList-------------------------------------------------
-void CICQDaemon::icqRemoveFromVisibleList(const char* _szId, unsigned long _nPPID)
+void CICQDaemon::icqRemoveFromVisibleList(const UserId& userId)
 {
-  ICQUser *u = gUserManager.FetchUser(_szId, _nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* _szId = accountId.c_str();
   if (u != NULL)
   {
     u->SetVisibleList(false);
     gUserManager.DropUser(u);
   }
   CSrvPacketTcp *p = new CPU_GenericUinList(_szId, ICQ_SNACxFAM_BOS, ICQ_SNACxBOS_REMxVISIBLExLIST);
-  gLog.Info(tr("%sRemoving user %s from visible list (#%hu)...\n"), L_SRVxSTR, _szId,
-     p->Sequence());
+  gLog.Info(tr("%sRemoving user %s from visible list (#%hu)...\n"), L_SRVxSTR,
+      USERID_TOSTR(userId), p->Sequence());
   SendEvent_Server(p);
 
   if (UseServerContactList())
   {
-    u = gUserManager.FetchUser(_szId, _nPPID, LOCK_R);
+    u = gUserManager.fetchUser(userId);
     if (u != NULL)
     {
       CSrvPacketTcp *pRemove = new CPU_RemoveFromServerList(_szId, 0, u->GetVisibleSID(),
         ICQ_ROSTxVISIBLE);
       addToModifyUsers(pRemove->SubSequence(), _szId);
-      SendExpectEvent_Server(_szId, _nPPID, pRemove, NULL);
+      SendExpectEvent_Server(userId, pRemove, NULL);
       gUserManager.DropUser(u);
     }
   }
 }
 
-//-----icqAddToInvisibleList (deprecated!)--------------------------------------
-void CICQDaemon::icqAddToInvisibleList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqAddToInvisibleList(szUin, LICQ_PPID);
-}
-
 //-----icqAddToInvisibleList----------------------------------------------------
-void CICQDaemon::icqAddToInvisibleList(const char* _szId, unsigned long _nPPID)
+void CICQDaemon::icqAddToInvisibleList(const UserId& userId)
 {
-  ICQUser *u = gUserManager.FetchUser(_szId, _nPPID, LOCK_W);
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* _szId = accountId.c_str();
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
   if (u != NULL)
   {
     u->SetInvisibleList(true);
@@ -1499,19 +1402,12 @@ void CICQDaemon::icqAddToInvisibleList(const char* _szId, unsigned long _nPPID)
   }
 }
 
-//-----icqRemoveFromInvisibleList (deprecated!)---------------------------------
-void CICQDaemon::icqRemoveFromInvisibleList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqRemoveFromInvisibleList(szUin, LICQ_PPID);
-}
-
 //-----icqRemoveFromInvisibleList-----------------------------------------------
-void CICQDaemon::icqRemoveFromInvisibleList(const char *_szId, unsigned long _nPPID)
+void CICQDaemon::icqRemoveFromInvisibleList(const UserId& userId)
 {
-  ICQUser *u = gUserManager.FetchUser(_szId, _nPPID, LOCK_W);
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* _szId = accountId.c_str();
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
   if (u != NULL)
   {
     u->SetInvisibleList(false);
@@ -1524,7 +1420,7 @@ void CICQDaemon::icqRemoveFromInvisibleList(const char *_szId, unsigned long _nP
 
   if (UseServerContactList())
   {
-    u = gUserManager.FetchUser(_szId, _nPPID, LOCK_R);
+    u = gUserManager.fetchUser(userId);
     if (u)
     {
       CSrvPacketTcp *pRemove = new CPU_RemoveFromServerList(_szId, 0, u->GetInvisibleSID(),
@@ -1536,40 +1432,26 @@ void CICQDaemon::icqRemoveFromInvisibleList(const char *_szId, unsigned long _nP
   }
 }
 
-//-----icqAddToIgnoreList (deprecated!)-----------------------------------------
-void CICQDaemon::icqAddToIgnoreList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqAddToIgnoreList(szUin, LICQ_PPID);
-}
-
 //-----icqAddToIgnoreList-------------------------------------------------------
-void CICQDaemon::icqAddToIgnoreList(const char *_szId, unsigned long /* _nPPID */)
+void CICQDaemon::icqAddToIgnoreList(const UserId& userId)
 {
   if (!UseServerContactList()) return;
 
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* _szId = accountId.c_str();
   icqRemoveUser(_szId);
   CPU_AddToServerList *pAdd = new CPU_AddToServerList(_szId, ICQ_ROSTxIGNORE,
     0, false);
   SendEvent_Server(pAdd);
 }
 
-//-----icqRemoveFromIgnoreList (deprecated!)------------------------------------
-void CICQDaemon::icqRemoveFromIgnoreList(unsigned long nUin)
-{
-  char szUin[13];
-  snprintf(szUin, 12, "%lu", nUin);
-  szUin[12] = '\0';
-  icqRemoveFromIgnoreList(szUin, LICQ_PPID);
-}
-
 //-----icqRemoveFromIgnoreList--------------------------------------------------
-void CICQDaemon::icqRemoveFromIgnoreList(const char *_szId, unsigned long /* _nPPID */)
+void CICQDaemon::icqRemoveFromIgnoreList(const UserId& userId)
 {
   if (!UseServerContactList()) return;
 
+  string accountId = LicqUser::getUserAccountId(userId);
+  const char* _szId = accountId.c_str();
   icqRemoveUser(_szId);
   icqAddUser(_szId, false);
 }
@@ -1680,13 +1562,17 @@ void CICQDaemon::icqClearServerList()
 
 //-----icqSendThroughServer-----------------------------------------------------
 ICQEvent* CICQDaemon::icqSendThroughServer(const char *szId,
-  unsigned char format, char *_sMessage, CUserEvent* ue, unsigned short nCharset,
+    unsigned char format, const char *_sMessage, CUserEvent* ue, unsigned short nCharset,
   size_t nMsgLen)
 {
   ICQEvent* result;
-  const ICQUser* u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_R);
-  bool bOffline = u->StatusOffline();
-  gUserManager.DropUser(u);
+  UserId userId = LicqUser::makeUserId(szId, LICQ_PPID);
+  bool bOffline = true;
+  {
+    LicqUserReadGuard u(userId);
+    if (u.isLocked())
+      bOffline = u->StatusOffline();
+  }
 
   CPU_ThroughServer *p = new CPU_ThroughServer(szId, format, _sMessage, nCharset, bOffline, nMsgLen);
 
@@ -1709,8 +1595,7 @@ ICQEvent* CICQDaemon::icqSendThroughServer(const char *szId,
   if (m_bShuttingDown) return NULL;
 
   if (ue != NULL) ue->m_eDir = D_SENDER;
-  ICQEvent *e = new ICQEvent(this, m_nTCPSrvSocketDesc, p, CONNECT_SERVER, szId,
-    LICQ_PPID, ue);
+  LicqEvent* e = new LicqEvent(this, m_nTCPSrvSocketDesc, p, CONNECT_SERVER, userId, ue);
   if (e == NULL) return 0;
   e->m_NoAck = true;
 
@@ -1718,30 +1603,15 @@ ICQEvent* CICQDaemon::icqSendThroughServer(const char *szId,
   return result;
 }
 
-ICQEvent* CICQDaemon::icqSendThroughServer(unsigned long nUin, unsigned char format, char *_sMessage, CUserEvent* ue, unsigned short _nCharset)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  return icqSendThroughServer(szUin, format, _sMessage, ue, _nCharset);
-}
-
-//-----icqSendSms---------------------------------------------------------------
-unsigned long CICQDaemon::icqSendSms(const char *szNumber, const char *szMessage,
-				     unsigned long nUin)
-{
-  char id[16];
-  snprintf(id, 16, "%lu", nUin);
-  return icqSendSms(id, LICQ_PPID, szNumber, szMessage);
-}
-
 unsigned long CICQDaemon::icqSendSms(const char* id, unsigned long ppid,
     const char* number, const char* message)
 {
+  UserId userId = LicqUser::makeUserId(id, ppid);
   CEventSms* ue = new CEventSms(number, message, ICQ_CMDxSND_THRUxSERVER, TIME_NOW, INT_VERSION);
   CPU_SendSms* p = new CPU_SendSms(number, message);
   gLog.Info(tr("%sSending SMS through server (#%hu/#%d)...\n"), L_SRVxSTR,
       p->Sequence(), p->SubSequence());
-  ICQEvent* e = SendExpectEvent_Server(id, ppid, p, ue);
+  ICQEvent* e = SendExpectEvent_Server(userId, p, ue);
   if (e != NULL)
     return e->EventId();
   return 0;
@@ -1759,10 +1629,10 @@ void CICQDaemon::ProcessDoneEvent(ICQEvent *e)
       (e->m_eResult == EVENT_ACKED || e->m_eResult == EVENT_SUCCESS) &&
       e->m_nSubResult != ICQ_TCPxACK_RETURN)
   {
-    ICQUser* u = gUserManager.FetchUser(e->m_szId, e->m_nPPID, LOCK_W);
+    LicqUser* u = gUserManager.fetchUser(e->userId(), LOCK_W);
     if (u != NULL)
     {
-      e->m_pUserEvent->AddToHistory(u, LICQ_PPID, D_SENDER);
+      e->m_pUserEvent->AddToHistory(u, D_SENDER);
       u->SetLastSentEvent();
       m_xOnEventManager.Do(ON_EVENT_MSGSENT, u);
       gUserManager.DropUser(u);
@@ -1839,19 +1709,6 @@ void CICQDaemon::ProcessDoneEvent(ICQEvent *e)
   }
 }
 
-//-----ICQ::Logon--------------------------------------------------------------
-unsigned long CICQDaemon::ProtoLogon(unsigned long _nPPID, unsigned short _nLogonStatus)
-{
-  unsigned long nRet = 0;
-
-  if (_nPPID == LICQ_PPID)
-    nRet = icqLogon(_nLogonStatus);
-  else
-    PushProtoSignal(new CLogonSignal(_nLogonStatus), _nPPID);
-
-  return nRet;
-}
-
 unsigned long CICQDaemon::icqLogon(unsigned short logonStatus)
 {
   if (m_bLoggingOn)
@@ -1902,15 +1759,6 @@ unsigned long CICQDaemon::icqRequestLogonSalt()
   return 0;
 }
 
-//-----ICQ::icqLogoff-----------------------------------------------------------
-void CICQDaemon::ProtoLogoff(unsigned long _nPPID)
-{
-  if (_nPPID == LICQ_PPID)
-    icqLogoff();
-  else
-    PushProtoSignal(new CLogoffSignal(), _nPPID);
-}
-
 void CICQDaemon::icqLogoff()
 {
   // Kill the udp socket asap to avoid race conditions
@@ -1933,7 +1781,7 @@ void CICQDaemon::icqLogoff()
   if (nSD != -1)
   {
     CPU_Logoff p;
-    cancelledEvent = new ICQEvent(this, nSD, &p, CONNECT_SERVER, 0, NULL);
+    cancelledEvent = new LicqEvent(this, nSD, &p, CONNECT_SERVER);
     cancelledEvent->m_pPacket = NULL;
     cancelledEvent->m_bCancelled = true;
     SendEvent(nSD, p, true);
@@ -2050,7 +1898,7 @@ void CICQDaemon::postLogoff(int nSD, ICQEvent *cancelledEvent)
     m_szRegisterPasswd = 0;
   }
 
-  PushPluginSignal(new CICQSignal(SIGNAL_LOGOFF, 0, 0, LICQ_PPID, 0, 0));
+  pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, 0, USERID_NONE, LICQ_PPID));
 
   // Mark all users as offline, this also updates the last seen
   // online field
@@ -2062,18 +1910,23 @@ void CICQDaemon::postLogoff(int nSD, ICQEvent *cancelledEvent)
   FOR_EACH_PROTO_USER_END
 }
 
-//-----ProtoTypingNotification-------------------------------------------------
-void CICQDaemon::ProtoTypingNotification(const char *_szId,
-  unsigned long _nPPID, bool _bActive, int nSocket)
+void CICQDaemon::sendTypingNotification(const UserId& userId, bool active, int nSocket)
 {
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user == NULL)
+    return;
+  string accountId = user->accountId();
+  unsigned long ppid = user->ppid();
+  gUserManager.DropUser(user);
+
   //TODO: Make for each plugin
-  if (m_bSendTN)
-  {
-    if (_nPPID == LICQ_PPID)
-      icqTypingNotification(_szId, _bActive);
-    else 
-      PushProtoSignal(new CTypingNotificationSignal(_szId, _bActive, nSocket), _nPPID);
-  }
+  if (!m_bSendTN)
+    return;
+
+  if (ppid == LICQ_PPID)
+    icqTypingNotification(accountId.c_str(), active);
+  else
+    PushProtoSignal(new CTypingNotificationSignal(accountId.c_str(), active, nSocket), ppid);
 }
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
@@ -2094,7 +1947,7 @@ int CICQDaemon::ConnectToLoginServer()
 
 int CICQDaemon::ConnectToServer(const char* server, unsigned short port)
 {
-  SrvSocket* s = new SrvSocket(gUserManager.OwnerId(LICQ_PPID).c_str(), LICQ_PPID);
+  SrvSocket* s = new SrvSocket(gUserManager.ownerUserId(LICQ_PPID));
 
   if (m_bProxyEnabled)
   {
@@ -2110,8 +1963,8 @@ int CICQDaemon::ConnectToServer(const char* server, unsigned short port)
     delete m_xProxy;
     m_xProxy = NULL;
   }
-  
-  if (!s->ConnectTo(server, port, m_xProxy))
+
+  if (!s->connectTo(string(server), port, m_xProxy))
   {
     delete s;
     return -1;
@@ -2129,10 +1982,10 @@ int CICQDaemon::ConnectToServer(const char* server, unsigned short port)
   else
   {
     // Now get the internal ip from this socket
-    CPacket::SetLocalIp(  NetworkIpToPacketIp(s->LocalIp() ));
+    CPacket::SetLocalIp(LE_32(s->getLocalIpInt()));
     ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
     if (o)
-      o->SetIntIp(s->LocalIp());
+      o->SetIntIp(s->getLocalIpInt());
     gUserManager.DropOwner(o);
 
     gSocketManager.AddSocket(s);
@@ -2146,26 +1999,26 @@ int CICQDaemon::ConnectToServer(const char* server, unsigned short port)
 }
 
 //-----FindUserForInfoUpdate-------------------------------------------------
-ICQUser *CICQDaemon::FindUserForInfoUpdate(const char *szId, ICQEvent *e,
+LicqUser* CICQDaemon::FindUserForInfoUpdate(const UserId& userId, LicqEvent* e,
    const char *t)
 {
-  ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
   if (u == NULL)
   {
     // If the event is NULL as well then nothing we can do
     if (e == NULL)
     {
       gLog.Warn(tr("%sResponse to unknown %s info request for unknown user (%s).\n"),
-                L_WARNxSTR, t, szId);
+          L_WARNxSTR, t, USERID_TOSTR(userId));
       return NULL;
     }
     // Check if we need to create the user
     if (e->m_pUnknownUser == NULL)
     {
-      e->m_pUnknownUser = new ICQUser(szId, LICQ_PPID);
+      e->m_pUnknownUser = new LicqUser(LicqUser::getUserAccountId(userId), LicqUser::getUserProtocolId(userId));
     }
     // If not, validate the uin
-    else if (strcmp(e->m_pUnknownUser->IdString(), szId) != 0)
+    else if (e->m_pUnknownUser->id() == userId)
     {
       gLog.Error("%sInternal Error: Event contains wrong user.\n", L_ERRORxSTR);
       return NULL;
@@ -2175,14 +2028,8 @@ ICQUser *CICQDaemon::FindUserForInfoUpdate(const char *szId, ICQEvent *e,
     u->Lock(LOCK_W);
   }
   gLog.Info(tr("%sReceived %s information for %s (%s).\n"), L_SRVxSTR, t,
-            u->GetAlias(), szId);
+      u->GetAlias(), USERID_TOSTR(userId));
   return u;
-}
-
-//-----FindUinByCellular-------------------------------------------------------
-unsigned long CICQDaemon::FindUinByCellular(const char *szCellular)
-{
-  return strtoul(FindUserByCellular(szCellular).c_str(), NULL, 10);
 }
 
 string CICQDaemon::FindUserByCellular(const char *szCellular)
@@ -2192,7 +2039,7 @@ string CICQDaemon::FindUserByCellular(const char *szCellular)
 
   FOR_EACH_USER_START(LOCK_R)
   {
-    ParseDigits(szParsedNumber1, pUser->GetCellularNumber(), 15);
+    ParseDigits(szParsedNumber1, pUser->getCellularNumber().c_str(), 15);
     ParseDigits(szParsedNumber2, szCellular, 15);
     if (!strcmp(szParsedNumber1, szParsedNumber2))
       id = pUser->IdString();
@@ -2227,8 +2074,8 @@ bool CICQDaemon::ProcessSrvPacket(CBuffer& packet)
          >> nLen;
 
   // Eww
-  rev_e_short(nSequence);
-  rev_e_short(nLen);
+  nSequence = BSWAP_16(nSequence);
+  nLen = BSWAP_16(nLen);
 
   switch (nChannel)
   {
@@ -2469,10 +2316,8 @@ void CICQDaemon::ProcessServiceFam(CBuffer &packet, unsigned short nSubtype)
     if (packet.getTLVLen(0x0006) == 4)
       m_nDesiredStatus = packet.UnpackUnsignedLongTLV(0x0006);
     if (packet.getTLVLen(0x000a) == 4) {
-      realIP = packet.UnpackUnsignedLongTLV(0x000a);
-      rev_e_long(realIP);
-      realIP = PacketIpToNetworkIp(realIP);
-      CPacket::SetRealIp(NetworkIpToPacketIp(realIP));
+      realIP = BE_32(packet.UnpackUnsignedLongTLV(0x000a));
+      CPacket::SetRealIp(LE_32(realIP));
       ICQOwner* owner = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
       owner->SetIp(realIP);
       gUserManager.DropOwner(owner);
@@ -2571,27 +2416,25 @@ void CICQDaemon::ProcessLocationFam(CBuffer &packet, unsigned short nSubtype)
       gTranslator.ServerToClient(szInfo);
       ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
       u->SetEnableSave(false);
-      u->SetAbout(szInfo);
+        u->setUserInfoString("About", szInfo);
       delete [] szInfo;
 
       // translating string with Translation Table
 
       delete [] szId;
-      szId = strdup(u->IdString());
-      
+        UserId userId = u->id();
+
       // save the user infomation
       u->SetEnableSave(true);
-      u->SaveAboutInfo();
+        u->saveUserInfo();
       gUserManager.DropUser(u);
 
       ICQEvent *e = DoneServerEvent(nSubSequence, EVENT_SUCCESS);
       if (e)
         ProcessDoneEvent(e);
-      
-      
-      PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_ABOUT, szId, LICQ_PPID));
-      free(szId);
-    }
+
+        pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_ABOUT, userId));
+      }
 
     break;
   }
@@ -2629,7 +2472,7 @@ void CICQDaemon::ProcessBuddyFam(CBuffer &packet, unsigned short nSubtype)
     }
 
 //     userIP = packet.UnpackUnsignedLongTLV(0x0a, 1);
-//     rev_e_long(userIP);
+//      userIP = BSWAP_32(userIP);
     ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
     if (u == NULL)
     {
@@ -2662,8 +2505,8 @@ void CICQDaemon::ProcessBuddyFam(CBuffer &packet, unsigned short nSubtype)
     if (packet.getTLVLen(0x000a) == 4) {
       nUserIP = packet.UnpackUnsignedLongTLV(0x000a);
       if (nUserIP) {
-        rev_e_long(nUserIP);
-        nUserIP = PacketIpToNetworkIp(nUserIP);
+          nUserIP = BSWAP_32(nUserIP);
+        nUserIP = LE_32(nUserIP);
       }
     }
     if( u->StatusOffline() || nUserIP )
@@ -2768,7 +2611,7 @@ void CICQDaemon::ProcessBuddyFam(CBuffer &packet, unsigned short nSubtype)
 
       if (intIP)
       {
-        intIP = PacketIpToNetworkIp(intIP);
+        intIP = LE_32(intIP);
         u->SetIntIp(intIP);
       }
 
@@ -2966,11 +2809,9 @@ void CICQDaemon::ProcessBuddyFam(CBuffer &packet, unsigned short nSubtype)
 
 
         // Which Plugin?
-        PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-                                        USER_PLUGIN_STATUS, u->IdString(), u->PPID(), 0));
-
-        break;
-      }
+            pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_PLUGIN_STATUS, u->id()));
+            break;
+          }
 
       default:
         gLog.Warn(tr("%sUnknown index %d from %s.\n"), L_WARNxSTR, index,
@@ -3068,9 +2909,8 @@ void CICQDaemon::ProcessBuddyFam(CBuffer &packet, unsigned short nSubtype)
     u->SetClientTimestamp(0);
     u->SetTyping(ICQ_TYPING_INACTIVEx0); 
     ChangeUserStatus(u, ICQ_STATUS_OFFLINE); 
+      pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_TYPING, u->id()));
     gUserManager.DropUser(u); 
-    PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_TYPING, 
-                                    u->IdString(), LICQ_PPID)); 
     break;
   }
   case ICQ_SNACxBDY_RIGHTSxGRANTED:
@@ -3169,6 +3009,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
     nTimeSent   = time(0L);
     mFormat    = packet.UnpackUnsignedShortBE();
     szId       = packet.UnpackUserString();
+      UserId userId = LicqUser::makeUserId(szId, LICQ_PPID);
 
     //TODO Check this again with new protocol plugin support
     //if (nUin < 10000 && nUin != ICQ_UINxPAGER && nUin != ICQ_UINxSMS)
@@ -3209,23 +3050,13 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
       szMessage[nMsgLen] = '\0';
       
       bool ignore = false;
-      // Lock the user to add the message to their queue
-      ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+      // Get the user and allow adding unless we ignore new users
+          LicqUser* u = gUserManager.fetchUser(userId, LOCK_W, !Ignore(IGNORE_NEWUSERS));
       if (u == NULL)
       {
-        if (Ignore(IGNORE_NEWUSERS))
-        {
           gLog.Info(tr("%sMessage from new user (%s), ignoring.\n"), L_SBLANKxSTR, szId);
           //TODO
           ignore = true;
-        }
-        else
-        {
-          gLog.Info(tr("%sMessage from new user (%s).\n"),
-                    L_SBLANKxSTR, szId);
-          AddUserToList(szId, LICQ_PPID, false, true);
-          u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
-        }
       }
       else
         gLog.Info(tr("%sMessage through server from %s (%s).\n"), L_SRVxSTR,
@@ -3242,23 +3073,27 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
       char* szMsg = gTranslator.RNToN(szMessage);
       delete [] szMessage;
 
+          // Unlock user mutex before parsing message so we don't block other threads
+          //   for a long time since parser may blocks to prompt for GPG passphrase.
+          gUserManager.DropUser(u);
+
       // now send the message to the user
       CEventMsg *e = CEventMsg::Parse(szMsg, ICQ_CMDxRCV_SYSxMSGxONLINE, nTimeSent, 0);
       delete [] szMsg;
 
       if (ignore)
       {
-        RejectEvent(szId, e);
+            RejectEvent(userId, e);
         break;
       }
 
+          u = gUserManager.fetchUser(userId, LOCK_W, !Ignore(IGNORE_NEWUSERS));
       u->SetTyping(ICQ_TYPING_INACTIVEx0);
       
       if (AddUserEvent(u, e))
         m_xOnEventManager.Do(ON_EVENT_MSG, u);
+          pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_TYPING, u->id()));
       gUserManager.DropUser(u);
-      PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_TYPING, szId,
-                                      LICQ_PPID));
       break;
     }
     case 2: // OSCAR's "Add ICBM parameter" message
@@ -3290,8 +3125,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
       bool bUTF8 = false;
       if (memcmp(cap, ICQ_CAPABILITY_UTF8, CAP_LENGTH) == 0)
         bUTF8 = true;
-        
-      ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+
+          LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
       if (u)
       {
         u->SetSupportsUTF8(bUTF8);
@@ -3357,7 +3192,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
           nChannel = ICQ_CHNxSTATUS;
 
         bool bNewUser = false;
-        ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+            LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
         if (u == NULL)
         {
           u = new ICQUser(szId, LICQ_PPID);
@@ -3406,7 +3241,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
       //gTranslator.ServerToClient(szMsg);
 
       bool bNewUser = false;
-      u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+          u = gUserManager.fetchUser(userId, LOCK_W);
       if (u == NULL)
       {
         u = new ICQUser(szId, LICQ_PPID);
@@ -3417,9 +3252,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
       
       if (msgTxt.getTLVLen(0x0004) == 4)
       {
-        unsigned long Ip = msgTxt.UnpackUnsignedLongTLV(0x0004);
-        rev_e_long(Ip);
-        u->SetIp(PacketIpToNetworkIp(Ip));
+        unsigned long Ip = BE_32(msgTxt.UnpackUnsignedLongTLV(0x0004));
+        u->SetIp(Ip);
       }
 
       // Special status to us?
@@ -3441,6 +3275,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
         gTranslator.ClientToServer(szMsg);
       }
 
+          UserId userId = u->id();
       if (!bNewUser)
         gUserManager.DropUser(u);
 
@@ -3455,10 +3290,9 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
         break;
       }
 
-      PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_TYPING, szId,
-                                      LICQ_PPID));
-      break;
-    }
+          pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_TYPING, userId));
+          break;
+        }
     case 4:
     //Version 5 (V5) protocol messages incapsulated in v7 packet.
     {
@@ -3599,7 +3433,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
           gTranslator.ServerToClient (szFields[2]);  // last name
           gTranslator.ServerToClient (szFields[5]);  // comment
 
-          CEventAuthRequest *e = new CEventAuthRequest(szId, LICQ_PPID,
+              CEventAuthRequest* e = new CEventAuthRequest(userId,
                                                        szFields[0], szFields[1],
                                                        szFields[2], szFields[3],
                                                        szFields[5],
@@ -3617,7 +3451,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
           // Translating string with Translation Table
           gTranslator.ServerToClient(szMessage);
 
-          CEventAuthRefused *e = new CEventAuthRefused(szId, LICQ_PPID, szMessage,
+              CEventAuthRefused* e = new CEventAuthRefused(userId, szMessage,
                                                        ICQ_CMDxRCV_SYSxMSGxONLINE, 
                                                        nTimeSent, 0);
           eEvent = e;
@@ -3630,14 +3464,14 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
           // translating string with Translation Table
           gTranslator.ServerToClient (szMessage);
 
-          ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+              LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
           if (u)
           {
             u->SetAwaitingAuth(false);
             gUserManager.DropUser(u);
           }
 
-          CEventAuthGranted *e = new CEventAuthGranted(szId, LICQ_PPID,
+              CEventAuthGranted* e = new CEventAuthGranted(userId,
             szMessage, ICQ_CMDxRCV_SYSxMSGxONLINE, nTimeSent, 0);
           eEvent = e;
           break;
@@ -3681,7 +3515,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
           gTranslator.ServerToClient (szFields[1]);  // first name
           gTranslator.ServerToClient (szFields[2]);  // last name
 
-          CEventAdded *e = new CEventAdded(szId, LICQ_PPID, szFields[0],
+              CEventAdded* e = new CEventAdded(userId, szFields[0],
             szFields[1], szFields[2], szFields[3], ICQ_CMDxRCV_SYSxMSGxONLINE,
             nTimeSent, 0);
           delete [] szFields;
@@ -3790,7 +3624,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
           delete [] buf;
           //TODO
               CEventUnknownSysMsg* e = new CEventUnknownSysMsg(nTypeMsg, ICQ_CMDxRCV_SYSxMSGxONLINE,
-                  szId, LICQ_PPID, szMessage, nTimeSent, 0);
+                  userId, szMessage, nTimeSent, 0);
 
           ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
           AddUserEvent(o, e);
@@ -3805,24 +3639,17 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
 	  case ICQ_CMDxSUB_URL:
 	  case ICQ_CMDxSUB_CONTACTxLIST:
 	  {
-	    // Lock the user to add the message to their queue
-	    ICQUser* u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+                // Get the user and allow adding unless we ignore new users
+                LicqUser* u = gUserManager.fetchUser(userId, LOCK_W, !Ignore(IGNORE_NEWUSERS));
 	    if (u == NULL)
 	    {
-	      if (Ignore(IGNORE_NEWUSERS))
-	      {
           gLog.Info(tr("%s%s from new user (%s), ignoring.\n"), L_SBLANKxSTR, szType, szId);
 
           if (szType) free(szType);
 
           //TODO
-          RejectEvent(szId, eEvent);
-          break;
-        }
-
-	      gLog.Info(tr("%s%s from new user (%s).\n"), L_SBLANKxSTR, szType, szId);
-	      AddUserToList(szId, LICQ_PPID, false, true);
-	      u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+              RejectEvent(userId, eEvent);
+              break;
 	    }
 	    else
 	      gLog.Info(tr("%s%s through server from %s (%s).\n"), L_SBLANKxSTR,
@@ -3833,9 +3660,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
 	    if (szType) free(szType);
 	    if (AddUserEvent(u, eEvent))
 	      m_xOnEventManager.Do(nTypeEvent, u);
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_TYPING, u->id()));
 	    gUserManager.DropUser(u);
-	    PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_TYPING, szId,
-                                            LICQ_PPID));
             break;
 	  }
 	  case ICQ_CMDxSUB_AUTHxREQUEST:
@@ -3846,7 +3672,7 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
 	  case ICQ_CMDxSUB_WEBxPANEL:
 	  case ICQ_CMDxSUB_EMAILxPAGER:
 	  {
-            const ICQUser* u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_R);
+                const LicqUser* u = gUserManager.fetchUser(userId);
             bool bIgnore = (u && u->IgnoreList());
             gUserManager.DropUser(u);
 
@@ -3859,8 +3685,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
 	    ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
 	    if (AddUserEvent(o, eEvent))
 	    {
+                eEvent->AddToHistory(o, D_RECEIVER);
 	      gUserManager.DropOwner(o);
-	      eEvent->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
 	      m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
 	    }
 	    else
@@ -3889,8 +3715,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
 	      gLog.Info(tr("%sSMS from %s.\n"), L_BLANKxSTR, eSms->Number());
 	      if (AddUserEvent(o, eEvent))
 	      {
+                  eEvent->AddToHistory(o, D_RECEIVER);
 	        gUserManager.DropOwner(o);
-	        eEvent->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
 	        m_xOnEventManager.Do(ON_EVENT_SMS, NULL);
 	      }
 	      else
@@ -4013,8 +3839,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
     }
     
     packet >> nAckFlags >> nMsgFlags >> nLen;
-    
-    char szMessage[nLen + 1];
+
+    char* szMessage = new char[nLen + 1];
     for (unsigned short i = 0; i < nLen; i++)
       packet >> szMessage[i];
     szMessage[nLen] = '\0';
@@ -4058,7 +3884,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
                                       szMessage);
     }
     gUserManager.DropUser(u);
-    
+      delete [] szMessage;
+
     ICQEvent *e = DoneServerEvent(nMsgID, EVENT_ACKED);
     if (e)
     {
@@ -4110,9 +3937,8 @@ void CICQDaemon::ProcessMessageFam(CBuffer &packet, unsigned short nSubtype)
       break;
     }
     u->SetTyping(nTyping);
+      pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_TYPING, u->id()));
     gUserManager.DropUser(u);
-    PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_TYPING, szId,
-                                    LICQ_PPID));
     delete [] szId;
     break;
   }
@@ -4267,7 +4093,7 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
               // assigned to
               //if (gUserManager.UpdateUsersInGroups())
               //{
-              //  PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST,
+              //  pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST,
               //    LIST_ALL, 0));
               //}
             }
@@ -4377,8 +4203,7 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
         }
 
         u->SaveLicqInfo();
-        PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL,
-              u->IdString(), u->PPID()));
+        pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->id()));
         gUserManager.DropUser(u);
       }
 
@@ -4531,9 +4356,8 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
               {
                 u->AddToGroup(GROUPS_USER, gUserManager.GetGroupFromID(
                               e->ExtraInfo()));
+                pushPluginSignal(new LicqSignal(SIGNAL_ADDxSERVERxLIST, 0, u->id()));
                 gUserManager.DropUser(u);
-                PushPluginSignal(new CICQSignal(SIGNAL_ADDxSERVERxLIST, 0,
-                                                pending.c_str(), LICQ_PPID));
               }
             }
 
@@ -4571,7 +4395,8 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
     case ICQ_SNACxLIST_AUTHxREQxSRV:
     {
       char *szId = packet.UnpackUserString();
-      const ICQUser* u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_R);
+      UserId userId = LicqUser::makeUserId(szId, LICQ_PPID);
+      const LicqUser* u = gUserManager.fetchUser(userId);
       bool bIgnore = (u && u->IgnoreList());
       gUserManager.DropUser(u);
 
@@ -4589,15 +4414,15 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
       for (int i = 0; i < nMsgLen; i++)
         packet >> szMsg[i];
       szMsg[nMsgLen] = '\0';
-      
-      CEventAuthRequest *e = new CEventAuthRequest(szId, LICQ_PPID, "", "", "", "", nMsgLen ? szMsg : "",
+
+      CEventAuthRequest* e = new CEventAuthRequest(userId, "", "", "", "", nMsgLen ? szMsg : "",
                                                    ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
 
       ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
       if (AddUserEvent(o, e))
       {
+        e->AddToHistory(o, D_RECEIVER);
         gUserManager.DropOwner(o);
-        e->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
         m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
       }
       else
@@ -4611,6 +4436,7 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
     case ICQ_SNACxLIST_AUTHxRESPONS: // The resonse to our authorization request
     {
       char *szId = packet.UnpackUserString();
+      UserId userId = LicqUser::makeUserId(szId, LICQ_PPID);
       unsigned char granted;
 
       packet >> granted;
@@ -4627,10 +4453,10 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
       CUserEvent *eEvent;
       if (granted)
       {
-         eEvent = new CEventAuthGranted(szId, LICQ_PPID, szMsg,
+         eEvent = new CEventAuthGranted(userId, szMsg,
            ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
 
-         ICQUser *u = gUserManager.FetchUser(szId, LICQ_PPID, LOCK_W);
+         LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
          if (u)
          {
            u->SetAwaitingAuth(false);
@@ -4640,15 +4466,15 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
       }
       else
       {
-        eEvent = new CEventAuthRefused(szId, LICQ_PPID, szMsg,
+        eEvent = new CEventAuthRefused(userId, szMsg,
             ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
       }
 
       ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
       if (AddUserEvent(o, eEvent))
       {
+        eEvent->AddToHistory(o, D_RECEIVER);
         gUserManager.DropOwner(o);
-        eEvent->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
         m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
       }
       else
@@ -4662,16 +4488,17 @@ void CICQDaemon::ProcessListFam(CBuffer &packet, unsigned short nSubtype)
     case ICQ_SNACxLIST_AUTHxADDED: // You were added to a contact list
     {
       char *szId = packet.UnpackUserString();
+      UserId userId = LicqUser::makeUserId(szId, LICQ_PPID);
       gLog.Info(tr("%sUser %s added you to their contact list.\n"), L_SRVxSTR,
                 szId);
 
-      CEventAdded *e = new CEventAdded(szId, LICQ_PPID, "", "", "", "",
+      CEventAdded* e = new CEventAdded(userId, "", "", "", "",
                                        ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
       ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
       if (AddUserEvent(o, e))
       {
+        e->AddToHistory(o, D_RECEIVER);
         gUserManager.DropOwner(o);
-        e->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
         m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
       }
       else
@@ -4719,7 +4546,7 @@ void CICQDaemon::ProcessBOSFam(CBuffer& /* packet */, unsigned short nSubtype)
     // ### FIX subsequence !!
     ICQEvent *e = DoneExtendedServerEvent(0, EVENT_SUCCESS);
     if (e != NULL) ProcessDoneEvent(e);
-    PushPluginSignal(new CICQSignal(SIGNAL_LOGON, 0, 0));
+      pushPluginSignal(new LicqSignal(SIGNAL_LOGON, 0));
 
     //icqSetStatus(m_nDesiredStatus);
     break;
@@ -4776,6 +4603,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
       nUin = msg.UnpackUnsignedLong();
           char id[16];
           snprintf(id, 16, "%lu", nUin);
+          UserId userId = LicqUser::makeUserId(id, LICQ_PPID);
 
       sendTM.tm_year = msg.UnpackUnsignedShort() - 1900;
       sendTM.tm_mon = msg.UnpackChar() - 1;
@@ -4850,7 +4678,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           gTranslator.ServerToClient (szFields[2]);  // last name
           gTranslator.ServerToClient (szFields[5]);  // comment
 
-              CEventAuthRequest *e = new CEventAuthRequest(id, LICQ_PPID,
+              CEventAuthRequest* e = new CEventAuthRequest(userId,
                   szFields[0], szFields[1], szFields[2], szFields[3],
                   szFields[5], ICQ_CMDxRCV_SYSxMSGxOFFLINE, nTimeSent, 0);
               delete [] szFields;
@@ -4864,7 +4692,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           // Translating string with Translation Table
           gTranslator.ServerToClient(szMessage);
 
-              CEventAuthRefused* e = new CEventAuthRefused(id, LICQ_PPID,
+              CEventAuthRefused* e = new CEventAuthRefused(userId,
                   szMessage, ICQ_CMDxRCV_SYSxMSGxOFFLINE, nTimeSent, 0);
 	  eEvent = e;
 	  break;
@@ -4876,14 +4704,14 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           // translating string with Translation Table
           gTranslator.ServerToClient (szMessage);
 
-              ICQUser* u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_W);
+              LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
           if (u)
           {
             u->SetAwaitingAuth(false);
             gUserManager.DropUser(u);
           }
 
-              CEventAuthGranted* e = new CEventAuthGranted(id, LICQ_PPID,
+              CEventAuthGranted* e = new CEventAuthGranted(userId,
                   szMessage, ICQ_CMDxRCV_SYSxMSGxOFFLINE, nTimeSent, 0);
 	  eEvent = e;
 	  break;
@@ -4926,7 +4754,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           gTranslator.ServerToClient (szFields[1]);  // first name
           gTranslator.ServerToClient (szFields[2]);  // last name
 
-              CEventAdded* e = new CEventAdded(id, LICQ_PPID, szFields[0],
+              CEventAdded* e = new CEventAdded(userId, szFields[0],
                   szFields[1], szFields[2], szFields[3],
                   ICQ_CMDxRCV_SYSxMSGxOFFLINE, nTimeSent, 0);
               delete [] szFields;
@@ -5032,7 +4860,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
                        nTypeMsg, packet.print(buf));
           delete [] buf;
               CEventUnknownSysMsg* e = new CEventUnknownSysMsg(nTypeMsg,
-                  ICQ_CMDxRCV_SYSxMSGxOFFLINE, id, LICQ_PPID, szMessage, nTimeSent, 0);
+                  ICQ_CMDxRCV_SYSxMSGxOFFLINE, userId, szMessage, nTimeSent, 0);
 
               ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
           AddUserEvent(o, e);
@@ -5047,21 +4875,15 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 	  case ICQ_CMDxSUB_URL:
 	  case ICQ_CMDxSUB_CONTACTxLIST:
 	  {
-                // Lock the user to add the message to their queue
-                ICQUser* u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_W);
+                // Get the user and allow adding unless we ignore new users
+                LicqUser* u = gUserManager.fetchUser(userId, LOCK_W, !Ignore(IGNORE_NEWUSERS));
                 if (u == NULL)
                 {
-                  if (Ignore(IGNORE_NEWUSERS))
-                  {
                     gLog.Info(tr("%sOffline %s from new user (%s), ignoring.\n"),
                         L_SBLANKxSTR, szType, id);
                     if (szType) free(szType);
-                      RejectEvent(id, eEvent);
+                    RejectEvent(userId, eEvent);
                     break;
-                  }
-                  gLog.Info(tr("%sOffline %s from new user (%s).\n"), L_SBLANKxSTR, szType, id);
-                  AddUserToList(id, LICQ_PPID, false, true);
-                  u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_W);
                 }
                 else
                   gLog.Info(tr("%sOffline %s through server from %s (%s).\n"),
@@ -5081,7 +4903,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 	  case ICQ_CMDxSUB_WEBxPANEL:
 	  case ICQ_CMDxSUB_EMAILxPAGER:
 	  {
-                const ICQUser* u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_R);
+                const LicqUser* u = gUserManager.fetchUser(userId);
             bool bIgnore = false;
             if (u)
             {
@@ -5099,8 +4921,8 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
                 ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
             if (AddUserEvent(o, eEvent))
 	    {
+                  eEvent->AddToHistory(o, D_RECEIVER);
                   gUserManager.DropOwner(o);
-              eEvent->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
               m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
 	    }
 	    else
@@ -5127,8 +4949,8 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 	      gLog.Info(tr("%sOffline SMS from %s.\n"), L_BLANKxSTR, eSms->Number());
 	      if (AddUserEvent(o, eEvent))
 	      {
+	            eEvent->AddToHistory(o, D_RECEIVER);
                     gUserManager.DropOwner(o);
-	        eEvent->AddToHistory(NULL, LICQ_PPID, D_RECEIVER);
 	        m_xOnEventManager.Do(ON_EVENT_SMS, NULL);
 	      }
 	      else
@@ -5189,39 +5011,40 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
         if (pEvent != NULL && nResult == META_SUCCESS)
         {
           CPU_Meta_SetGeneralInfo *p = (CPU_Meta_SetGeneralInfo *)pEvent->m_pPacket;
-              ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
-          o->SetEnableSave(false);
-          o->SetAlias(p->m_szAlias);
-          o->SetFirstName(p->m_szFirstName);
-          o->SetLastName(p->m_szLastName);
-          o->SetEmailPrimary(p->m_szEmailPrimary);
-          o->SetCity(p->m_szCity);
-          o->SetState(p->m_szState);
-          o->SetPhoneNumber(p->m_szPhoneNumber);
-          o->SetFaxNumber(p->m_szFaxNumber);
-          o->SetAddress(p->m_szAddress);
-          o->SetCellularNumber(p->m_szCellularNumber);
-          o->SetZipCode(p->m_szZipCode);
-          o->SetCountryCode(p->m_nCountryCode);
-          o->SetTimezone(p->m_nTimezone);
-          o->SetHideEmail(p->m_nHideEmail); // 0 = no, 1 = yes
 
-          // translating string with Translation Table
-          gTranslator.ServerToClient(o->m_szAlias);
-          gTranslator.ServerToClient(o->m_szFirstName);
-          gTranslator.ServerToClient(o->m_szLastName);
-          gTranslator.ServerToClient(o->m_szEmailPrimary);
-          gTranslator.ServerToClient(o->m_szCity);
-          gTranslator.ServerToClient(o->m_szState);
-          gTranslator.ServerToClient(o->m_szPhoneNumber);
-          gTranslator.ServerToClient(o->m_szFaxNumber);
-          gTranslator.ServerToClient(o->m_szAddress);
-          gTranslator.ServerToClient(o->m_szCellularNumber);
-          gTranslator.ServerToClient(o->m_szZipCode);
+              // translating string with Translation Table
+              gTranslator.ServerToClient(p->m_szAlias);
+              gTranslator.ServerToClient(p->m_szFirstName);
+              gTranslator.ServerToClient(p->m_szLastName);
+              gTranslator.ServerToClient(p->m_szEmailPrimary);
+              gTranslator.ServerToClient(p->m_szCity);
+              gTranslator.ServerToClient(p->m_szState);
+              gTranslator.ServerToClient(p->m_szPhoneNumber);
+              gTranslator.ServerToClient(p->m_szFaxNumber);
+              gTranslator.ServerToClient(p->m_szAddress);
+              gTranslator.ServerToClient(p->m_szCellularNumber);
+              gTranslator.ServerToClient(p->m_szZipCode);
+
+              ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
+              o->SetEnableSave(false);
+              o->setAlias(p->m_szAlias);
+              o->setUserInfoString("FirstName", p->m_szFirstName);
+              o->setUserInfoString("LastName", p->m_szLastName);
+              o->setUserInfoString("Email1", p->m_szEmailPrimary);
+              o->setUserInfoString("City", p->m_szCity);
+              o->setUserInfoString("State", p->m_szState);
+              o->setUserInfoString("PhoneNumber", p->m_szPhoneNumber);
+              o->setUserInfoString("FaxNumber", p->m_szFaxNumber);
+              o->setUserInfoString("Address", p->m_szAddress);
+              o->setUserInfoString("CellularNumber", p->m_szCellularNumber);
+              o->setUserInfoString("Zipcode", p->m_szZipCode);
+              o->setUserInfoUint("Country", p->m_nCountryCode);
+          o->SetTimezone(p->m_nTimezone);
+              o->setUserInfoBool("HideEmail", p->m_nHideEmail); // 0 = no, 1 = yes
 
           // save the user infomation
           o->SetEnableSave(true);
-          o->SaveGeneralInfo();
+              o->saveUserInfo();
               gUserManager.DropOwner(o);
         }
       }
@@ -5234,18 +5057,20 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
         if (pEvent != NULL && nResult == META_SUCCESS)
         {
           CPU_Meta_SetEmailInfo *p = (CPU_Meta_SetEmailInfo *)pEvent->m_pPacket;
-              ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
-          o->SetEnableSave(false);
-          o->SetEmailSecondary(p->m_szEmailSecondary);
-          o->SetEmailOld(p->m_szEmailOld);
 
-          // translating string with Translation Table
-          gTranslator.ServerToClient(o->m_szEmailSecondary);
-          gTranslator.ServerToClient(o->m_szEmailOld);
+              // translating string with Translation Table
+              gTranslator.ServerToClient(p->m_szEmailSecondary);
+              gTranslator.ServerToClient(p->m_szEmailOld);
+
+              ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
+
+          o->SetEnableSave(false);
+              o->setUserInfoString("Email2", p->m_szEmailSecondary);
+              o->setUserInfoString("Email0", p->m_szEmailOld);
 
           // save the user infomation
           o->SetEnableSave(true);
-          o->SaveGeneralInfo();
+              o->saveUserInfo();
               gUserManager.DropOwner(o);
         }
       }
@@ -5258,24 +5083,25 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
         if (pEvent != NULL && nResult == META_SUCCESS)
         {
           CPU_Meta_SetMoreInfo *p = (CPU_Meta_SetMoreInfo *)pEvent->m_pPacket;
+
+              // translating string with Translation Table
+              gTranslator.ServerToClient(p->m_szHomepage);
+
               ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
           o->SetEnableSave(false);
-          o->SetAge(p->m_nAge);
-          o->SetGender(p->m_nGender);
-          o->SetHomepage(p->m_szHomepage);
-          o->SetBirthYear(p->m_nBirthYear);
-          o->SetBirthMonth(p->m_nBirthMonth);
-          o->SetBirthDay (p->m_nBirthDay);
-          o->SetLanguage1(p->m_nLanguage1);
-          o->SetLanguage2(p->m_nLanguage2);
-          o->SetLanguage3(p->m_nLanguage3);
-
-          // translating string with Translation Table
-          gTranslator.ServerToClient(o->m_szHomepage);
+              o->setUserInfoUint("Age", p->m_nAge);
+              o->setUserInfoUint("Gender", p->m_nGender);
+              o->setUserInfoString("Homepage", p->m_szHomepage);
+              o->setUserInfoUint("BirthYear", p->m_nBirthYear);
+              o->setUserInfoUint("BirthMonth", p->m_nBirthMonth);
+              o->setUserInfoUint("BirthDay", p->m_nBirthDay);
+              o->setUserInfoUint("Language1", p->m_nLanguage1);
+              o->setUserInfoUint("Language2", p->m_nLanguage2);
+              o->setUserInfoUint("Language3", p->m_nLanguage3);
 
           // save the user infomation
           o->SetEnableSave(true);
-          o->SaveMoreInfo();
+              o->saveUserInfo();
               gUserManager.DropOwner(o);
         }
       }
@@ -5291,18 +5117,17 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
                            (CPU_Meta_SetInterestsInfo *)pEvent->m_pPacket;
               ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
           o->SetEnableSave(false);
-          unsigned short cat;
-          const char *descr;
-          o->m_Interests->Clean();
-          for (int i = 0; p->m_Interests->Get(i, &cat, &descr); i++)
-          {
-            char *tmp = strdup(descr);
-            gTranslator.ServerToClient(tmp);
-            o->m_Interests->AddCategory(cat, tmp);
+              o->getInterests().clear();
+              UserCategoryMap::iterator i;
+              for (i = p->myInterests.begin(); i != p->myInterests.end(); ++i)
+              {
+                char* tmp = strdup(i->second.c_str());
+                gTranslator.ServerToClient(tmp);
+                o->getInterests()[i->first] = tmp;
             free(tmp);
           }
           o->SetEnableSave(true);
-          o->SaveInterestsInfo();
+              o->saveUserInfo();
               gUserManager.DropOwner(o);
         }
       }
@@ -5315,36 +5140,37 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
         if (pEvent != NULL && nResult == META_SUCCESS)
         {
           CPU_Meta_SetWorkInfo *p = (CPU_Meta_SetWorkInfo *)pEvent->m_pPacket;
+
+              // translating string with Translation Table
+              gTranslator.ServerToClient(p->m_szCity);
+              gTranslator.ServerToClient(p->m_szState);
+              gTranslator.ServerToClient(p->m_szPhoneNumber);
+              gTranslator.ServerToClient(p->m_szFaxNumber);
+              gTranslator.ServerToClient(p->m_szAddress);
+              gTranslator.ServerToClient(p->m_szZip);
+              gTranslator.ServerToClient(p->m_szName);
+              gTranslator.ServerToClient(p->m_szDepartment);
+              gTranslator.ServerToClient(p->m_szPosition);
+              gTranslator.ServerToClient(p->m_szHomepage);
+
               ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
           o->SetEnableSave(false);
-          o->SetCompanyCity(p->m_szCity);
-          o->SetCompanyState(p->m_szState);
-          o->SetCompanyPhoneNumber(p->m_szPhoneNumber);
-          o->SetCompanyFaxNumber(p->m_szFaxNumber);
-          o->SetCompanyAddress(p->m_szAddress);
-          o->SetCompanyZip(p->m_szZip);
-          o->SetCompanyCountry(p->m_nCompanyCountry);
-          o->SetCompanyName(p->m_szName);
-          o->SetCompanyDepartment(p->m_szDepartment);
-          o->SetCompanyPosition(p->m_szPosition);
-          o->SetCompanyOccupation(p->m_nCompanyOccupation);
-          o->SetCompanyHomepage(p->m_szHomepage);
-
-          // translating string with Translation Table
-          gTranslator.ServerToClient(o->m_szCompanyCity);
-          gTranslator.ServerToClient(o->m_szCompanyState);
-          gTranslator.ServerToClient(o->m_szCompanyPhoneNumber);
-          gTranslator.ServerToClient(o->m_szCompanyFaxNumber);
-          gTranslator.ServerToClient(o->m_szCompanyAddress);
-          gTranslator.ServerToClient(o->m_szCompanyZip);
-          gTranslator.ServerToClient(o->m_szCompanyName);
-          gTranslator.ServerToClient(o->m_szCompanyDepartment);
-          gTranslator.ServerToClient(o->m_szCompanyPosition);
-          gTranslator.ServerToClient(o->m_szCompanyHomepage);
+              o->setUserInfoString("CompanyCity", p->m_szCity);
+              o->setUserInfoString("CompanyState", p->m_szState);
+              o->setUserInfoString("CompanyPhoneNumber", p->m_szPhoneNumber);
+              o->setUserInfoString("CompanyFaxNumber", p->m_szFaxNumber);
+              o->setUserInfoString("CompanyAddress", p->m_szAddress);
+              o->setUserInfoString("CompanyZip", p->m_szZip);
+              o->setUserInfoUint("CompanyCountry", p->m_nCompanyCountry);
+              o->setUserInfoString("CompanyName", p->m_szName);
+              o->setUserInfoString("CompanyDepartment", p->m_szDepartment);
+              o->setUserInfoString("CompanyPosition", p->m_szPosition);
+              o->setUserInfoUint("CompanyOccupation", p->m_nCompanyOccupation);
+              o->setUserInfoString("CompanyHomepage", p->m_szHomepage);
 
           // save the user infomation
           o->SetEnableSave(true);
-          o->SaveWorkInfo();
+              o->saveUserInfo();
               gUserManager.DropOwner(o);
         }
       }
@@ -5361,12 +5187,12 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           char* msg = gTranslator.RNToN(p->m_szAbout);
           gTranslator.ServerToClient(msg);
           o->SetEnableSave(false);
-          o->SetAbout(msg);
+              o->setUserInfoString("About", msg);
           delete [] msg;
 
           // save the user infomation
           o->SetEnableSave(true);
-          o->SaveAboutInfo();
+              o->saveUserInfo();
               gUserManager.DropOwner(o);
         }
       }
@@ -5387,29 +5213,26 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
                              (CPU_Meta_SetOrgBackInfo *)pEvent->m_pPacket;
             ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
             o->SetEnableSave(false);
-            unsigned short cat;
-            const char *descr;
-            o->m_Organizations->Clean();
-            for (int i = 0; p->m_Orgs->Get(i, &cat, &descr); i++)
-            {
-              char *tmp = strdup(descr);
+                o->getOrganizations().clear();
+                UserCategoryMap::iterator i;
+                for (i = p->myOrganizations.begin(); i != p->myOrganizations.end(); ++i)
+                {
+                  char *tmp = strdup(i->second.c_str());
               gTranslator.ServerToClient(tmp);
-              o->m_Organizations->AddCategory(cat, tmp);
+                  o->getOrganizations()[i->first] = tmp;
               free(tmp);
             }
-            o->SetEnableSave(true);
-            o->SaveOrganizationsInfo();
 
-            o->m_Backgrounds->Clean();
-            for (int i = 0; p->m_Background->Get(i, &cat, &descr); i++)
-            {
-              char *tmp = strdup(descr);
+                o->getBackgrounds().clear();
+                for (i = p->myBackgrounds.begin(); i != p->myBackgrounds.end(); ++i)
+                {
+                  char *tmp = strdup(i->second.c_str());
               gTranslator.ServerToClient(tmp);
-              o->m_Backgrounds->AddCategory(cat, tmp);
+                  o->getBackgrounds()[i->first] = tmp;
               free(tmp);
             }
             o->SetEnableSave(true);
-            o->SaveBackgroundsInfo();
+                o->saveUserInfo();
                 gUserManager.DropOwner(o);
           }
         }
@@ -5552,24 +5375,17 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           msg >> nUin;
           char szUin[14];
           snprintf(szUin, sizeof(szUin), "%lu", nUin);
+              UserId userId = LicqUser::makeUserId(szUin, LICQ_PPID);
           gLog.Info(tr("%sRandom chat user found (%s).\n"), L_SRVxSTR, szUin);
-          ICQUser *u = gUserManager.FetchUser(szUin, LICQ_PPID, LOCK_W);
           bool bNewUser = false;
-          if (u == NULL)
-          {
-             AddUserToList(szUin, LICQ_PPID, false, true);
-             u = gUserManager.FetchUser(szUin, LICQ_PPID, LOCK_W);
-             bNewUser = true;
-          }
+              LicqUser* u = gUserManager.fetchUser(userId, LOCK_W, true, &bNewUser);
 
           msg.UnpackUnsignedShort(); // chat group
 
-          nIp = msg.UnpackUnsignedLongBE();
-          nIp = PacketIpToNetworkIp(nIp);
+          nIp = LE_32(msg.UnpackUnsignedLongBE());
           u->SetIpPort(nIp, msg.UnpackUnsignedLong());
 
-          nIp = msg.UnpackUnsignedLongBE();
-          nIp = PacketIpToNetworkIp(nIp);
+          nIp = LE_32(msg.UnpackUnsignedLongBE());
           u->SetIntIp(nIp);
 
           msg >> nMode;
@@ -5584,8 +5400,8 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           if (bNewUser)
             icqRequestMetaInfo(szUin);
 
-          e->m_pSearchAck = new CSearchAck(szUin, LICQ_PPID);
-        }
+              e->m_pSearchAck = new CSearchAck(userId);
+            }
         else
           gLog.Info(tr("%sNo random chat user found.\n"), L_SRVxSTR);
         ProcessDoneEvent(e);
@@ -5641,7 +5457,11 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 
         msg.UnpackUnsignedShort(); // length of the rest of the packet.
         nFoundUin = msg.UnpackUnsignedLong();
-        CSearchAck *s = new CSearchAck(nFoundUin);;
+        char foundAccount[14];
+        snprintf(foundAccount, sizeof(foundAccount), "%lu", nFoundUin);
+            UserId foundUserId = LicqUser::makeUserId(foundAccount, LICQ_PPID);
+
+            CSearchAck* s = new CSearchAck(foundUserId);
 
         s->m_szAlias = strdup(msg.UnpackString(szTemp, sizeof(szTemp)));
         s->m_szFirstName = strdup(msg.UnpackString(szTemp, sizeof(szTemp)));
@@ -5698,7 +5518,7 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
       {
         ICQEvent *e = NULL;
         ICQUser *u = NULL;
-        const char* szId = NULL;
+        UserId userId = USERID_NONE;
         bool multipart = false;
 
         if ((nResult == 0x32) || (nResult == 0x14) || (nResult == 0x1e))
@@ -5723,9 +5543,9 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
             gLog.Warn("%sUnmatched extended event (%d)!\n", L_WARNxSTR, nSubSequence);
               break;
           }
-          szId = e->Id();
+          userId = e->userId();
 
-          u = FindUserForInfoUpdate(szId, e, "extended");
+          u = FindUserForInfoUpdate(userId, e, "extended");
           if (u == NULL)
           {
             gLog.Warn(tr("%scan't find user for updating!\n"), L_WARNxSTR);
@@ -5741,59 +5561,58 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 
           // main home info
           u->SetEnableSave(false);
-          if (u->m_bKeepAliasOnUpdate && !gUserManager.FindOwner(szId, LICQ_PPID))
-            tmp = msg.UnpackString(); // Skip the alias, user wants to keep his own.
-          else
+          tmp = msg.UnpackString();
+          // Skip the alias if user wants to keep his own.
+          if (!u->m_bKeepAliasOnUpdate || userId == gUserManager.ownerUserId(LICQ_PPID))
           {
-            tmp = msg.UnpackString();
             char *szUTFAlias = tmp ? gTranslator.ToUnicode(tmp, u->UserEncoding()) : 0;
             gTranslator.ServerToClient(szUTFAlias);
-            u->SetAlias(szUTFAlias);
+                  u->setAlias(szUTFAlias);
             //printf("Alias: %s\n", szUTFAlias);
           }
           if (tmp)
             delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetFirstName(tmp);
+                u->setUserInfoString("FirstName", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetLastName(tmp);
+                u->setUserInfoString("LastName", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetEmailPrimary(tmp);
+                u->setUserInfoString("Email1", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCity(tmp);
+                u->setUserInfoString("City", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetState(tmp);
+                u->setUserInfoString("State", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetPhoneNumber(tmp);
+                u->setUserInfoString("PhoneNumber", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetFaxNumber(tmp);
+                u->setUserInfoString("FaxNumber", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetAddress(tmp);
+                u->setUserInfoString("Address", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCellularNumber(tmp);
+                u->setUserInfoString("CellularNumber", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetZipCode(tmp);
+                u->setUserInfoString("Zipcode", tmp);
           delete[] tmp;
-          u->SetCountryCode( msg.UnpackUnsignedShort() );
+                u->setUserInfoUint("Country", msg.UnpackUnsignedShort() );
           u->SetTimezone( msg.UnpackChar() );
           u->SetAuthorization( !msg.UnpackChar() );
           unsigned char nStatus = msg.UnpackChar(); // Web aware status
 
-          if (gUserManager.FindOwner(u->IdString(), u->PPID()) != 0)
-          {
+                if (!u->User())
+                {
             static_cast<ICQOwner *>(u)->SetWebAware(nStatus);
             /* this unpack is inside the if statement since it appears only
                for the owner request */
-            u->SetHideEmail( msg.UnpackChar() );
+                  u->setUserInfoBool("HideEmail", msg.UnpackChar());
           }
           else
           {
@@ -5808,30 +5627,30 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveGeneralInfo();
+                u->saveUserInfo();
 
           PushExtendedEvent(e);
           multipart = true;
 
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->IdString(), u->PPID()));
-          break;
-        }
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->id()));
+                break;
+              }
         case ICQ_CMDxMETA_MORExINFO:
         {
           gLog.Info(tr("%sMore info on %s (%s).\n"), L_SRVxSTR, u->GetAlias(), u->IdString());
 
           u->SetEnableSave(false);
-          u->SetAge( msg.UnpackUnsignedShort() );
-          u->SetGender( msg.UnpackChar() );
+                u->setUserInfoUint("Age", msg.UnpackUnsignedShort());
+                u->setUserInfoUint("Gender", msg.UnpackChar());
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetHomepage(tmp);
+                u->setUserInfoString("Homepage", tmp);
           delete[] tmp;
-          u->SetBirthYear( msg.UnpackUnsignedShort() );
-          u->SetBirthMonth( msg.UnpackChar() );
-          u->SetBirthDay (msg.UnpackChar() );
-          u->SetLanguage1( msg.UnpackChar() );
-          u->SetLanguage2( msg.UnpackChar() );
-          u->SetLanguage3( msg.UnpackChar() );
+                u->setUserInfoUint("BirthYear", msg.UnpackUnsignedShort());
+                u->setUserInfoUint("BirthMonth", msg.UnpackChar());
+                u->setUserInfoUint("BirthDay", msg.UnpackChar());
+                u->setUserInfoUint("Language1", msg.UnpackChar());
+                u->setUserInfoUint("Language2", msg.UnpackChar());
+                u->setUserInfoUint("Language3", msg.UnpackChar());
 
           //TODO
 /*
@@ -5861,14 +5680,14 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveMoreInfo();
+                u->saveUserInfo();
 
           PushExtendedEvent(e);
           multipart = true;
 
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_MORE, u->IdString(), u->PPID()));
-          break;
-        }
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_MORE, u->id()));
+                break;
+              }
         case ICQ_CMDxMETA_EMAILxINFO:
         {
 
@@ -5891,24 +5710,23 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
             }
 
             if(i == 0)
-              u->SetEmailSecondary(tmp);
+                    u->setUserInfoString("Email2", tmp);
             else if(i == 1)
-              u->SetEmailOld(tmp);
+                    u->setUserInfoString("Email0", tmp);
 
             delete[] tmp;
           }
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveGeneralInfo();
+                u->saveUserInfo();
 
           PushExtendedEvent(e);
           multipart = true;
-          
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_EXT, u->IdString(), u->PPID()));
-          break;
-        }
 
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_EXT, u->id()));
+                break;
+              }
         case ICQ_CMDxMETA_HOMEPAGExINFO:
         {
           gLog.Info("%sHomepage info on %s (%s).\n", L_SRVxSTR, u->GetAlias(),
@@ -5917,31 +5735,31 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           u->SetEnableSave(false);
           
           unsigned char categoryPresent = msg.UnpackChar();
-          u->SetHomepageCatPresent(categoryPresent);
-          
+                u->setUserInfoBool("HomepageCatPresent", categoryPresent);
+
           if (categoryPresent)
           {
-            u->SetHomepageCatCode(msg.UnpackUnsignedShort());
+                  u->setUserInfoUint("HomepageCatCode", msg.UnpackUnsignedShort());
 
             char *rawmsg = msg.UnpackString();
             char *msg = gTranslator.RNToN(rawmsg);
             delete [] rawmsg;
 
             gTranslator.ServerToClient(msg);
-            u->SetHomepageDesc(msg);
+                  u->setUserInfoString("HomepageDesc", msg);
             delete [] msg;
           }
 
-          u->SetICQHomepagePresent(msg.UnpackChar());
+                u->setUserInfoBool("ICQHomepagePresent", msg.UnpackChar());
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveHomepageInfo();
+                u->saveUserInfo();
 
           PushExtendedEvent(e);
           multipart = true;
-          
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_HP, u->IdString(), u->PPID()));
+
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_HP, u->id()));
           break;
         }
 
@@ -5950,47 +5768,46 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 
           u->SetEnableSave(false);
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyCity(tmp);
+                u->setUserInfoString("CompanyCity", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyState(tmp);
+                u->setUserInfoString("CompanyState", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyPhoneNumber(tmp);
+                u->setUserInfoString("CompanyPhoneNumber", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyFaxNumber(tmp);
+                u->setUserInfoString("CompanyFaxNumber", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyAddress(tmp);
+                u->setUserInfoString("CompanyAddress", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyZip(tmp);
+                u->setUserInfoString("CompanyZip", tmp);
           delete[] tmp;
-          u->SetCompanyCountry( msg.UnpackUnsignedShort() );
+                u->setUserInfoUint("CompanyCountry", msg.UnpackUnsignedShort());
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyName(tmp);
-          delete[] tmp;
-          gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyDepartment(tmp);
+                u->setUserInfoString("CompanyName", tmp);
           delete[] tmp;
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyPosition(tmp);
+                u->setUserInfoString("CompanyDepartment", tmp);
           delete[] tmp;
-          u->SetCompanyOccupation(msg.UnpackUnsignedShort());
           gTranslator.ServerToClient( tmp = msg.UnpackString() );
-          u->SetCompanyHomepage(tmp);
+                u->setUserInfoString("CompanyPosition", tmp);
+          delete[] tmp;
+                u->setUserInfoUint("CompanyOccupation", msg.UnpackUnsignedShort());
+          gTranslator.ServerToClient( tmp = msg.UnpackString() );
+                u->setUserInfoString("CompanyHomepage", tmp);
           delete[] tmp;
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveWorkInfo();
+                u->saveUserInfo();
 
           PushExtendedEvent(e);
           multipart = true;
 
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_WORK, u->IdString(), u->PPID()));
-
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_WORK, u->id()));
           break;
 
         case ICQ_CMDxMETA_ABOUT:
@@ -6002,94 +5819,82 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
           delete [] rawmsg;
           gTranslator.ServerToClient(msg);
           u->SetEnableSave(false);
-          u->SetAbout( msg );
+                u->setUserInfoString("About", msg);
           delete [] msg;
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveAboutInfo();
+                u->saveUserInfo();
 
           PushExtendedEvent(e);
           multipart = true;
 
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_ABOUT, u->IdString(), u->PPID()));
-
-          break;
-        }
-
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_ABOUT, u->id()));
+                break;
+              }
         case ICQ_CMDxMETA_INTERESTSxINFO:
         {
           unsigned i, n;
-          bool nRet = true;
 
           gLog.Info("%sPersonal Interests info on %s (%s).\n", L_SRVxSTR,
                     u->GetAlias(), u->IdString());
 
           u->SetEnableSave(false);
-          u->m_Interests->Clean();
+                u->getInterests().clear();
           n = msg.UnpackChar();
 
-          for (i = 0; nRet && i < n; i++)
-          { 
+                for (i = 0; i < n; ++i)
+                {
             unsigned short cat = msg.UnpackUnsignedShort();
             tmp = msg.UnpackString();
             gTranslator.ServerToClient(tmp);
-            nRet = u->m_Interests->AddCategory(cat, tmp);
+                  u->getInterests()[cat] = tmp;
             delete [] tmp;
           }
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveInterestsInfo();
-          
+                u->saveUserInfo();
+
           PushExtendedEvent(e);
           multipart = true;
-          
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_MORE2,
-                           u->IdString(), u->PPID()));
-          break;
-        }
 
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_MORE2, u->id()));
+                break;
+              }
         case ICQ_CMDxMETA_PASTxINFO:
         {
           // past background info - last one received
           unsigned i, n;
-          bool nRet = true;
 
           gLog.Info("%sOrganizations/Past Background info on %s (%s).\n",
                     L_SRVxSTR, u->GetAlias(), u->IdString());
 
           u->SetEnableSave(false);
 
-          u->m_Backgrounds->Clean();
- 
+                u->getBackgrounds().clear();
+
           n = msg.UnpackChar();
 
-          for (i = 0; nRet && i < n; i++)
-          {
+                for (i = 0; i < n; ++i)
+                {
             unsigned short cat = msg.UnpackUnsignedShort();
             tmp = msg.UnpackString();
             gTranslator.ServerToClient(tmp);
-            nRet = u->m_Backgrounds->AddCategory(cat, tmp);
+                  u->getBackgrounds()[cat] = tmp;
             delete [] tmp;
           }
 
-          // save the user infomation
-          u->SetEnableSave(true);
-          u->SaveBackgroundsInfo();
-
           //---- Organizations
-          u->SetEnableSave(false);
-          u->m_Organizations->Clean();
-          nRet = true;
+                u->getOrganizations().clear();
           n = msg.UnpackChar();
 
-          for(i = 0; nRet && i < n; i++)
+                for (i = 0; i < n; ++i)
           {
             unsigned short cat = msg.UnpackUnsignedShort();
             tmp = msg.UnpackString();
             gTranslator.ServerToClient(tmp);
-            nRet = u->m_Organizations->AddCategory(cat, tmp);
+                  u->getOrganizations()[cat] = tmp;
             delete [] tmp;
           }
 
@@ -6098,15 +5903,12 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
 
           // save the user infomation
           u->SetEnableSave(true);
-          u->SaveOrganizationsInfo();
+                u->saveUserInfo();
           u->SaveLicqInfo();
 
-          PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_MORE2,
-                           u->IdString(), u->PPID()));
-
-          break;
-        }
-
+                pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_MORE2, u->id()));
+                break;
+              }
         default:
         {
           char* buf;
@@ -6123,11 +5925,11 @@ void CICQDaemon::ProcessVariousFam(CBuffer &packet, unsigned short nSubtype)
             ProcessDoneEvent(e);
           } else {
             gLog.Warn(tr("%sResponse to unknown extended info request for %s (%s).\n"),
-                      L_WARNxSTR, u->GetAlias(), szId);
+                      L_WARNxSTR, u->GetAlias(), USERID_TOSTR(userId));
           }
         }
 
-        PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_EXT, u->IdString(), u->PPID()));
+            pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_EXT, u->id()));
         gUserManager.DropUser(u);
       }
 
@@ -6248,8 +6050,8 @@ void CICQDaemon::ProcessAuthFam(CBuffer &packet, unsigned short nSubtype)
         SaveConf();
       }
 
-      PushPluginSignal(new CICQSignal(SIGNAL_NEW_OWNER, 0, szUin, LICQ_PPID));
-      
+      pushPluginSignal(new LicqSignal(SIGNAL_NEW_OWNER, 0, USERID_NONE, LICQ_PPID));
+
       // Reconnect now
       int nSD = m_nTCPSrvSocketDesc;
       m_nTCPSrvSocketDesc = -1;
@@ -6313,7 +6115,7 @@ void CICQDaemon::ProcessAuthFam(CBuffer &packet, unsigned short nSubtype)
       
       // Push a signal to the plugin to load the file
       gLog.Info("%sReceived verification image.\n", L_SRVxSTR);
-      PushPluginSignal(new CICQSignal(SIGNAL_VERIFY_IMAGE, 0, 0, LICQ_PPID));
+      pushPluginSignal(new LicqSignal(SIGNAL_VERIFY_IMAGE, 0, USERID_NONE, LICQ_PPID));
       break;
     }
 
@@ -6337,35 +6139,35 @@ void CICQDaemon::ProcessUserList()
 
   for (iter = receivedUserList.begin(); iter != receivedUserList.end(); iter++)
   {
-    const char* id = iter->first.c_str();
+    UserId userId = LicqUser::makeUserId(iter->first, LICQ_PPID);
     CUserProperties* data = iter->second;
 
-    if (id == NULL || id[0] == '\0')
+    if (!USERID_ISVALID(userId))
     {
       gLog.Warn(tr("%sEmpty User ID was received in the contact list.\n"),
           L_SRVxSTR);
       continue;
     }
 
-    bool isOnList = gUserManager.IsOnList(id, LICQ_PPID);
+    bool isOnList = gUserManager.userExists(userId);
 
     if (!isOnList)
     {
-      AddUserToList(id, LICQ_PPID, false, false); // Don't notify server
+      gUserManager.addUser(userId, true, false, gUserManager.GetGroupFromID(data->groupId)); // Don't notify server
       gLog.Info(tr("%sAdded %s (%s) to list from server.\n"),
-          L_SRVxSTR, (data->newAlias ? data->newAlias.get() : id), id);
+          L_SRVxSTR, (data->newAlias ? data->newAlias.get() : USERID_TOSTR(userId)), USERID_TOSTR(userId));
     }
 
-    ICQUser* u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_W);
-    if (u == NULL)
+    LicqUserWriteGuard u(userId);
+    if (!u.isLocked())
       continue;
 
     // For now, just save all the TLVs. We should change this to have awaiting auth check
     // for the 0x0066 TLV, SMS number if it has the 0x013A TLV, etc
     u->SetTLVList(data->tlvs);
 
-    if (data->newAlias != NULL)
-      u->SetAlias(data->newAlias.get());
+    if (data->newAlias != NULL && !u->m_bKeepAliasOnUpdate)
+      u->setAlias(data->newAlias.get());
 
     u->SetSID(data->normalSid);
     u->SetGSID(data->groupId);
@@ -6375,7 +6177,8 @@ void CICQDaemon::ProcessUserList()
     u->SetInvisibleList(data->invisibleSid != 0);
     u->SetIgnoreList(data->inIgnoreList);
 
-    u->AddToGroup(GROUPS_USER, gUserManager.GetGroupFromID(data->groupId));
+    if (isOnList)
+      u->AddToGroup(GROUPS_USER, gUserManager.GetGroupFromID(data->groupId));
 
     u->SetAwaitingAuth(data->awaitingAuth);
 
@@ -6390,16 +6193,14 @@ void CICQDaemon::ProcessUserList()
       char* tmp = gTranslator.FromUnicode(data->newCellular.get());
       if (tmp != NULL)
       {
-        u->SetCellularNumber(tmp);
+        u->setUserInfoString("CellularNumber", tmp);
         delete[] tmp;
       }
     }
 
     // Save GSID, SID and group memberships
     u->SaveLicqInfo();
-    gUserManager.DropUser(u);
-
-    PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL, id, LICQ_PPID));
+    pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->id()));
   }
 
   receivedUserList.clear();
@@ -6412,8 +6213,8 @@ void CICQDaemon::ProcessDataChannel(CBuffer &packet)
   unsigned short nFamily, nSubtype;
 
   packet >> nFamily >> nSubtype;
-  rev_e_short(nFamily);
-  rev_e_short(nSubtype);
+  nFamily = BSWAP_16(nFamily);
+  nSubtype = BSWAP_16(nSubtype);
 
   switch (nFamily)
   {
@@ -6486,17 +6287,15 @@ bool CICQDaemon::ProcessCloseChannel(CBuffer &packet)
   case 0x1D:
   case 0x18:
     gLog.Error(tr("%sRate limit exceeded.\n"), L_ERRORxSTR);
-    PushPluginSignal(new CICQSignal(SIGNAL_LOGOFF, LOGOFF_RATE, 0,
-                                    LICQ_PPID, 0, 0));
-    break;
+      pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_RATE, USERID_NONE, LICQ_PPID));
+      break;
 
   case 0x04:
   case 0x05:
     gLog.Error(tr("%sInvalid UIN and password combination.\n"), L_ERRORxSTR);
-    PushPluginSignal(new CICQSignal(SIGNAL_LOGOFF, LOGOFF_PASSWORD, 0,
-                                    LICQ_PPID, 0, 0));
-    break;
-    
+      pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_PASSWORD, USERID_NONE, LICQ_PPID));
+      break;
+
   case 0x0C:
   case 0x0D:
   case 0x12:
@@ -6601,7 +6400,7 @@ int CICQDaemon::RequestReverseConnection(const char* id,
                                          unsigned short nLocalPort,
                                          unsigned short nRemotePort)
 {
-  if (gUserManager.FindOwner(id, LICQ_PPID) != NULL)
+  if (id == gUserManager.OwnerId(LICQ_PPID))
     return -1;
 
   ICQUser* u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_W);

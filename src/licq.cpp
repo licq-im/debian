@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -183,14 +183,14 @@ extern "C" void DisplayFatalError(const char* error, int useLicqLog)
 /*-----Helper functions for CLicq::UpgradeLicq-----------------------------*/
 int SelectUserUtility(const struct dirent *d)
 {
-  char *pcDot = strrchr(d->d_name, '.');
+  const char* pcDot = strrchr(d->d_name, '.');
   if (pcDot == NULL) return (0);
   return (strcmp(pcDot, ".uin") == 0);
 }
 
 int SelectHistoryUtility(const struct dirent *d)
 {
-  char *pcDot = strchr(d->d_name, '.');
+  const char* pcDot = strchr(d->d_name, '.');
   if (pcDot == NULL) return (0);
   return (strcmp(pcDot, ".history") == 0 ||
           strcmp(pcDot, ".history.removed") == 0);
@@ -1068,8 +1068,7 @@ CProtoPlugin *CLicq::LoadProtoPlugin(const char *_szName)
 
   // Let the gui plugins know about the new protocol plugin
   if (licqDaemon)
-    licqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_NEWxPROTO_PLUGIN,p->PPID(),
-                                                0));
+    licqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_NEWxPROTO_PLUGIN, p->PPID()));
   return p;
 }
 

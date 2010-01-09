@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 #include "adduserdlg.h"
 
 #include "licq_icqd.h"
+#include <licq_user.h>
 
 //TODO Add a drop down list of the avaialable protocols
 //     that a user may be added for
@@ -114,7 +115,10 @@ void AddUserDlg::ok()
     server->ProtoPluginList(pl);
     for (it = pl.begin(); it != pl.end(); it++)
       if (strcmp((*it)->Name(), cmbProtocol->currentText().latin1()) == 0)
-        server->AddUserToList(strUser, (*it)->PPID());
+      {
+        UserId userId = LicqUser::makeUserId(strUser, (*it)->PPID());
+        gUserManager.addUser(userId);
+      }
   }
 
   close(true);

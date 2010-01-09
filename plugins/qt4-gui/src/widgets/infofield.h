@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -73,6 +73,14 @@ public:
    * @param timestamp Timestamp in UTC to set
    */
   void setDateTime(uint timestamp);
+
+protected:
+  /**
+   * A key was pressed, overloaded to get keyboard shortcuts
+   *
+   * @param event Key event
+   */
+  virtual void keyPressEvent(QKeyEvent* event);
 
 private:
   QColor myBaseRo;

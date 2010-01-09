@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2001-2006 Licq developers
+ * Copyright (C) 2001-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -91,7 +91,7 @@ QTextCodec* UserCodec::defaultEncoding()
   return QTextCodec::codecForLocale();
 }
 
-QTextCodec* UserCodec::codecForICQUser(ICQUser *u)
+QTextCodec* UserCodec::codecForICQUser(const LicqUser* u)
 {
   const char* preferred_encoding = u->UserEncoding();
 
@@ -103,12 +103,12 @@ QTextCodec* UserCodec::codecForICQUser(ICQUser *u)
   return defaultEncoding();
 }
 
-QTextCodec *UserCodec::codecForProtoUser(const char *szId, unsigned long nPPID)
+const QTextCodec* UserCodec::codecForUserId(const UserId& userId)
 {
-  QTextCodec *codec = defaultEncoding();
+  const QTextCodec* codec = defaultEncoding();
 
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
-  if (u)
+  const LicqUser* u = gUserManager.fetchUser(userId);
+  if (u != NULL)
   {
     codec = UserCodec::codecForICQUser(u);
     gUserManager.DropUser(u);
@@ -117,13 +117,13 @@ QTextCodec *UserCodec::codecForProtoUser(const char *szId, unsigned long nPPID)
   return codec;
 }
 
-QTextCodec *UserCodec::codecForCChatUser(CChatUser *u)
+const QTextCodec* UserCodec::codecForCChatUser(CChatUser* u)
 {
   if (nameForCharset(u->FontEncoding()) != QString::null)
     return QTextCodec::codecForName(nameForCharset(u->FontEncoding()));
 
   // return default encoding
-  return codecForProtoUser(u->Id(), u->PPID());
+  return codecForUserId(u->userId());
 }
 
 QString UserCodec::encodingForMib(int mib)

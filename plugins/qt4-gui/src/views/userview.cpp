@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,18 +23,24 @@
 #include <QApplication>
 #include <QHeaderView>
 #include <QMouseEvent>
+#include <QTimer>
 
 #include "config/contactlist.h"
 #include "config/iconmanager.h"
 #include "config/skin.h"
 
 #include "contactlist/maincontactlistproxy.h"
+#include "contactlist/mode2contactlistproxy.h"
 
 using namespace LicqQtGui;
 
 UserView::UserView(ContactListModel* contactList, QWidget* parent)
   : UserViewBase(contactList, parent)
 {
+  myRemovedUserTimer = new QTimer(this);
+  myRemovedUserTimer->setSingleShot(true);
+  connect(myRemovedUserTimer, SIGNAL(timeout()), SLOT(forgetRemovedUser()));
+
   // Use a proxy model for sorting and filtering
   myListProxy = new MainContactListProxy(myContactList, this);
   setModel(myListProxy);
@@ -57,7 +63,7 @@ UserView::UserView(ContactListModel* contactList, QWidget* parent)
   connect(Config::ContactList::instance(), SIGNAL(listLookChanged()), SLOT(configUpdated()));
   connect(Config::ContactList::instance(), SIGNAL(currentListChanged()), SLOT(updateRootIndex()));
   connect(Config::ContactList::instance(), SIGNAL(listSortingChanged()), SLOT(resort()));
-  connect(myContactList, SIGNAL(modelReset()), SLOT(updateRootIndex()));
+  connect(myListProxy, SIGNAL(modelReset()), SLOT(updateRootIndex()));
 }
 
 UserView::~UserView()
@@ -65,29 +71,31 @@ UserView::~UserView()
   // Empty
 }
 
-bool UserView::MainWindowSelectedItemUser(QString& id, unsigned long& ppid) const
+UserId UserView::currentUserId() const
 {
+  if (!currentIndex().isValid())
+    return USERID_NONE;
+
   if (static_cast<ContactListModel::ItemType>
       (currentIndex().data(ContactListModel::ItemTypeRole).toInt()) != ContactListModel::UserItem)
-    return false;
+    return USERID_NONE;
 
-  id = currentIndex().data(ContactListModel::UserIdRole).toString();
-  ppid = currentIndex().data(ContactListModel::PpidRole).toUInt();
-  return true;
+  return currentIndex().data(ContactListModel::UserIdRole).value<UserId>();
 }
 
 void UserView::updateRootIndex()
 {
   bool threadView = Config::ContactList::instance()->threadView();
+  bool mode2View = Config::ContactList::instance()->mode2View();
   GroupType groupType = Config::ContactList::instance()->groupType();
-  unsigned long groupId = Config::ContactList::instance()->groupId();
+  int groupId = Config::ContactList::instance()->groupId();
 
   QModelIndex newRoot = QModelIndex();
 
   if (threadView && groupType == GROUPS_SYSTEM && groupId == GROUP_ALL_USERS)
   {
     // Hide the system groups that exist in the model but should not be displayed in threaded view
-    dynamic_cast<MainContactListProxy*>(myListProxy)->setThreadedView(true);
+    dynamic_cast<MainContactListProxy*>(myListProxy)->setThreadedView(true, mode2View);
   }
   else
   {
@@ -95,7 +103,7 @@ void UserView::updateRootIndex()
     if (newRoot.isValid())
     {
       // Turn off group filtering first, otherwise we cannot switch from threaded view to a system group
-      dynamic_cast<MainContactListProxy*>(myListProxy)->setThreadedView(false);
+      dynamic_cast<MainContactListProxy*>(myListProxy)->setThreadedView(false, false);
 
       // Hidden groups may not be sorted, force a resort just in case
       resort();
@@ -133,9 +141,12 @@ void UserView::expandGroups()
   for (int i = 0; i < myListProxy->rowCount(QModelIndex()); ++i)
   {
     QModelIndex index = myListProxy->index(i, 0, QModelIndex());
-    unsigned short gid = index.data(ContactListModel::GroupIdRole).toUInt();
+    if (static_cast<ContactListModel::ItemType>(index.data(ContactListModel::ItemTypeRole).toInt()) != ContactListModel::GroupItem)
+      continue;
 
-    setExpanded(index, Config::ContactList::instance()->groupState(gid));
+    int gid = index.data(ContactListModel::GroupIdRole).toInt();
+    bool online = (index.data(ContactListModel::SortPrefixRole).toInt() < 2);
+    setExpanded(index, Config::ContactList::instance()->groupState(gid, online));
   }
 }
 
@@ -172,14 +183,85 @@ void UserView::applySkin()
   UserViewBase::applySkin();
 }
 
+void UserView::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end)
+{
+  if (currentIndex().isValid() && !USERID_ISVALID(myRemovedUser))
+  {
+    // Check all the removed rows and see if anyone of them is the currently select user
+    for (int i = start; i <= end; ++i)
+    {
+      if (model()->index(i, 0, parent) != currentIndex())
+        continue;
+
+      ContactListModel::ItemType itemType = static_cast<ContactListModel::ItemType>
+        (currentIndex().data(ContactListModel::ItemTypeRole).toInt());
+      if (itemType == ContactListModel::UserItem)
+      {
+        // Currently select user is being removed, remember it so we can select it again if it reappears
+        myRemovedUser = currentIndex().data(ContactListModel::UserIdRole).value<UserId>();
+
+        // ...but if event loop resumes first, it wasn't just a move between groups so forget it happened
+        myRemovedUserTimer->start();
+      }
+    }
+  }
+
+  UserViewBase::rowsAboutToBeRemoved(parent, start, end);
+}
+
 void UserView::rowsInserted(const QModelIndex& parent, int start, int end)
 {
-  spanRowRange(parent, start, end);
   UserViewBase::rowsInserted(parent, start, end);
+  spanRowRange(parent, start, end);
 
   // If we just got a new group we may want to expand it
   if (!parent.isValid())
     expandGroups();
+
+  if (USERID_ISVALID(myRemovedUser) && (!parent.isValid() || isExpanded(parent)))
+  {
+    // We have a user remembered that was just removed, check if he returned
+    for (int i = start; i <= end; ++i)
+    {
+      QModelIndex index = model()->index(i, 0, parent);
+      ContactListModel::ItemType itemType = static_cast<ContactListModel::ItemType>
+        (index.data(ContactListModel::ItemTypeRole).toInt());
+
+      if (itemType == ContactListModel::UserItem &&
+          index.data(ContactListModel::UserIdRole).value<UserId>() == myRemovedUser)
+        // User has returned, restore selection
+        setCurrentIndex(index);
+
+      if (itemType == ContactListModel::GroupItem && isExpanded(index))
+      {
+        // Inserted row was a group, then it might have users as sub items, check them too
+        int rows = model()->rowCount(index);
+        for (int j = 0; j < rows; ++j)
+        {
+          QModelIndex subindex = model()->index(j, 0, index);
+          ContactListModel::ItemType subitemType = static_cast<ContactListModel::ItemType>
+            (subindex.data(ContactListModel::ItemTypeRole).toInt());
+
+          if (subitemType == ContactListModel::UserItem &&
+              subindex.data(ContactListModel::UserIdRole).value<UserId>() == myRemovedUser)
+            // The appeared group has the user as a sub item, restore selection
+            setCurrentIndex(subindex);
+        }
+      }
+    }
+  }
+}
+
+void UserView::forgetRemovedUser()
+{
+  myRemovedUser = USERID_NONE;
+}
+
+void UserView::reset()
+{
+  UserViewBase::reset();
+  // QTreeView::reset will collapse all groups so we have to reexpand them here
+  expandGroups();
 }
 
 void UserView::mousePressEvent(QMouseEvent* event)
@@ -274,7 +356,7 @@ void UserView::mouseMoveEvent(QMouseEvent* event)
       (index.data(ContactListModel::ItemTypeRole).toInt()) != ContactListModel::UserItem)
     return;
 
-  QString id = index.data(ContactListModel::UserIdRole).toString();
+  QString id = index.data(ContactListModel::AccountIdRole).toString();
   unsigned long ppid = index.data(ContactListModel::PpidRole).toUInt();
 
   if ((event->buttons() & Qt::LeftButton) && !myMousePressPos.isNull() &&
@@ -322,14 +404,16 @@ void UserView::resort()
 
 void UserView::slotExpanded(const QModelIndex& index)
 {
-  unsigned short gid = index.data(ContactListModel::GroupIdRole).toUInt();
-  Config::ContactList::instance()->setGroupState(gid, true);
+  int gid = index.data(ContactListModel::GroupIdRole).toInt();
+  bool online = (index.data(ContactListModel::SortPrefixRole).toInt() < 2);
+  Config::ContactList::instance()->setGroupState(gid, online, true);
 }
 
 void UserView::slotCollapsed(const QModelIndex& index)
 {
-  unsigned short gid = index.data(ContactListModel::GroupIdRole).toUInt();
-  Config::ContactList::instance()->setGroupState(gid, false);
+  int gid = index.data(ContactListModel::GroupIdRole).toInt();
+  bool online = (index.data(ContactListModel::SortPrefixRole).toInt() < 2);
+  Config::ContactList::instance()->setGroupState(gid, online, false);
 }
 
 void UserView::slotHeaderClicked(int column)

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -360,7 +360,7 @@ void ContactDelegate::drawStatusIcon(Parameters& arg) const
     else
       icon = &iconman->iconForStatus(
           arg.index.data(ContactListModel::StatusRole).toUInt(),
-          arg.index.data(ContactListModel::UserIdRole).toString(),
+          arg.index.data(ContactListModel::AccountIdRole).toString(),
           arg.index.data(ContactListModel::PpidRole).toUInt());
   }
   else if (arg.itemType == ContactListModel::GroupItem)
@@ -467,7 +467,6 @@ void ContactDelegate::drawExtIcons(Parameters& arg) const
       EXTICON(ContactListModel::BirthdayStatus, IconManager::BirthdayIcon);
       EXTICON(ContactListModel::InvisibleStatus, IconManager::InvisibleIcon);
 
-#ifdef HAVE_LIBGPGME
       // pmGPGKey
       if (arg.extStatus & ContactListModel::GpgKeyStatus)
       {
@@ -476,7 +475,6 @@ void ContactDelegate::drawExtIcons(Parameters& arg) const
         else
           drawExtIcon(arg, IconManager::GpgKeyDisabledIcon);
       }
-#endif
 
       if (arg.status != ContactListModel::OfflineStatus)
       {

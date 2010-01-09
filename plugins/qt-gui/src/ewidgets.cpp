@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -784,13 +784,12 @@ QStringList CMessageViewWidget::getStyleNames(bool includeHistoryStyles)
   return styleList;
 }
 
-CMessageViewWidget::CMessageViewWidget(const char *szId, unsigned long nPPID,
+CMessageViewWidget::CMessageViewWidget(const UserId& userId,
   CMainWindow *m, QWidget* parent, const char *name, bool historyMode)
   : MLView(parent, name)
 {
   setTextFormat(RichText);
-  m_szId = szId ? strdup(szId) : 0;
-  m_nPPID = nPPID;
+  myUserId = userId;
   if (historyMode)
   {
     m_useBuffer = true;
@@ -821,7 +820,7 @@ CMessageViewWidget::CMessageViewWidget(const char *szId, unsigned long nPPID,
 /*
   // add all unread messages.
   vector<CUserEvent*> newEventList;
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u != NULL && u->NewMessages() > 0)
   {
     for (unsigned short i = 0; i < u->NewMessages(); i++)
@@ -839,17 +838,14 @@ CMessageViewWidget::CMessageViewWidget(const char *szId, unsigned long nPPID,
 
 CMessageViewWidget::~CMessageViewWidget()
 {
-  if (m_szId)
-    free(m_szId);
 }
 
-void CMessageViewWidget::setOwner(const char *_szId)
+void CMessageViewWidget::setOwner(const UserId& userId)
 {
-  if (!_szId) return;
+  if (!USERID_ISVALID(userId))
+    return;
 
-  if (m_szId)
-    free(m_szId);
-  m_szId = strdup(_szId);
+  myUserId = userId;
 }
 
 void CMessageViewWidget::clear()
@@ -917,8 +913,7 @@ void CMessageViewWidget::internalAddMsg(QString s)
 
 void CMessageViewWidget::addMsg(ICQEvent * _e)
 {
-  if (strcmp(_e->Id(), m_szId) == 0 && _e->PPID() == m_nPPID &&
-    _e->UserEvent())
+  if (_e->userId() == myUserId && _e->UserEvent() != NULL)
     addMsg( _e->UserEvent() );
 }
 
@@ -1051,7 +1046,7 @@ void CMessageViewWidget::addMsg(direction dir, bool fromHistory, QString eventDe
   internalAddMsg(s);
 }
 
-void CMessageViewWidget::addMsg(const CUserEvent* e, const char* _szId, unsigned long _nPPID)
+void CMessageViewWidget::addMsg(const CUserEvent* e, const UserId& userId)
 {
   QDateTime date;
   date.setTime_t(e->Time());
@@ -1061,25 +1056,23 @@ void CMessageViewWidget::addMsg(const CUserEvent* e, const char* _szId, unsigned
   QString contactName;
   QTextCodec *codec = QTextCodec::codecForLocale();
 
-  {
-
-    ICQUser *u = _szId ? gUserManager.FetchUser(_szId, _nPPID, LOCK_R) :
-                         gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  unsigned long m_nPPID = 0;
+  const LicqUser* u = gUserManager.fetchUser(USERID_ISVALID(userId) ? userId : myUserId);
     if (u)
     {
+    m_nPPID = u->ppid();
       codec = UserCodec::codecForICQUser(u);
       if (e->Direction() == D_RECEIVER)
         contactName = QString::fromUtf8(u->GetAlias());
-      for (unsigned int x = 0; x < strlen(m_szId); x++)
+    for (unsigned int x = 0; x < u->accountId().size(); x++)
+    {
+      if (!isdigit(u->accountId()[x]) && m_nPPID == LICQ_PPID && e->Direction() == D_RECEIVER)
       {
-        if (!isdigit(m_szId[x]) && m_nPPID == LICQ_PPID && e->Direction() == D_RECEIVER)
-        {
           bUseHTML = true;
           break;
         }
       }
       gUserManager.DropUser(u);
-    }
   }
 
   if (e->Direction() != D_RECEIVER)

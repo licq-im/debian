@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,8 @@ ContactBar::ContactBar(ContactListModel::SubGroupType subGroup, ContactGroup* gr
     myGroup(group),
     mySubGroup(subGroup),
     myUserCount(0),
-    myEvents(0)
+    myEvents(0),
+    myVisibleContacts(0)
 {
   switch (mySubGroup)
   {
@@ -60,6 +61,14 @@ void ContactBar::countDecrease()
 void ContactBar::updateNumEvents(int counter)
 {
   myEvents += counter;
+}
+
+void ContactBar::updateVisibility(bool increase)
+{
+  if (increase)
+    myVisibleContacts++;
+  else
+    myVisibleContacts--;
 }
 
 QVariant ContactBar::data(int column, int role) const
@@ -94,6 +103,9 @@ QVariant ContactBar::data(int column, int role) const
 
     case ContactListModel::UnreadEventsRole:
       return myEvents;
+
+    case ContactListModel::VisibilityRole:
+      return (myVisibleContacts > 0);
   }
 
   return QVariant();

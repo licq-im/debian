@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@ EditPhoneDlg::EditPhoneDlg(QWidget* parent, const struct PhoneBookEntry* pbe,
     close();
     return;
   }
-  QTextCodec* codec = UserCodec::codecForICQUser(o);
+  const QTextCodec* codec = UserCodec::codecForUser(o);
   gUserManager.DropOwner(o);
 
   m_nEntry = nEntry;
@@ -241,7 +241,7 @@ void EditPhoneDlg::ok()
     close();
     return;
   }
-  QTextCodec* codec = UserCodec::codecForICQUser(o);
+  const QTextCodec* codec = UserCodec::codecForUser(o);
   gUserManager.DropOwner(o);
 
   struct PhoneBookEntry pbe;

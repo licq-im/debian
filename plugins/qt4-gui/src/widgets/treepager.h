@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2006 Licq developers
+ * Copyright (C) 2006-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ public:
    * @param title Title to display in the tree list.
    * @param parent Parent page  if this is a sub page or NULL to make it a top level page.
    */
-  void addPage(QWidget* page, QString title, /* QIcon icon, */ QWidget* parent = NULL);
+  void addPage(QWidget* page, const QString& title, /* const QIcon& icon, */ QWidget* parent = NULL);
 
   /**
    * Changes which page to show.

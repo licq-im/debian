@@ -5,8 +5,8 @@ AC_CANONICAL_SYSTEM
 AC_ARG_PROGRAM
 
 dnl All versioning is done via these defines
-INT_VERSION=1035
-AM_INIT_AUTOMAKE(licq, 1.3.6)
+INT_VERSION=1038
+AM_INIT_AUTOMAKE(licq, 1.3.8)
 
 AM_CONFIG_HEADER(config.h)
 
@@ -101,9 +101,6 @@ AC_HEADER_DIRENT
 AC_HEADER_STDC
 AC_CHECK_HEADERS(errno.h fcntl.h getopt.h limits.h malloc.h pwd.h unistd.h paths.h)
 
-dnl Check for headers we can use to get endian for system and maybe some bswap functions
-AC_CHECK_HEADERS(byteswap.h endian.h machine/endian.h sys/byteorder.h)
-
 dnl Checks for library functions.
 AC_CHECK_LIB(xnet,inet_addr)
 AC_CHECK_LIB(socket, socket)
@@ -161,7 +158,7 @@ dlopen(NULL, RTLD_NOW)
 ])
 
 
-AC_CHECK_FUNCS(inet_addr inet_aton mktime select strdup strerror hstrerror readdir_r)
+AC_CHECK_FUNCS(inet_ntop mktime select strdup strerror hstrerror readdir_r)
 
 AC_CHECK_FUNC(pthread_kill_other_threads_np,[AC_DEFINE([HAVE_PTHREAD_KILL_OTHER_THREADS_NP],
 [], [we are not using NTPL])])

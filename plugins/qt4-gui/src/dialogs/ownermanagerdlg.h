@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -68,7 +68,7 @@ private slots:
    * @param newId Contact id of new account
    * @param newPpid Protocal id of new account
    */
-  void registerDone(bool success, QString newId, unsigned long newPpid);
+  void registerDone(bool success, const QString& newId, unsigned long newPpid);
 
   /**
    * Edit currently selected account

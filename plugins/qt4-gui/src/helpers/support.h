@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2006-2007 Licq developers
+ * Copyright (C) 2006-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -91,12 +91,14 @@ public:
   static unsigned keyToXSym(int keyCode);
 
 private:
+#if defined(Q_WS_X11)
   /**
    * Convenient wrapper to XGetWindowProperty
    *
    * The returned value must be deleted with XFree().
    */
   static unsigned char* getWindowProperty(WId win, const char* prop);
+#endif
 };
 
 } // namespace LicqQtGui

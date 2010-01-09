@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ SystemTrayIcon::SystemTrayIcon(QMenu* menu)
   myTrayIcon->setContextMenu(menu);
   connect(myTrayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
       SLOT(trayActivated(QSystemTrayIcon::ActivationReason)));
-  connect(this, SIGNAL(newToolTip(QString)), SLOT(updateToolTip(QString)));
+  connect(this, SIGNAL(newToolTip(const QString&)), SLOT(updateToolTip(const QString&)));
 
   updateConfig();
 
@@ -137,7 +137,7 @@ void SystemTrayIcon::trayActivated(QSystemTrayIcon::ActivationReason reason)
   }
 }
 
-void SystemTrayIcon::updateToolTip(QString toolTip)
+void SystemTrayIcon::updateToolTip(const QString& toolTip)
 {
   myTrayIcon->setToolTip(toolTip);
 }

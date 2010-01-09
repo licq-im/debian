@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 #ifndef REFUSEDLG_H
 #define REFUSEDLG_H
 
+#include <licq_types.h>
+
 #include "licqdialog.h" 
 
 class MLEditWrap;
@@ -29,7 +31,7 @@ class CRefuseDlg : public LicqDialog
   Q_OBJECT
 
 public:
-  CRefuseDlg(const char *, unsigned long, QString, QWidget * = 0);
+  CRefuseDlg(const UserId& userId, QString, QWidget * = 0);
   QString RefuseMessage();
 
 protected:

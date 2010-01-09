@@ -140,7 +140,7 @@ void CLicqConsole::PrintStatus()
     gUserManager.DropOwner(o);
   }
 
-  unsigned short nNumUserEvents = ICQUser::getNumUserEvents() - nNumOwnerEvents;
+  unsigned short nNumUserEvents = LicqUser::getNumUserEvents() - nNumOwnerEvents;
   if (nNumOwnerEvents > 0)
     sprintf (szMsgStr, "System Message");
   else if (nNumUserEvents > 0)
@@ -148,10 +148,9 @@ void CLicqConsole::PrintStatus()
   else
     strcpy(szMsgStr, "No Messages");
 
-  if (!winMain->sLastContact.szId.empty())
+  if (USERID_ISVALID(winMain->sLastContact))
   {
-    ICQUser* u = gUserManager.FetchUser(winMain->sLastContact.szId.c_str(),
-      winMain->sLastContact.nPPID, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(winMain->sLastContact);
     if (u == NULL)
       szLastUser = strdup("<Removed>");
     else
@@ -301,8 +300,7 @@ void CLicqConsole::CreateUserList()
 
     s = new SUser;
     sprintf(s->szKey, "%05u%010lu", pUser->Status(), pUser->Touched() ^ 0xFFFFFFFF);
-    sprintf(s->szId, "%s", pUser->IdString());
-    s->nPPID = pUser->PPID();
+    s->userId = pUser->id();
     s->bOffline = pUser->StatusOffline();
 
     unsigned short nStatus = pUser->Status();
@@ -389,9 +387,8 @@ void CLicqConsole::PrintUsers()
   {
     s = new SScrollUser;
     s->pos = i;
-    s->nPPID = (*it)->nPPID;
+    s->userId = (*it)->userId;
         s->color = (*it)->color;
-    sprintf(s->szId, "%s", (*it)->szId);
 
     m_lScrollUsers.push_back(s);
     ulist[i++] = copyChar((*it)->szLine);
@@ -441,7 +438,7 @@ void CLicqConsole::UserListHighlight(chtype type, chtype input)
   {
     if ((*it)->pos == (cdkUserList->currentItem + down))
     {
-      ICQUser *u = gUserManager.FetchUser((*it)->szId, (*it)->nPPID, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser((*it)->userId);
       if (u && u->NewMessages())
         setCDKScrollHighlight(cdkUserList, COLOR_PAIR((*it)->color->nColor - 6) | type);
       else
@@ -574,10 +571,10 @@ void CLicqConsole::PrintHistory(HistoryList &lHistory, unsigned short nStart,
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_General
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_General(const char *szId, unsigned long nPPID)
+void CLicqConsole::PrintInfo_General(const UserId& userId)
 {
   // Print the users info to the main window
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL) return;
 
   // Some IP, Real IP and last seen stuff
@@ -597,29 +594,29 @@ void CLicqConsole::PrintInfo_General(const char *szId, unsigned long nPPID)
   winMain->wprintf("%s %A(%Z%s%A) General Info - %Z%s\n", u->GetAlias(), A_BOLD,
                    A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
 
-  winMain->wprintf("%C%AName: %Z%s %s\n", COLOR_WHITE, A_BOLD, A_BOLD,
-                   u->GetFirstName(), u->GetLastName());
+  winMain->wprintf("%C%AName: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getFullName().c_str());
   winMain->wprintf("%C%AIp: %Z%s:%s\n", COLOR_WHITE, A_BOLD, A_BOLD,
                    u->IpStr(buf), u->PortStr(szPort));
   winMain->wprintf("%C%AReal Ip: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD,
                    szRealIp);
-  winMain->wprintf("%C%AEmail 1: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetEmailPrimary());
-  winMain->wprintf("%C%AEmail 2: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetEmailSecondary());
-  winMain->wprintf("%C%ACity: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCity());
-  winMain->wprintf("%C%AState: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetState());
-  winMain->wprintf("%C%AAddress: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetAddress());
-  winMain->wprintf("%C%APhone Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetPhoneNumber());
-  winMain->wprintf("%C%AFax Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetFaxNumber());
-  winMain->wprintf("%C%ACellular Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCellularNumber());
-  winMain->wprintf("%C%AZipcode: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetZipCode());
+  winMain->wprintf("%C%AEmail 1: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Email1").c_str());
+  winMain->wprintf("%C%AEmail 2: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Email2").c_str());
+  winMain->wprintf("%C%ACity: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("City").c_str());
+  winMain->wprintf("%C%AState: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("State").c_str());
+  winMain->wprintf("%C%AAddress: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Address").c_str());
+  winMain->wprintf("%C%APhone Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("PhoneNumber").c_str());
+  winMain->wprintf("%C%AFax Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("FaxNumber").c_str());
+  winMain->wprintf("%C%ACellular Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getCellularNumber().c_str());
+  winMain->wprintf("%C%AZipcode: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Zipcode").c_str());
   winMain->wprintf("%C%ACountry: ", COLOR_WHITE, A_BOLD);
-  if (u->GetCountryCode() == COUNTRY_UNSPECIFIED)
+  unsigned int countryCode = u->getUserInfoUint("Country");
+  if (countryCode == COUNTRY_UNSPECIFIED)
     winMain->wprintf("%CUnspecified\n", COLOR_WHITE);
   else
   {
-    const SCountry *c = GetCountryByCode(u->GetCountryCode());
+    const SCountry* c = GetCountryByCode(countryCode);
     if (c == NULL)
-      winMain->wprintf("%CUnknown (%d)\n", COLOR_WHITE, u->GetCountryCode());
+      winMain->wprintf("%CUnknown (%d)\n", COLOR_WHITE, countryCode);
     else  // known
       winMain->wprintf("%C%s\n", COLOR_WHITE, c->szName);
   }
@@ -649,10 +646,10 @@ void CLicqConsole::PrintInfo_General(const char *szId, unsigned long nPPID)
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_More
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_More(const char *szId, unsigned long nPPID)
+void CLicqConsole::PrintInfo_More(const UserId& userId)
 {
   // Print the users info to the main window
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL) return;
 
   wattron(winMain->Win(), A_BOLD);
@@ -664,19 +661,24 @@ void CLicqConsole::PrintInfo_More(const char *szId, unsigned long nPPID)
   winMain->wprintf("%s %A(%Z%s%A) More Info - %Z%s\n", u->GetAlias(), A_BOLD,
                    A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
 
-  if (u->GetAge() == AGE_UNSPECIFIED)
+  unsigned int age = u->getUserInfoUint("Age");
+  if (age == AGE_UNSPECIFIED)
     winMain->wprintf("%C%AAge: %ZUnspecified\n", COLOR_WHITE, A_BOLD, A_BOLD);
   else
-    winMain->wprintf("%C%AAge: %Z%d\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetAge());
-  winMain->wprintf("%C%AGender: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetGender() == GENDER_MALE ? "Male" : u->GetGender() == GENDER_FEMALE ? "Female" : "Unspecified");
-  winMain->wprintf("%C%AHomepage: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetHomepage());
-  winMain->wprintf("%C%ABirthday: %Z%d/%d/%d\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetBirthDay(), u->GetBirthMonth(), u->GetBirthYear());
+    winMain->wprintf("%C%AAge: %Z%d\n", COLOR_WHITE, A_BOLD, A_BOLD, age);
+  unsigned int gender = u->getUserInfoUint("Gender");
+  winMain->wprintf("%C%AGender: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, gender == GENDER_MALE ? "Male" : gender == GENDER_FEMALE ? "Female" : "Unspecified");
+  winMain->wprintf("%C%AHomepage: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Homepage").c_str());
+  winMain->wprintf("%C%ABirthday: %Z%d/%d/%d\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoUint("BirthDay"), u->getUserInfoUint("BirthMonth"), u->getUserInfoUint("BirthYear"));
   for (unsigned short i = 0; i < 3; i++)
   {
+    char langkey[16];
+    sprintf(langkey, "Language%i", i);
+    unsigned int language = u->getUserInfoUint(langkey);
     winMain->wprintf("%C%ALanguage %d: ", COLOR_WHITE, A_BOLD, i + 1);
-    const SLanguage *l = GetLanguageByCode(u->GetLanguage(i));
+    const SLanguage* l = GetLanguageByCode(language);
     if (l == NULL)
-      winMain->wprintf("%CUnknown (%d)\n", COLOR_WHITE, u->GetLanguage(i));
+      winMain->wprintf("%CUnknown (%d)\n", COLOR_WHITE, language);
     else  // known
       winMain->wprintf("%C%s\n", COLOR_WHITE, l->szName);
   }
@@ -695,10 +697,10 @@ void CLicqConsole::PrintInfo_More(const char *szId, unsigned long nPPID)
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_Work
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_Work(const char *szId, unsigned long nPPID)
+void CLicqConsole::PrintInfo_Work(const UserId& userId)
 {
   // Print the users info to the main window
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL) return;
 
   wattron(winMain->Win(), A_BOLD);
@@ -710,27 +712,28 @@ void CLicqConsole::PrintInfo_Work(const char *szId, unsigned long nPPID)
   winMain->wprintf("%s %A(%Z%s%A) Work Info - %Z%s\n", u->GetAlias(), A_BOLD,
                    A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
 
-  winMain->wprintf("%C%ACompany Name: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyName());
-  winMain->wprintf("%C%ACompany Department: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyDepartment());
-  winMain->wprintf("%C%ACompany Position: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyPosition());
-  winMain->wprintf("%C%ACompany Phone Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyPhoneNumber());
-  winMain->wprintf("%C%ACompany Fax Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyFaxNumber());
-  winMain->wprintf("%C%ACompany City: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyCity());
-  winMain->wprintf("%C%ACompany State: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyState());
-  winMain->wprintf("%C%ACompany Address: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyAddress());
-  winMain->wprintf("%C%ACompany Zip Code: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyZip());
+  winMain->wprintf("%C%ACompany Name: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyName").c_str());
+  winMain->wprintf("%C%ACompany Department: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyDepartment").c_str());
+  winMain->wprintf("%C%ACompany Position: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyPosition").c_str());
+  winMain->wprintf("%C%ACompany Phone Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyPhoneNumber").c_str());
+  winMain->wprintf("%C%ACompany Fax Number: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyFaxNumber").c_str());
+  winMain->wprintf("%C%ACompany City: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyCity").c_str());
+  winMain->wprintf("%C%ACompany State: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyState").c_str());
+  winMain->wprintf("%C%ACompany Address: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyAddress").c_str());
+  winMain->wprintf("%C%ACompany Zip Code: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyZip").c_str());
   winMain->wprintf("%C%ACompany Country: ", COLOR_WHITE, A_BOLD);
-  if (u->GetCountryCode() == COUNTRY_UNSPECIFIED)
+  unsigned int companyCountry = u->getUserInfoUint("CompanyCountry");
+  if (companyCountry == COUNTRY_UNSPECIFIED)
     winMain->wprintf("%CUnspecified\n", COLOR_WHITE);
   else
   {
-    const SCountry *c = GetCountryByCode(u->GetCountryCode());
+    const SCountry* c = GetCountryByCode(companyCountry);
     if (c == NULL)
-      winMain->wprintf("%CUnknown (%d)\n", COLOR_WHITE, u->GetCountryCode());
+      winMain->wprintf("%CUnknown (%d)\n", COLOR_WHITE, companyCountry);
     else  // known
       winMain->wprintf("%C%s\n", COLOR_WHITE, c->szName);
   }
-  winMain->wprintf("%C%ACompany Homepage: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->GetCompanyHomepage());
+  winMain->wprintf("%C%ACompany Homepage: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyHomepage").c_str());
 
   gUserManager.DropUser(u);
 
@@ -745,10 +748,10 @@ void CLicqConsole::PrintInfo_Work(const char *szId, unsigned long nPPID)
 /*----------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_About
  *--------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_About(const char *szId, unsigned long nPPID)
+void CLicqConsole::PrintInfo_About(const UserId& userId)
 {
   // Print the user's about info to the main window
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL)  return;
 
   wattron(winMain->Win(), A_BOLD);
@@ -760,7 +763,7 @@ void CLicqConsole::PrintInfo_About(const char *szId, unsigned long nPPID)
   winMain->wprintf("%s %A(%Z%s%A) About Info - %Z%s\n", u->GetAlias(), A_BOLD,
                     A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
 
-  winMain->wprintf("%s\n", u->GetAbout());
+  winMain->wprintf("%s\n", u->getUserInfoString("About").c_str());
 
   gUserManager.DropUser(u);
 
@@ -778,7 +781,8 @@ void CLicqConsole::PrintInfo_About(const char *szId, unsigned long nPPID)
 void CLicqConsole::PrintFileStat(CFileTransferManager *ftman)
 {
   // Get the user's name
-  ICQUser* u = gUserManager.FetchUser(ftman->Id(), LICQ_PPID, LOCK_R);
+  UserId userId = LicqUser::makeUserId(ftman->Id(), LICQ_PPID);
+  const LicqUser* u = gUserManager.fetchUser(userId);
 
   // Make the title
   char szTitle[30];

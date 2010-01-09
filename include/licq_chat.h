@@ -7,6 +7,7 @@
 
 #include "licq_packets.h"
 #include "licq_socket.h"
+#include "licq_types.h"
 class CICQDaemon;
 
 // Define for marking functions as deprecated
@@ -212,8 +213,7 @@ public:
 
   // Accessors
   const char *Name() { return m_szName; }
-  char *Id() { return m_szId; }
-  unsigned long PPID() { return m_nPPID; }
+  const UserId& userId() const { return myUserId; }
   unsigned short Port() { return m_nPort; }
   int ColorForeRed() { return m_nColorForeRed; }
   int ColorForeGreen() { return m_nColorForeGreen; }
@@ -224,12 +224,8 @@ public:
 
   virtual ~CPChat_Color();
 
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED unsigned long Uin() { return strtoul(m_szId, NULL, 10); }
-
 protected:
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   char *m_szName;
   unsigned short m_nPort;
   int m_nColorForeRed;
@@ -248,7 +244,7 @@ class CChatClient
 {
 public:
   CChatClient();
-  CChatClient(const ICQUser* u);
+  CChatClient(const LicqUser* u);
   CChatClient(const CChatClient &);
   CChatClient& operator=(const CChatClient &);
   ~CChatClient();
@@ -262,8 +258,7 @@ public:
 
   unsigned long m_nVersion;
   unsigned short m_nPort;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   unsigned long m_nIp;
   unsigned long m_nIntIp;
   char m_nMode;
@@ -303,8 +298,7 @@ public:
 
   // Accessors
   const char *Name() { return m_szName; }
-  char *Id() { return m_szId; }
-  unsigned long PPID() { return m_nPPID; }
+  const UserId& userId() const { return myUserId; }
   unsigned short Session() { return m_nSession; }
   int ColorForeRed() { return m_nColorForeRed; }
   int ColorForeGreen() { return m_nColorForeGreen; }
@@ -324,12 +318,8 @@ public:
   unsigned char FontStyle() { return m_nFontStyle; }
   ChatClientList &ChatClients()  { return chatClients; }
 
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED unsigned long Uin() { return strtoul(m_szId, NULL, 10); }
-
 protected:
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   unsigned short m_nSession;
   char *m_szName;
   int m_nColorForeRed;
@@ -487,8 +477,7 @@ extern "C"
 class CChatUser
 {
 public:
-  char *Id()                   { return szId; }
-  unsigned long PPID()         { return nPPID; }
+  const UserId& userId() const { return myUserId; }
   unsigned long ToKick()       { return nToKick; }
   const char *Name()           { return chatname; }
   int *ColorFg()               { return colorFore; }
@@ -506,14 +495,10 @@ public:
 
   ~CChatUser();
 
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED unsigned long Uin()          { return strtoul(szId, NULL, 10); }
-
 protected:
   CChatUser();
 
-  char *szId;
-  unsigned long nPPID;
+  UserId myUserId;
   unsigned long nToKick;
   char chatname[32];
   int colorFore[3], colorBack[3];
@@ -589,7 +574,7 @@ public:
   char *ClientsStr();
   unsigned short ConnectedUsers()  { return chatUsers.size(); }
 
-  unsigned short LocalPort() { return chatServer.LocalPort(); }
+  uint16_t LocalPort() const            { return chatServer.getLocalPort(); }
   const char *Name()  { return m_szName; }
   const char *FontFamily()  { return m_szFontFamily; }
   unsigned char FontEncoding() { return m_nFontEncoding; }
@@ -634,8 +619,7 @@ protected:
 
   CICQDaemon *licqDaemon;
   int pipe_events[2], pipe_thread[2];
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   unsigned short m_nSession;
   ChatUserList chatUsers;
   ChatUserList chatUsersClosed;

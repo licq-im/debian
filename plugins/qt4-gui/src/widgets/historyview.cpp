@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,10 +59,9 @@ QStringList HistoryView::getStyleNames(bool includeHistoryStyles)
   return styleList;
 }
 
-HistoryView::HistoryView(bool historyMode, QString id, unsigned long ppid, QWidget* parent)
+HistoryView::HistoryView(bool historyMode, const UserId& userId, QWidget* parent)
   : MLView(parent),
-    myId(id),
-    myPpid(ppid)
+    myUserId(userId)
 {
   Config::Chat* chatConfig = Config::Chat::instance();
   if (historyMode)
@@ -93,7 +92,8 @@ QSize HistoryView::sizeHint() const
   return QSize(400, 150);
 }
 
-void HistoryView::setHistoryConfig(unsigned short msgStyle, QString dateFormat, bool extraSpacing, bool reverse)
+void HistoryView::setHistoryConfig(unsigned short msgStyle,
+    const QString& dateFormat, bool extraSpacing, bool reverse)
 {
   myUseBuffer = true;
   myMsgStyle = msgStyle;
@@ -104,7 +104,8 @@ void HistoryView::setHistoryConfig(unsigned short msgStyle, QString dateFormat, 
   myShowNotices = false;
 }
 
-void HistoryView::setChatConfig(unsigned short msgStyle, QString dateFormat, bool extraSpacing, bool appendLineBreak, bool showNotices)
+void HistoryView::setChatConfig(unsigned short msgStyle, const QString& dateFormat,
+    bool extraSpacing, bool appendLineBreak, bool showNotices)
 {
   myUseBuffer = false;
   myMsgStyle = msgStyle;
@@ -115,8 +116,8 @@ void HistoryView::setChatConfig(unsigned short msgStyle, QString dateFormat, boo
   myShowNotices = showNotices;
 }
 
-void HistoryView::setColors(QString back, QString rcv, QString snt,
-    QString rcvHist, QString sntHist, QString notice)
+void HistoryView::setColors(const QString& back, const QString& rcv, const QString& snt,
+    const QString& rcvHist, const QString& sntHist, const QString& notice)
 {
   myColorRcv = rcv;
   myColorSnt = snt;
@@ -149,11 +150,9 @@ void HistoryView::setReverse(bool reverse)
   myReverse = reverse;
 }
 
-void HistoryView::setOwner(QString id, unsigned long ppid)
+void HistoryView::setOwner(const UserId& userId)
 {
-  myId = id;
-  if (ppid != 0)
-    myPpid = ppid;
+  myUserId = userId;
 }
 
 void HistoryView::clear()
@@ -240,13 +239,14 @@ void HistoryView::internalAddMsg(QString s)
 
 void HistoryView::addMsg(const ICQEvent* event)
 {
-  if (event->Id() == myId && event->PPID() == myPpid && event->UserEvent() != NULL)
+  if (event->userId() == myUserId && event->UserEvent() != NULL)
     addMsg(event->UserEvent());
 }
 
-void HistoryView::addMsg(direction dir, bool fromHistory, QString eventDescription, QDateTime date,
+void HistoryView::addMsg(direction dir, bool fromHistory,
+  const QString& eventDescription, const QDateTime& date,
   bool isDirect, bool isMultiRec, bool isUrgent, bool isEncrypted,
-  QString contactName, QString messageText, QString anchor)
+  const QString& contactName, QString messageText, QString anchor)
 {
   QString s;
   QString color;
@@ -380,7 +380,7 @@ void HistoryView::addMsg(direction dir, bool fromHistory, QString eventDescripti
   internalAddMsg(s);
 }
 
-void HistoryView::addMsg(const CUserEvent* event, QString id, unsigned long ppid)
+void HistoryView::addMsg(const CUserEvent* event, const UserId& uid)
 {
   QDateTime date;
   date.setTime_t(event->Time());
@@ -388,18 +388,19 @@ void HistoryView::addMsg(const CUserEvent* event, QString id, unsigned long ppid
   bool bUseHTML = false;
 
   QString contactName;
-  QTextCodec* codec = NULL;
+  const QTextCodec* codec = NULL;
 
-  if (id.isNull())
-  {
-    id = myId;
-    ppid = myPpid;
-  }
+  UserId userId = USERID_ISVALID(uid) ? uid : myUserId;
 
-  const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
+  unsigned long myPpid = 0;
+  QString myId;
   if (u != NULL)
   {
-    codec = UserCodec::codecForICQUser(u);
+    myId = u->accountId().c_str();
+    myPpid = u->ppid();
+
+    codec = UserCodec::codecForUser(u);
     if (event->Direction() == D_RECEIVER)
     {
       contactName = QString::fromUtf8(u->GetAlias());
@@ -451,7 +452,7 @@ void HistoryView::addMsg(const CUserEvent* event, QString id, unsigned long ppid
     emit messageAdded();
 }
 
-void HistoryView::addNotice(QDateTime dt, QString messageText)
+void HistoryView::addNotice(const QDateTime& dt, QString messageText)
 {
   if (!myShowNotices)
     return;

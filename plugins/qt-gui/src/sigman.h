@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,12 @@
 
 #include <qobject.h>
 
+#include <licq_types.h>
+
 class QSocketNotifier;
 class CICQDaemon;
-class CICQSignal;
-class ICQEvent;
+class LicqEvent;
+class LicqSignal;
 
 //=====CSignalManager===========================================================
 class CSignalManager: public QObject
@@ -40,34 +42,33 @@ private:
   int m_nPipe;
   QSocketNotifier *sn;
 
-  void ProcessSignal(CICQSignal *s);
-  void ProcessEvent(ICQEvent *e);
+  void ProcessSignal(LicqSignal* s);
+  void ProcessEvent(LicqEvent* e);
 
 protected slots:
   void slot_incoming();
 
 signals:
   // Signal signals
-  void signal_updatedList(CICQSignal *);
-  void signal_updatedUser(CICQSignal *);
-  void signal_updatedStatus(CICQSignal *);
+  void signal_updatedList(unsigned long subSignal, int argument, const UserId& userId);
+  void signal_updatedUser(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  void signal_updatedStatus(unsigned long ppid);
   void signal_logon();
   void signal_logoff();
-  void signal_ui_viewevent(unsigned long);
-  void signal_ui_viewevent(const char *);
-  void signal_ui_message(const char *, unsigned long);
+  void signal_ui_viewevent(const UserId& userId);
+  void signal_ui_message(const UserId& userId);
   void signal_protocolPlugin(unsigned long);
-  void signal_eventTag(const char *, unsigned long, unsigned long);
-  void signal_socket(const char *, unsigned long, unsigned long);
-  void signal_convoJoin(const char *, unsigned long, unsigned long);
-  void signal_convoLeave(const char *, unsigned long, unsigned long);
+  void signal_eventTag(const UserId& userId, unsigned long convoId);
+  void signal_socket(const UserId& userId, unsigned long convoId);
+  void signal_convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId);
+  void signal_convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId);
   void signal_verifyImage(unsigned long);
   void signal_newOwner(const char *, unsigned long);
   
   // Event signals
-  void signal_doneOwnerFcn(ICQEvent *);
-  void signal_doneUserFcn(ICQEvent *);
-  void signal_searchResult(ICQEvent *);
+  void signal_doneOwnerFcn(LicqEvent*);
+  void signal_doneUserFcn(LicqEvent*);
+  void signal_searchResult(LicqEvent*);
 };
 
 

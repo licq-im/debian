@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #include "mainwin.h"
 #include "licq_icqd.h"
 #include "licq_events.h"
+#include <licq_user.h>
 #include "gui-defines.h"
 #include "ewidgets.h"
 
@@ -97,8 +98,7 @@ void CRandomChatDlg::slot_ok()
   if (lstGroups->currentItem() == -1) return;
 
   btnOk->setEnabled(false);
-  QObject::connect(sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)),
-                   this, SLOT(slot_doneUserFcn(ICQEvent *)));
+  connect(sigman, SIGNAL(signal_doneUserFcn(LicqEvent*)), SLOT(slot_doneUserFcn(LicqEvent*)));
   unsigned long nGroup = ICQ_RANDOMxCHATxGROUP_NONE;
   switch(lstGroups->currentItem())
   {
@@ -138,8 +138,9 @@ void CRandomChatDlg::slot_doneUserFcn(ICQEvent *e)
     break;
   default:
     //TODO when CSearchAck changes
-    mainwin->callFunction(mnuUserSendChat, e->SearchAck()->Id(),
-                          e->SearchAck()->PPID() );
+      UserId userId = e->SearchAck()->userId();
+      gUserManager.addUser(userId, false);
+      mainwin->callFunction(mnuUserSendChat, userId);
     close();
     return;
   }
@@ -234,8 +235,7 @@ void CSetRandomChatGroupDlg::slot_ok()
 
   btnOk->setEnabled(false);
   btnCancel = new QPushButton(tr("&Cancel"), this);
-  QObject::connect(sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)),
-                   this, SLOT(slot_doneUserFcn(ICQEvent *)));
+  connect(sigman, SIGNAL(signal_doneUserFcn(LicqEvent*)), SLOT(slot_doneUserFcn(LicqEvent*)));
   unsigned long nGroup = ICQ_RANDOMxCHATxGROUP_NONE;
   switch(lstGroups->currentItem())
   {

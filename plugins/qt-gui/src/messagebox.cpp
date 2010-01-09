@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,12 +34,9 @@
 #include "eventdesc.h"
 #include "gui-defines.h"
 
-MsgViewItem::MsgViewItem(CUserEvent *theMsg, QTextCodec *codec, QListView *parent) : QListViewItem(parent)
+MsgViewItem::MsgViewItem(const CUserEvent* theMsg, QTextCodec *codec, QListView *parent) : QListViewItem(parent)
 {
-  if (theMsg->Direction() == D_SENDER)
-    msg = theMsg;
-  else
-    msg = theMsg->Copy();
+  msg = theMsg->Copy();
 
   m_codec = codec;
 

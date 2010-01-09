@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 
 #include <QDialog>
 
+#include <licq_types.h>
+
 namespace LicqQtGui
 {
 class MLEdit;
@@ -31,7 +33,14 @@ class RefuseDlg : public QDialog
   Q_OBJECT
 
 public:
-  RefuseDlg(QString id, unsigned long ppid, QString t, QWidget* parent = NULL);
+  /**
+   * Constructor, create and show refusal dialog
+   *
+   * @param userId User to send refusal message to
+   * @param t Type of event to refuse
+   * @param parent Parent widget
+   */
+  RefuseDlg(const UserId& userId, const QString& t, QWidget* parent = NULL);
   QString RefuseMessage();
 
 private:

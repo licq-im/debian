@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -237,8 +237,7 @@ void SecurityDlg::ok()
   if (secUpdateNeeded || pasUpdateNeeded)
   {
     btnUpdate->setEnabled(false);
-    QObject::connect(sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)),
-                     this, SLOT(slot_doneUserFcn(ICQEvent *)));
+    connect(sigman, SIGNAL(signal_doneUserFcn(LicqEvent*)), SLOT(slot_doneUserFcn(LicqEvent*)));
 
     if (chkOnlyLocal->isChecked())
     {

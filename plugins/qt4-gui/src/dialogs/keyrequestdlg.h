@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,12 @@
 
 #include <QDialog>
 
+#include <licq_types.h>
+
 class QLabel;
 class QPushButton;
 
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -34,12 +36,17 @@ class KeyRequestDlg : public QDialog
   Q_OBJECT
 
 public:
-  KeyRequestDlg(QString id, unsigned long ppid, QWidget* parent = 0);
+  /**
+   * Constructor, create and show key request dialog
+   *
+   * @param userId User to request key for
+   * @param parent Parent widget
+   */
+  KeyRequestDlg(const UserId& userId, QWidget* parent = 0);
   ~KeyRequestDlg();
 
 private:
-  QString myId;
-  unsigned long myPpid;
+  UserId myUserId;
   unsigned long myIcqEventTag;
   bool myOpen;
 
@@ -48,7 +55,7 @@ private:
 
 private slots:
   void startSend();
-  void doneEvent(ICQEvent* e);
+  void doneEvent(const LicqEvent* e);
   void openConnection();
   void closeConnection();
 };

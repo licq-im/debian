@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,12 @@
 
 #include <QObject>
 
+#include <licq_types.h>
+
 class QSocketNotifier;
 
-class CICQSignal;
-class ICQEvent;
+class LicqSignal;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -39,30 +41,97 @@ public:
   ~SignalManager();
 
 signals:
-  void updatedList(CICQSignal* sig);
-  void updatedUser(CICQSignal* sig);
-  void updatedStatus(CICQSignal* sig);
-  void doneOwnerFcn(ICQEvent* ev);
-  void doneUserFcn(ICQEvent* ev);
-  void searchResult(ICQEvent* ev);
+  /**
+   * Contact list has changed
+   *
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
+   * @param userId Id for affected user, if applicable
+   */
+  void updatedList(unsigned long subSignal, int argument, const UserId& userId);
+
+  /**
+   * Data for a user has changed
+   *
+   * @param userId Id for affected user
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
+   * @param cid Conversation id
+   */
+  void updatedUser(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+
+  /**
+   * Status has changed
+   *
+   * @param ppid Protocol instance id for owner that changed status
+   */
+  void updatedStatus(unsigned long ppid);
+
+  void doneOwnerFcn(const LicqEvent* ev);
+  void doneUserFcn(const LicqEvent* ev);
+  void searchResult(const LicqEvent* ev);
   void logon();
   void logoff();
-  void ui_viewevent(QString);
-  void ui_message(QString, unsigned long);
+
+  /**
+   * Open event dialog to show next event for a user
+   * Triggered from fifo or other plugin
+   *
+   * @param userId User to show event for
+   */
+  void ui_viewevent(const UserId& userId);
+
+  /**
+   * Open a message dialog for a user
+   * Triggered from fifo or other plugin
+   *
+   * @param userId User to open dialog for
+   */
+  void ui_message(const UserId& userId);
   void protocolPlugin(unsigned long);
-  void eventTag(QString, unsigned long, unsigned long);
-  void socket(QString, unsigned long, unsigned long);
-  void convoJoin(QString, unsigned long, unsigned long);
-  void convoLeave(QString, unsigned long, unsigned long);
+
+  /**
+   * A new event is ongoing for a user
+   *
+   * @param userId User event is sent for
+   * @param eventTag Id of event
+   */
+  void eventTag(const UserId& userId, unsigned long eventTag);
+
+  /**
+   * A conversation id has been associated with a user
+   *
+   * @param userId User id to associate conversation with
+   * @param convoId Conversation id
+   */
+  void socket(const UserId& userId, unsigned long convoId);
+
+  /**
+   * Someone joined an ongoing conversation
+   *
+   * @param userId User that joined conversation
+   * @param ppid Protocol of conversation
+   * @param convoId Id of conversation
+   */
+  void convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId);
+
+  /**
+   * Someone left an ongoing conversation
+   *
+   * @param userId User that left conversation
+   * @param ppid Protocol of conversation
+   * @param convoId Id of conversation
+   */
+  void convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId);
   void verifyImage(unsigned long);
-  void newOwner(QString, unsigned long);
+  void newOwner(const QString& accountId, unsigned long ppid);
 
 private:
   int myPipe;
   QSocketNotifier* sn;
 
-  void ProcessSignal(CICQSignal* sig);
-  void ProcessEvent(ICQEvent* ev);
+  void ProcessSignal(LicqSignal* sig);
+  void ProcessEvent(LicqEvent* ev);
 
 private slots:
   void process();

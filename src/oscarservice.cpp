@@ -20,6 +20,7 @@
 // Localization
 #include "gettext.h"
 
+#include "licq_byteorder.h"
 #include "licq_icqd.h"
 #include "licq_events.h"
 #include "licq_socket.h"
@@ -28,6 +29,8 @@
 #include "licq_buffer.h"
 #include "licq_log.h"
 #include "support.h"
+
+using namespace std;
 
 COscarService::COscarService(CICQDaemon *Daemon, unsigned short Fam)
 {
@@ -131,11 +134,10 @@ void COscarService::ClearQueue()
   pthread_mutex_unlock(&mutex_sendqueue);
 }
 
-unsigned long COscarService::SendEvent(const char *Id,
+unsigned long COscarService::SendEvent(const UserId& userId,
                                        unsigned short SubType, bool Request)
 {
-  ICQEvent *e = new ICQEvent(myDaemon, mySocketDesc, NULL, CONNECT_SERVER,
-                             Id, LICQ_PPID, NULL);
+  LicqEvent* e = new LicqEvent(myDaemon, mySocketDesc, NULL, CONNECT_SERVER, userId);
   e->SetSubType(SubType);
   if (Request)
     myDaemon->PushEvent(e);
@@ -155,9 +157,11 @@ bool COscarService::SendBARTFam(ICQEvent *e)
   {
     case ICQ_SNACxBART_DOWNLOADxREQUEST:
     {
-      const ICQUser* u = gUserManager.FetchUser(e->Id(), LICQ_PPID, LOCK_R);
-      CPU_RequestBuddyIcon *p = new CPU_RequestBuddyIcon(e->Id(), u->BuddyIconType(),
-                                    u->BuddyIconHashType(), u->BuddyIconHash(), myFam);
+      const LicqUser* u = gUserManager.fetchUser(e->userId());
+      if (u == NULL)
+        return false;
+      CPU_RequestBuddyIcon *p = new CPU_RequestBuddyIcon(u->accountId().c_str(),
+          u->BuddyIconType(), u->BuddyIconHashType(), u->BuddyIconHash(), myFam);
       gLog.Info(tr("%sRequesting buddy icon for %s (#%hu/#%d)...\n"),
                 L_SRVxSTR, u->GetAlias(), p->Sequence(), p->SubSequence());
       gUserManager.DropUser(u);
@@ -194,8 +198,8 @@ bool COscarService::ProcessPacket(CBuffer &packet)
          >> Sequence
          >> Len;
 
-  rev_e_short(Sequence);
-  rev_e_short(Len);
+  Sequence = BSWAP_16(Sequence);
+  Len = BSWAP_16(Len);
 
   switch (Channel)
   {
@@ -239,10 +243,10 @@ void COscarService::ProcessDataChannel(CBuffer &packet)
   unsigned long RequestId;
 
   packet >> Family >> SubType >> Flags >> RequestId;
-  rev_e_short(Family);
-  rev_e_short(SubType);
-  rev_e_short(Flags);
-  rev_e_long(RequestId);
+  Family = BSWAP_16(Family);
+  SubType = BSWAP_16(SubType);
+  Flags = BSWAP_16(Flags);
+  RequestId = BSWAP_32(RequestId);
 
   if (Flags & 0x8000) // version of the family that this SNAC, just ignore it
   {
@@ -395,8 +399,7 @@ void COscarService::ProcessBARTFam(CBuffer &packet, unsigned short SubType,
               u->SetEnableSave(true);
             }
             u->SavePictureInfo();
-            myDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_PICTURE,
-                                                      u->IdString(), u->PPID()));
+            myDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_PICTURE, u->id()));
 
             ICQEvent *e = myDaemon->DoneServerEvent(RequestId, EVENT_SUCCESS);
             if (e)
@@ -446,7 +449,7 @@ bool COscarService::Initialize()
   }
 
   ChangeStatus(STATUS_CONNECTED);
-  SrvSocket* s = new SrvSocket(gUserManager.OwnerId(LICQ_PPID).c_str(), LICQ_PPID);
+  SrvSocket* s = new SrvSocket(gUserManager.ownerUserId(LICQ_PPID));
   gLog.Info(tr("%sConnecting to separate server for service 0x%02X.\n"),
             L_SRVxSTR, myFam);
   if (myDaemon->GetProxy() == NULL)
@@ -462,7 +465,7 @@ bool COscarService::Initialize()
     if (myProxy == NULL)
       myProxy = myDaemon->CreateProxy();
   }
-  if (!s->ConnectTo(myServer, myPort, myProxy))
+  if (!s->connectTo(string(myServer), myPort, myProxy))
   {
     gLog.Warn(tr("%sCan't establish service 0x%02X socket.\n"),
                L_WARNxSTR, myFam);

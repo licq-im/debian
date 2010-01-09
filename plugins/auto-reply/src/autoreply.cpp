@@ -34,6 +34,8 @@ extern int errno;
 
 extern "C" { const char *LP_Version(); }
 
+using namespace std;
+
 const char L_AUTOREPxSTR[]  = "[RPL] ";
 const unsigned short SUBJ_CHARS = 20;
 
@@ -94,18 +96,10 @@ int CLicqAutoReply::Run(CICQDaemon *_licqDaemon)
   if (m_szStatus != NULL)
   {
     unsigned long s = StringToStatus(m_szStatus);
-    ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-    bool b = o->StatusOffline();
-    gUserManager.DropOwner(o);
     if (s == INT_MAX)
       gLog.Warn("%sInvalid startup status.\n", L_AUTOREPxSTR);
     else
-    {
-      if (b)
-        licqDaemon->icqLogon(s);
-      else
-        licqDaemon->icqSetStatus(s);
-    }
+      licqDaemon->protoSetStatus(gUserManager.ownerUserId(LICQ_PPID), s);
     free(m_szStatus);
     m_szStatus = NULL;
   }
@@ -145,7 +139,7 @@ void CLicqAutoReply::ProcessPipe()
   {
   case 'S':  // A signal is pending
   {
-    CICQSignal *s = licqDaemon->PopPluginSignal();
+      LicqSignal* s = licqDaemon->popPluginSignal();
     if (m_bEnabled) ProcessSignal(s);
     break;
   }
@@ -187,13 +181,13 @@ void CLicqAutoReply::ProcessPipe()
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::ProcessSignal
  *-------------------------------------------------------------------------*/
-void CLicqAutoReply::ProcessSignal(CICQSignal *s)
+void CLicqAutoReply::ProcessSignal(LicqSignal* s)
 {
   switch (s->Signal())
   {
     case SIGNAL_UPDATExUSER:
-      if (s->SubSignal() == USER_EVENTS && gUserManager.FindOwner(s->Id(), s->PPID()) == NULL && s->Argument() > 0)
-        ProcessUserEvent(s->Id(), s->PPID(), s->Argument());
+      if (s->SubSignal() == USER_EVENTS && !gUserManager.isOwner(s->userId()) && s->Argument() > 0)
+        processUserEvent(s->userId(), s->Argument());
       break;
     // We should never get any other signal
     default:
@@ -217,7 +211,7 @@ void CLicqAutoReply::ProcessEvent(ICQEvent *e)
          e->SubCommand() != ICQ_CMDxSUB_FILE))
     {
 	    user_event = e->UserEvent();
-      licqDaemon->icqSendMessage(e->Id(), user_event->Text(), !m_bSendThroughServer,
+      licqDaemon->sendMessage(e->userId(), user_event->Text(), m_bSendThroughServer,
         ICQ_TCPxMSG_URGENT); //urgent, because, hey, he asked us, right?
     }
   }
@@ -226,42 +220,40 @@ void CLicqAutoReply::ProcessEvent(ICQEvent *e)
 }
 
 
-void CLicqAutoReply::ProcessUserEvent(const char *szId, unsigned long nPPID, unsigned long nId)
+void CLicqAutoReply::processUserEvent(const UserId& userId, unsigned long nId)
 {
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL)
   {
-    gLog.Warn("%sInvalid user id received from daemon (%s).\n", L_AUTOREPxSTR, szId);
+    gLog.Warn("%sInvalid user id received from daemon (%s).\n", L_AUTOREPxSTR, USERID_TOSTR(userId));
     return;
   }
 
-  CUserEvent *e = u->EventPeekId(nId);
+  const CUserEvent* e = u->EventPeekId(nId);
   gUserManager.DropUser(u);
 
   if (e == NULL)
   {
     gLog.Warn("%sInvalid message id (%ld).\n", L_AUTOREPxSTR, nId);
+    return;
   }
-  else
+
+  bool r = autoReplyEvent(userId, e);
+  if (m_bDelete && r)
   {
-    bool r = AutoReplyEvent(szId, nPPID, e);
-    if (m_bDelete && r)
-    {
-      u = gUserManager.FetchUser(szId, nPPID, LOCK_W);
-      u->EventClearId(nId);
-      gUserManager.DropUser(u);
-    }
+    LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
+    u->EventClearId(nId);
+    gUserManager.DropUser(u);
   }
 }
 
-
-bool CLicqAutoReply::AutoReplyEvent(const char *szId, unsigned long nPPID, CUserEvent *event)
+bool CLicqAutoReply::autoReplyEvent(const UserId& userId, const CUserEvent* event)
 {
   char *szCommand;
   char buf[4096];
   char *tmp;
   sprintf(buf, "%s ", m_szProgram);
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   tmp = u->usprintf(m_szArguments);
   gUserManager.DropUser(u);
   szCommand = new char[strlen(buf) + strlen(tmp) + 1];
@@ -301,23 +293,23 @@ bool CLicqAutoReply::AutoReplyEvent(const char *szId, unsigned long nPPID, CUser
 
   char *szText = new char[4096 + 256];
   sprintf(szText, "%s", m_szMessage);
-  unsigned long tag = licqDaemon->ProtoSendMessage(szId, nPPID, szText, !m_bSendThroughServer,
+  unsigned long tag = licqDaemon->sendMessage(userId, szText, m_bSendThroughServer,
      ICQ_TCPxMSG_URGENT);
   delete []szText;
   delete [] szCommand;
 
-  u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  u = gUserManager.fetchUser(userId);
   if (u == NULL) return false;
 
   if (tag == 0)
   {
     gLog.Warn("%sSending message to %s (%s) failed.\n", L_AUTOREPxSTR,
-     u->GetAlias(), szId);
+        u->GetAlias(), u->accountId().c_str());
   }
   else
   {
     gLog.Info("%sSent autoreply to %s (%s).\n", L_AUTOREPxSTR, u->GetAlias(),
-     szId);
+        u->accountId().c_str());
   }
 
   gUserManager.DropUser(u);

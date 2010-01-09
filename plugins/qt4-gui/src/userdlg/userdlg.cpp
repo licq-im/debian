@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,16 +46,15 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserDlg */
 
-UserDlg::UserDlg(const QString& id, unsigned long ppid, QWidget* parent)
+UserDlg::UserDlg(const UserId& userId, QWidget* parent)
   : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
-    myId(id),
-    myPpid(ppid),
+    myUserId(userId),
     myIcqEventTag(0)
 {
   Support::setWidgetProps(this, "UserDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
 
-  myIsOwner = (gUserManager.FindOwner(myId.toLatin1(), myPpid) != NULL);
+  myIsOwner = gUserManager.isOwner(myUserId);
 
   QVBoxLayout* top_lay = new QVBoxLayout(this);
 
@@ -102,15 +101,11 @@ UserDlg::UserDlg(const QString& id, unsigned long ppid, QWidget* parent)
   myUserInfo = new UserPages::Info(myIsOwner, this);
   myUserSettings = new UserPages::Settings(myIsOwner, this);
 
-  const ICQUser* user = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
+  const LicqUser* user = gUserManager.fetchUser(myUserId, LOCK_R);
   if (user != NULL)
   {
-    QTextCodec* codec = UserCodec::codecForICQUser(user);
-    QString name = codec->toUnicode(user->GetFirstName());
-    QString lastname = codec->toUnicode(user->GetLastName());
-    if ((!name.isEmpty()) && (!lastname.isEmpty()))
-      name += " ";
-    name += lastname;
+    const QTextCodec* codec = UserCodec::codecForUser(user);
+    QString name = codec->toUnicode(user->getFullName().c_str());
     if (!name.isEmpty())
       name = " (" + name + ")";
     myBasicTitle = tr("Licq - Info ") + QString::fromUtf8(user->GetAlias()) + name;
@@ -127,7 +122,8 @@ UserDlg::UserDlg(const QString& id, unsigned long ppid, QWidget* parent)
   resetCaption();
 
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(updatedUser(CICQSignal*)), SLOT(userUpdated(CICQSignal*)));
+      SIGNAL(updatedUser(const UserId&, unsigned long, int, unsigned long)),
+      SLOT(userUpdated(const UserId&, unsigned long)));
 
   QDialog::show();
 }
@@ -137,7 +133,7 @@ UserDlg::~UserDlg()
   emit finished(this);
 }
 
-void UserDlg::addPage(UserPage page, QWidget* widget, QString title, UserPage parent)
+void UserDlg::addPage(UserPage page, QWidget* widget, const QString& title, UserPage parent)
 {
   myPages.insert(page, widget);
   myPager->addPage(widget, title, (parent == UnknownPage ? NULL : myPages.value(parent)));
@@ -179,7 +175,7 @@ void UserDlg::retrieve()
     setCursor(Qt::WaitCursor);
     myProgressMsg = tr("Updating...");
     connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(ICQEvent*)), SLOT(doneFunction(ICQEvent*)));
+        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneFunction(const LicqEvent*)));
     setWindowTitle(myBasicTitle + " [" + myProgressMsg + "]");
   }
 }
@@ -193,7 +189,7 @@ void UserDlg::send()
     myProgressMsg = tr("Updating server...");
     setCursor(Qt::WaitCursor);
     connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(ICQEvent*)), SLOT(doneFunction(ICQEvent*)));
+        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneFunction(const LicqEvent*)));
     setWindowTitle(myBasicTitle + " [" + myProgressMsg +"]");
   }
 }
@@ -206,7 +202,7 @@ void UserDlg::ok()
 
 void UserDlg::apply()
 {
-  ICQUser* user = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_W);
+  LicqUser* user = gUserManager.fetchUser(myUserId, LOCK_W);
   if (user == NULL)
     return;
 
@@ -221,29 +217,29 @@ void UserDlg::apply()
   gUserManager.DropUser(user);
 
   // Special stuff that must be called without holding lock
-  myUserInfo->apply2(myId, myPpid);
-  myUserSettings->apply2(myId, myPpid);
+  myUserInfo->apply2(myUserId);
+  myUserSettings->apply2(myUserId);
 
   // Make sure GUI is updated
-  LicqGui::instance()->updateUserData(myId, myPpid);
+  LicqGui::instance()->updateUserData(myUserId);
 }
 
-void UserDlg::userUpdated(CICQSignal* sig)
+void UserDlg::userUpdated(const UserId& userId, unsigned long subSignal)
 {
-  if (sig->PPID() != myPpid || sig->Id() != myId)
+  if (userId != myUserId)
     return;
 
-  const ICQUser* user = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
+  const LicqUser* user = gUserManager.fetchUser(myUserId, LOCK_R);
   if (user == NULL)
     return;
 
-  myUserInfo->userUpdated(sig, user);
-  myUserSettings->userUpdated(sig, user);
+  myUserInfo->userUpdated(user, subSignal);
+  myUserSettings->userUpdated(user, subSignal);
 
   gUserManager.DropUser(user);
 }
 
-void UserDlg::doneFunction(ICQEvent* event)
+void UserDlg::doneFunction(const LicqEvent* event)
 {
   if (!event->Equals(myIcqEventTag))
     return;
@@ -278,12 +274,12 @@ void UserDlg::doneFunction(ICQEvent* event)
   setCursor(Qt::ArrowCursor);
   myIcqEventTag = 0;
   disconnect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(ICQEvent*)), this, SLOT(doneFunction(ICQEvent*)));
+      SIGNAL(doneUserFcn(const LicqEvent*)), this, SLOT(doneFunction(const LicqEvent*)));
 }
 
 void UserDlg::showUserMenu()
 {
-  LicqGui::instance()->userMenu()->setUser(myId, myPpid);
+  LicqGui::instance()->userMenu()->setUser(myUserId);
 }
 
 void UserDlg::resetCaption()

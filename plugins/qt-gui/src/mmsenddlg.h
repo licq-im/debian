@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,8 @@
 
 #include <qstring.h>
 
+#include <licq_types.h>
+
 #include "licqdialog.h"
 #include "licq_icqd.h"
 
@@ -38,7 +40,7 @@ class CSignalManager;
 class CMMUserView;
 class CMMUserViewItem;
 class CICQDaemon;
-class ICQEvent;
+class LicqEvent;
 
 class CMMSendDlg : public LicqDialog
 {
@@ -60,8 +62,7 @@ protected:
   QVGroupBox *grpSending;
   QPushButton *btnCancel;
   QProgressBar *barSend;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   CMMUserView *mmv;
   CMMUserViewItem *mmvi;
   CICQDaemon *server;
@@ -69,7 +70,7 @@ protected:
 
   void SendNext();
 protected slots:
-  void slot_done(ICQEvent *);
+  void slot_done(LicqEvent*);
   void slot_cancel();
 };
 

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -102,7 +102,7 @@ CPFile_Info::CPFile_Info(const char *_szFileName)
   m_bValid = true;
   m_nError = 0;
 
-  char *pcNoPath = NULL;
+  const char* pcNoPath = NULL;
   struct stat buf;
 
   // Remove any path from the filename
@@ -194,15 +194,17 @@ FileTransferManagerList CFileTransferManager::ftmList;
 pthread_mutex_t CFileTransferManager::thread_cancel_mutex
                                                    = PTHREAD_MUTEX_INITIALIZER;
 
-CFileTransferManager::CFileTransferManager(CICQDaemon *d, unsigned long nUin)
+CFileTransferManager::CFileTransferManager(CICQDaemon* d, const char* accountId)
   : m_bThreadRunning(false)
 {
   // Create the plugin notification pipe
   pipe(pipe_thread);
   pipe(pipe_events);
 
-  m_nUin = nUin;
-  sprintf(myId, "%lu", m_nUin);
+  if (myId != NULL)
+    strcpy(myId, accountId);
+  else
+    myId[0] = '\0';
   m_nSession = rand();
   licqDaemon = d;
 
@@ -220,7 +222,7 @@ CFileTransferManager::CFileTransferManager(CICQDaemon *d, unsigned long nUin)
   m_bThreadCreated = false;
 
   m_szFileName[0] = m_szPathName[0] = '\0';
-  sprintf(m_szRemoteName, "%lu", m_nUin);
+  strcpy(m_szRemoteName, myId);
 
   ftmList.push_back(this);
 }
@@ -250,7 +252,7 @@ bool CFileTransferManager::ReceiveFiles(const char *szDirectory)
 
   if (szDirectory == NULL)
   {
-    snprintf(m_szDirectory, MAX_FILENAME_LEN, "%s/%lu", BASE_DIR, m_nUin);
+    snprintf(m_szDirectory, MAX_FILENAME_LEN, "%s/%s", BASE_DIR, myId);
     m_szDirectory[MAX_FILENAME_LEN - 1] = '\0';
     if (access(BASE_DIR, F_OK) < 0 && mkdir(m_szDirectory, 0700) == -1 &&
         errno != EEXIST)
@@ -1099,6 +1101,12 @@ void CFileTransferManager::CloseConnection()
   sockman.CloseSocket(ftServer.Descriptor(), false, false);
   sockman.CloseSocket(ftSock.Descriptor(), false, false);
   m_nState = FT_STATE_DISCONNECTED;
+
+  if (m_nFileDesc != -1)
+  {
+    close(m_nFileDesc);
+    m_nFileDesc = -1;
+  }
 }
 
 
@@ -1158,6 +1166,17 @@ void *FileTransferManager_tep(void *arg)
 
     nSocketsAvailable = select(l, &f_recv, &f_send, NULL, tv);
 
+    if (nSocketsAvailable == -1)
+    {
+      // Something is very wrong, most likely we've lost control of a file
+      //   descriptor and select will continue to fail causing this thread to
+      //   spin so better to just give up and exit.
+
+      gLog.Warn(tr("%sFile Transfer: select failed, aborting thread:\n%s%s\n"),
+          L_WARNxSTR, L_BLANKxSTR, strerror(errno));
+      pthread_exit(NULL);
+    }
+
     // Check if we timed out
     if (tv != NULL && nSocketsAvailable == 0)
     {
@@ -1191,6 +1210,11 @@ void *FileTransferManager_tep(void *arg)
           if (ftman->ftSock.Descriptor() != -1)
           {
             gLog.Warn(tr("%sFile Transfer: Receiving repeat incoming connection.\n"), L_WARNxSTR);
+
+            // Dump the extra connection to clear the listen socket queue
+            TCPSocket ts;
+            if (ftman->ftServer.RecvConnection(ts))
+              ts.CloseConnection();
           }
           else
           {

@@ -4,7 +4,9 @@
 #include <cstdio>
 #include <vector>
 
-class ICQUser;
+#include "licq_types.h"
+
+class LicqUser;
 
 // Define for marking functions as deprecated
 #ifndef LICQ_DEPRECATED
@@ -49,7 +51,7 @@ public:
   const char *Title()  { return m_szTitle; }
   const char *Default()  { return m_szDefault; }
   const char *FullDefault()  { return m_szFullDefault; }
-  bool SetFields(const ICQUser* u);
+  bool SetFields(const LicqUser* u);
 protected:
   char *m_szTitle;
   char *m_szDefault;
@@ -67,11 +69,18 @@ public:
   ~CUtility();
 
   const char *Name()  { return m_szName; }
-  const char *Command(ICQUser *) { return m_szCommand; }
+  const char* Command(LicqUser*) { return m_szCommand; }
   const char *Description()  { return m_szDescription; }
   EWinType WinType()  { return m_eWinType; }
 
-  bool SetFields(const char *szId, unsigned long nPPID);
+  /**
+   * Set user specific data for utility
+   *
+   * @param userId Id of user to populate fields from
+   * @return True if user data was sucessfully read
+   */
+  bool setFields(const UserId& userId);
+
   void SetUserFields(const std::vector<const char *> &_vszUserFields);
   void SetBackgroundTask()  { strcat(m_szFullCommand, " &"); }
   const char *FullCommand() { return m_szFullCommand; }
@@ -80,9 +89,6 @@ public:
   CUtilityUserField *UserField(unsigned short i)  { return m_vxUserField[i]; }
 
   bool Exception()  { return bException; }
-
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED bool SetFields(unsigned long _nUin);
 
 protected:
   char *m_szName;

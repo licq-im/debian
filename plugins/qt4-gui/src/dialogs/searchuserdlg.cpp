@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,6 +40,8 @@
 #include <licq_languagecodes.h>
 #include <licq_user.h>
 
+#include "contactlist/contactlist.h"
+
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
 #include "core/messagebox.h"
@@ -61,7 +63,7 @@ SearchUserDlg::SearchUserDlg()
   setWindowTitle(tr("Licq - User Search"));
 
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(searchResult(ICQEvent*)), SLOT(searchResult(ICQEvent*)));
+      SIGNAL(searchResult(const LicqEvent*)), SLOT(searchResult(const LicqEvent*)));
 
   QVBoxLayout* lay = new QVBoxLayout(this);
 
@@ -317,7 +319,7 @@ void SearchUserDlg::resetSearch()
   btnSearch->setEnabled(true);
 }
 
-void SearchUserDlg::searchResult(ICQEvent* e)
+void SearchUserDlg::searchResult(const LicqEvent* e)
 {
   if (!e->Equals(searchTag))
     return;
@@ -325,7 +327,7 @@ void SearchUserDlg::searchResult(ICQEvent* e)
   btnSearch->setEnabled(true);
   btnDone->setEnabled(true);
 
-  if (e->SearchAck() != NULL && e->SearchAck()->Uin() != 0)
+  if (e->SearchAck() != NULL && USERID_ISVALID(e->SearchAck()->userId()))
     searchFound(e->SearchAck());
 
   if (e->Result() == EVENT_SUCCESS)
@@ -342,25 +344,16 @@ void SearchUserDlg::searchFound(const CSearchAck* s)
   if (codec == NULL)
     codec = QTextCodec::codecForLocale();
 
-  for (int i = 0; i <= 6; i++)
-  {
-    switch (i)
-    {
-      case 0:
-        item->setData(i, Qt::UserRole, QString::number(s->Uin()));
-        text = codec->toUnicode(s->Alias());
-        break;
-      case 1:
-        item->setTextAlignment(i, Qt::AlignRight);
-        text = QString::number(s->Uin());
-        break;
-      case 2:
-        text = codec->toUnicode(s->FirstName()) + " " + codec->toUnicode(s->LastName());
-        break;
-      case 3:
-        text = s->Email();
-        break;
-      case 4:
+  item->setData(0, Qt::UserRole, QVariant::fromValue(s->userId()));
+  item->setText(0, codec->toUnicode(s->Alias()));
+
+  item->setTextAlignment(1, Qt::AlignRight);
+  item->setText(1, LicqUser::getUserAccountId(s->userId()).c_str());
+
+  item->setText(2, codec->toUnicode(s->FirstName()) + " " + codec->toUnicode(s->LastName()));
+
+  item->setText(3, s->Email());
+
         switch (s->Status())
         {
           case SA_OFFLINE:
@@ -373,8 +366,8 @@ void SearchUserDlg::searchFound(const CSearchAck* s)
           default:
             text = tr("Unknown");
         }
-        break;
-      case 5:
+  item->setText(4, text);
+
         text = (s->Age() ? QString::number(s->Age()) : tr("?")) + "/";
         switch (s->Gender())
         {
@@ -387,13 +380,9 @@ void SearchUserDlg::searchFound(const CSearchAck* s)
           default:
             text += tr("?");
         }
-        break;
-      case 6:
-        text = s->Auth() ? tr("No") : tr("Yes");
-        break;
-    }
-    item->setText(i, text);
-  }
+  item->setText(5, text);
+
+  item->setText(6, s->Auth() ? tr("No") : tr("Yes"));
 }
 
 void SearchUserDlg::searchDone(const CSearchAck* sa)
@@ -443,12 +432,10 @@ void SearchUserDlg::viewInfo()
 {
   foreach (QTreeWidgetItem* current, foundView->selectedItems())
   {
-    QByteArray id = current->data(0, Qt::UserRole).toString().toLatin1();
+    UserId userId = current->data(0, Qt::UserRole).value<UserId>();
 
-    if (!gUserManager.IsOnList(id, ppid))
-      gLicqDaemon->AddUserToList(id, ppid, false, true);
-
-    LicqGui::instance()->showInfoDialog(mnuUserGeneral, id, ppid, false, true);
+    gUserManager.addUser(userId, false);
+    LicqGui::instance()->showInfoDialog(mnuUserGeneral, userId, false, true);
   }
 }
 
@@ -457,8 +444,9 @@ void SearchUserDlg::addUser()
   foreach (QTreeWidgetItem* current, foundView->selectedItems())
   {
     QString id = current->data(0, Qt::UserRole).toString();
+    UserId userId = LicqUser::makeUserId(id.toLatin1().data(), ppid);
 
-    new AddUserDlg(id, ppid, this);
+    new AddUserDlg(userId, this);
   }
 
   foundView->clearSelection();

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,8 +50,8 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendUrlEvent */
 
-UserSendUrlEvent::UserSendUrlEvent(QString id, unsigned long ppid, QWidget* parent)
-  : UserSendCommon(UrlEvent, id, ppid, parent, "UserSendUrlEvent")
+UserSendUrlEvent::UserSendUrlEvent(const UserId& userId, QWidget* parent)
+  : UserSendCommon(UrlEvent, userId, parent, "UserSendUrlEvent")
 {
   myMainWidget->addWidget(myViewSplitter);
   myMessageEdit->setFocus();
@@ -105,13 +105,13 @@ void UserSendUrlEvent::setUrl(const QString& url, const QString& description)
   setText(description);
 }
 
-bool UserSendUrlEvent::sendDone(ICQEvent* e)
+bool UserSendUrlEvent::sendDone(const LicqEvent* e)
 {
   if (e->Command() != ICQ_CMDxTCP_START)
     return true;
 
   bool showAwayDlg = false;
-  const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
   if (u != NULL)
   {
     showAwayDlg = u->Away() && u->ShowAwayMsg();
@@ -119,7 +119,7 @@ bool UserSendUrlEvent::sendDone(ICQEvent* e)
   }
 
   if (showAwayDlg && Config::Chat::instance()->popupAutoResponse())
-    new ShowAwayMsgDlg(myUsers.front().c_str(), myPpid);
+    new ShowAwayMsgDlg(myUsers.front());
 
   return true;
 }
@@ -137,7 +137,7 @@ void UserSendUrlEvent::send()
   // Take care of typing notification now
   mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, false, myConvoId);
+  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
 
   if (myUrlEdit->text().trimmed().isEmpty())
   {
@@ -151,6 +151,7 @@ void UserSendUrlEvent::send()
   if (myMassMessageCheck->isChecked())
   {
     MMSendDlg* m = new MMSendDlg(myMassMessageList, this);
+    connect(m, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
     int r = m->go_url(myUrlEdit->text(), myMessageEdit->toPlainText());
     delete m;
     if (r != QDialog::Accepted)
@@ -158,12 +159,11 @@ void UserSendUrlEvent::send()
   }
 
   unsigned long icqEventTag;
-  icqEventTag = gLicqDaemon->ProtoSendUrl(
-      myUsers.front().c_str(),
-      myPpid,
-      myUrlEdit->text().toLatin1(),
-      myCodec->fromUnicode(myMessageEdit->toPlainText()),
-      mySendServerCheck->isChecked() ? false : true,
+  icqEventTag = gLicqDaemon->sendUrl(
+      myUsers.front(),
+      myUrlEdit->text().toLatin1().data(),
+      myCodec->fromUnicode(myMessageEdit->toPlainText()).data(),
+      mySendServerCheck->isChecked(),
       myUrgentCheck->isChecked() ? ICQ_TCPxMSG_URGENT : ICQ_TCPxMSG_NORMAL,
       myMassMessageCheck->isChecked(),
       &myIcqColor);

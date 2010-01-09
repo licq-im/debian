@@ -5,12 +5,14 @@
 #include "config.h"
 #endif
 
+#include <licq_types.h>
+
 class CICQDaemon;
 class TCPSocket;
-class ICQUser;
+class LicqUser;
 class CUserEvent;
-class CICQSignal;
-class ICQEvent;
+class LicqSignal;
+class LicqEvent;
 
 #define FORWARD_EMAIL 0
 #define FORWARD_ICQ 1
@@ -40,13 +42,13 @@ protected:
 
 public:
   void ProcessPipe();
-  void ProcessSignal(CICQSignal *);
-  void ProcessEvent(ICQEvent *);
+  void ProcessSignal(LicqSignal* s);
+  void ProcessEvent(LicqEvent* e);
 
-  void ProcessUserEvent(const char *, unsigned long, unsigned long);
-  bool ForwardEvent(ICQUser *, CUserEvent *);
-  bool ForwardEvent_ICQ(ICQUser *, CUserEvent *);
-  bool ForwardEvent_Email(ICQUser *, CUserEvent *);
+  void ProcessUserEvent(const UserId& userId, unsigned long nId);
+  bool ForwardEvent(const LicqUser* u, const CUserEvent* e);
+  bool ForwardEvent_ICQ(const LicqUser* u, const CUserEvent* e);
+  bool ForwardEvent_Email(const LicqUser* u, const CUserEvent* e);
 
 private:
   bool CreateDefaultConfig();

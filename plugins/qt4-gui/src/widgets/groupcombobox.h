@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,8 +33,8 @@ class GroupComboBox : public QComboBox
 public:
   GroupComboBox(bool withAllUsers = false, QWidget* parent = NULL);
 
-  unsigned short currentGroupId() const;
-  bool setCurrentGroupId(unsigned short groupId);
+  int currentGroupId() const;
+  bool setCurrentGroupId(int groupId);
   bool setCurrentGroupName(const QString& groupName);
 };
 

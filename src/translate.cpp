@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -76,7 +76,7 @@ void CTranslator::setDefaultTranslationMap()
 bool CTranslator::setTranslationMap(const char* mapFileName)
 {
   // Map name is the file name with no path
-  char* sep = strrchr(mapFileName, '/');
+  const char* sep = strrchr(mapFileName, '/');
   const char* mapName = (sep == NULL ? mapFileName : sep + 1);
 
   if (strcmp(mapName, "LATIN_1") == 0)

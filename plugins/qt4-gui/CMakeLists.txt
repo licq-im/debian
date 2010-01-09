@@ -9,14 +9,14 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 # Qt-GUI version
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 3)
-set(VERSION_RELEASE 6)
+set(VERSION_RELEASE 8)
 
 # Use KDE support
 option(WITH_KDE "Compile with KDE support" OFF)
 
 
 # Install dirs
-set(INSTALL_LIB_DIR lib CACHE PATH
+set(INSTALL_LIB_DIR lib${LIB_SUFFIX} CACHE PATH
   "Directory to install the plugin to. A relative path is relative to CMAKE_INSTALL_PREFIX.")
 mark_as_advanced(INSTALL_LIB_DIR)
 
@@ -73,6 +73,16 @@ set(QT_MIN_VERSION "4.3.0")
 # Check for Qt unless WITH_KDE is requested
 if (NOT WITH_KDE)
   find_package(Qt4 REQUIRED)
+
+  # Check for HunSpell
+  find_package(Hunspell)
+  if (HUNSPELL_FOUND)
+    set(HAVE_HUNSPELL 1)
+    add_definitions(${HUNSPELL_DEFINITIONS})
+    include_directories(${HUNSPELL_INCLUDE_DIRS})
+    set(LIBRARIES ${LIBRARIES} ${HUNSPELL_LIBRARIES})
+  endif (HUNSPELL_FOUND)
+
 else (NOT WITH_KDE)
   find_package(KDE4 REQUIRED)
   set(USE_KDE ${KDE4_FOUND})
@@ -107,16 +117,6 @@ set(LIBRARIES ${LIBRARIES}
   ${QT_QTCORE_LIBRARY}
   ${QT_QTGUI_LIBRARY}
   ${QT_QTXML_LIBRARY})
-
-
-# Optional check for gpgme
-find_package(gpgme)
-if (GPGME_FOUND)
-  set(HAVE_LIBGPGME 1)
-  add_definitions(${GPGME_DEFINITIONS})
-  include_directories(${GPGME_INCLUDE_DIRS})
-  set(LIBRARIES ${LIBRARIES} ${GPGME_LIBRARIES})
-endif (GPGME_FOUND)
 
 # Check for boost, used in Licq includes so we must have it
 find_package(Boost 1.31.1 COMPONENTS smart_ptr)

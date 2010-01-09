@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 
 using namespace LicqQtGui;
 
-SkinnableButton::SkinnableButton(const Config::ButtonSkin& skin, QString defaultText, QWidget* parent)
+SkinnableButton::SkinnableButton(const Config::ButtonSkin& skin, const QString& defaultText, QWidget* parent)
   : QPushButton(parent),
     myDefaultText(defaultText),
     myPressedModifiers(Qt::NoModifier)
@@ -35,7 +35,7 @@ SkinnableButton::SkinnableButton(const Config::ButtonSkin& skin, QString default
   applySkin(skin);
 }
 
-SkinnableButton::SkinnableButton(QString defaultText, QWidget* parent)
+SkinnableButton::SkinnableButton(const QString& defaultText, QWidget* parent)
   : QPushButton(defaultText, parent),
     myDefaultText(defaultText),
     myPressedModifiers(Qt::NoModifier)

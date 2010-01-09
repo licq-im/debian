@@ -21,6 +21,7 @@ extern int errno;
 #include <licq_constants.h>
 #include <licq_icqd.h>
 #include <licq_file.h>
+#include <licq_history.h>
 #include <licq_log.h>
 #include <licq_socket.h>
 #include <licq_user.h>
@@ -64,6 +65,7 @@ const unsigned short CODE_SECURExCLOSE = 227;
 const unsigned short CODE_SECURExSTAT = 228;
 const unsigned short CODE_NOTIFYxON = 229;
 const unsigned short CODE_NOTIFYxOFF = 230;
+const unsigned short CODE_HISTORYxEND = 231;
 const unsigned short CODE_VIEWxUNKNOWN = 299;
 // 300 - further action required
 const unsigned short CODE_ENTERxUIN = 300;
@@ -116,6 +118,8 @@ static struct Command commands[] =
     "Show list of groups." },
   { "HELP", &CRMSClient::Process_HELP,
     "Print out help on commands." },
+  { "HISTORY", &CRMSClient::Process_HISTORY,
+    "View history of specific user { <id>[.<protocol>] [<length>] [<offset>]}." },
   { "INFO", &CRMSClient::Process_INFO,
     "Print out user information.  Argument is the id and protocol, or none for personal." },
   { "LIST", &CRMSClient::Process_LIST,
@@ -217,7 +221,7 @@ int CLicqRMS::Run(CICQDaemon *_licqDaemon)
     };
   }
 
-  gLog.Info("%sRMS server started on port %d.\n", L_RMSxSTR, server->LocalPort());
+  gLog.Info("%sRMS server started on port %d.\n", L_RMSxSTR, server->getLocalPort());
   CRMSClient::sockman.AddSocket(server);
   CRMSClient::sockman.DropSocket(server);
 
@@ -292,7 +296,7 @@ void CLicqRMS::ProcessPipe()
   {
   case 'S':  // A signal is pending
   {
-    CICQSignal *s = licqDaemon->PopPluginSignal();
+      LicqSignal* s = licqDaemon->popPluginSignal();
     if (m_bEnabled) ProcessSignal(s);
     break;
   }
@@ -356,14 +360,14 @@ void CLicqRMS::ProcessLog()
 /*---------------------------------------------------------------------------
  * CLicqRMS::ProcessSignal
  *-------------------------------------------------------------------------*/
-void CLicqRMS::ProcessSignal(CICQSignal *s)
+void CLicqRMS::ProcessSignal(LicqSignal* s)
 {
   switch (s->Signal())
   {
   case SIGNAL_UPDATExUSER:
     if (s->SubSignal() == USER_STATUS)
     {
-      ICQUser *u = gUserManager.FetchUser(s->Id(), s->PPID(), LOCK_R);
+        LicqUser* u = gUserManager.fetchUser(s->userId(), LOCK_R);
       if (u)
       {
         ClientList::iterator iter;
@@ -385,7 +389,7 @@ void CLicqRMS::ProcessSignal(CICQSignal *s)
     }
     else if (s->SubSignal() == USER_EVENTS)
     {
-      ICQUser *u = gUserManager.FetchUser(s->Id(), s->PPID(), LOCK_R);
+        LicqUser* u = gUserManager.fetchUser(s->userId(), LOCK_R);
       if (u)
       {
         ClientList::iterator iter;
@@ -409,7 +413,7 @@ void CLicqRMS::ProcessSignal(CICQSignal *s)
   case SIGNAL_LOGON:
     break;
   case SIGNAL_EVENTxID:
-	AddEventTag(s->Id(), s->PPID(), s->Argument());
+      AddEventTag(s->userId(), s->Argument());
     break;
   default:
     break;
@@ -421,12 +425,12 @@ void CLicqRMS::ProcessSignal(CICQSignal *s)
 /*---------------------------------------------------------------------------
  * CLicqRMS::AddEventTag
  *-------------------------------------------------------------------------*/
-void CLicqRMS::AddEventTag(const char *_szId, unsigned long _nPPID, unsigned long _nEventTag)
+void CLicqRMS::AddEventTag(const UserId& userId, unsigned long _nEventTag)
 {
   ClientList ::iterator iter;
   for (iter = clients.begin(); iter != clients.end(); iter++)
   {
-    (*iter)->AddEventTag(_szId, _nPPID, _nEventTag);
+    (*iter)->AddEventTag(userId, _nEventTag);
   }
 }
 
@@ -459,7 +463,6 @@ void CLicqRMS::ProcessServer()
 
 
 CSocketManager CRMSClient::sockman;
-char CRMSClient::buf[128];
 
 /*---------------------------------------------------------------------------
  * CRMSClient::constructor
@@ -470,20 +473,18 @@ CRMSClient::CRMSClient(TCPSocket* sin)
   sockman.AddSocket(&sock);
   sockman.DropSocket(&sock);
 
-  gLog.Info("%sClient connected from %s.\n", L_RMSxSTR, sock.RemoteIpStr(buf));
+  gLog.Info("%sClient connected from %s.\n", L_RMSxSTR, sock.getRemoteIpString().c_str());
   fs = fdopen(sock.Descriptor(), "r+");
   fprintf(fs, "Licq Remote Management Server v%s\n"
      "%d Enter your UIN:\n", LP_Version(), CODE_ENTERxUIN);
   fflush(fs);
 
   m_szCheckId = 0;
-  m_szId = 0;
   m_nState = STATE_UIN;
   m_nLogTypes = 0;
   data_line_pos = 0;
   m_bNotify = false;
-  m_szEventId = 0;
-  m_nEventPPID = 0;
+  myEventUserId = USERID_NONE;
 }
 
 
@@ -501,17 +502,14 @@ CRMSClient::~CRMSClient()
 /*---------------------------------------------------------------------------
  * CRMSClient::AddEventTag
  *-------------------------------------------------------------------------*/
-void CRMSClient::AddEventTag(const char *_szId, unsigned long _nPPID, unsigned long _nEventTag)
+void CRMSClient::AddEventTag(const UserId& userId, unsigned long _nEventTag)
 {
-  if (m_szEventId && m_nEventPPID &&
-       !strcmp(m_szEventId, _szId) && m_nEventPPID == _nPPID)
+  if (USERID_ISVALID(myEventUserId) && myEventUserId == userId)
   {
     fprintf(fs, "%d [%ld] Sending message to %s.\n", CODE_COMMANDxSTART,
-       _nEventTag, _szId);
+       _nEventTag, USERID_TOSTR(userId));
     tags.push_back(_nEventTag);
-	free(m_szEventId);
-	m_szEventId = 0;
-	m_nEventPPID = 0;
+    myEventUserId = USERID_NONE;
   }
 }
 
@@ -541,35 +539,26 @@ unsigned long CRMSClient::GetProtocol(const char *szData)
  *-------------------------------------------------------------------------*/
 void CRMSClient::ParseUser(const char *szData)
 {
-  if (m_szId)
-    free(m_szId);
-    
+  myUserId = USERID_NONE;
   string strData(szData);
   string::size_type nPos= strData.find_last_of(".");
   if (nPos == string::npos)
   {
-    m_szId = strdup(data_arg);
-    m_nPPID = 0;
     ProtoPluginsList pl;
     ProtoPluginsListIter it;
     licqDaemon->ProtoPluginList(pl);
     for (it = pl.begin(); it != pl.end(); it++)
     {
-      ICQUser *u = gUserManager.FetchUser(m_szId, (*it)->PPID(), LOCK_R);
-      if (u)
-      {
-        gUserManager.DropUser(u);
-        m_nPPID = (*it)->PPID();
+      myUserId = LicqUser::makeUserId(data_arg, (*it)->PPID());
+      if (gUserManager.userExists(myUserId))
         break;
-      }
     }
   }
   else
   {
     string strId(strData, 0, strData.find_last_of("."));
     string strProtocol(strData, strData.find_last_of(".")+1, strData.size());
-    m_szId = strdup(strId.c_str());
-    m_nPPID = GetProtocol(strProtocol.c_str());
+    myUserId = LicqUser::makeUserId(strId, GetProtocol(strProtocol.c_str()));
   }
 }
 
@@ -628,7 +617,7 @@ int CRMSClient::Activity()
 {
   if (!sock.RecvRaw())
   {
-    gLog.Info("%sClient %s disconnected.\n", L_RMSxSTR, sock.RemoteIpStr(buf));
+    gLog.Info("%sClient %s disconnected.\n", L_RMSxSTR, sock.getRemoteIpString().c_str());
     return -1;
   }
 
@@ -692,13 +681,13 @@ int CRMSClient::StateMachine()
       {
         gUserManager.DropOwner(o);
         gLog.Info("%sClient failed validation from %s.\n", L_RMSxSTR,
-           sock.RemoteIpStr(buf));
+            sock.getRemoteIpString().c_str());
         fprintf(fs, "%d Invalid ID/Password.\n", CODE_INVALID);
         fflush(fs);
         return -1;
       }
       gLog.Info("%sClient validated from %s.\n", L_RMSxSTR,
-         sock.RemoteIpStr(buf));
+          sock.getRemoteIpString().c_str());
       fprintf(fs, "%d Hello %s.  Type HELP for assistance.\n", CODE_HELLO,
          o->GetAlias());
       fflush(fs);
@@ -795,12 +784,14 @@ int CRMSClient::Process_INFO()
   NEXT_WORD(data_arg);
   unsigned long nPPID = GetProtocol(data_arg);
 
+  UserId userId = LicqUser::makeUserId(szId, nPPID);
+
   //XXX Handle the case when we have the owner
   if (szId == 0)
     m_nUin = strtoul(gUserManager.OwnerId(LICQ_PPID).c_str(), (char**)NULL, 10);
 
   // Print the user info
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL)
   {
     fprintf(fs, "%d No such user.\n", CODE_INVALIDxUSER);
@@ -812,13 +803,13 @@ int CRMSClient::Process_INFO()
   fprintf(fs, "%d %s Status: %s\n", CODE_USERxINFO, u->IdString(),
     u->StatusStr());
   fprintf(fs, "%d %s First Name: %s\n", CODE_USERxINFO, u->IdString(),
-    u->GetFirstName());
+    u->getFirstName().c_str());
   fprintf(fs, "%d %s Last Name: %s\n", CODE_USERxINFO, u->IdString(),
-    u->GetLastName());
+    u->getLastName().c_str());
   fprintf(fs, "%d %s Email 1: %s\n", CODE_USERxINFO, u->IdString(),
-    u->GetEmailPrimary());
+    u->getUserInfoString("Email1").c_str());
   fprintf(fs, "%d %s Email 2: %s\n", CODE_USERxINFO, u->IdString(),
-    u->GetEmailSecondary());
+    u->getUserInfoString("Email2").c_str());
 
   gUserManager.DropUser(u);
 
@@ -894,11 +885,12 @@ int CRMSClient::ChangeStatus(unsigned long nPPID, unsigned long nStatus, const c
     fprintf(fs, "%d Invalid status.\n", CODE_INVALIDxSTATUS);
     return -1;
   }
+  UserId ownerId = gUserManager.ownerUserId(nPPID);
   if (nStatus == ICQ_STATUS_OFFLINE)
   {
     fprintf(fs, "%d [0] Logging off %s.\n", CODE_COMMANDxSTART, szStatus);
     fflush(fs);
-    licqDaemon->ProtoLogoff(nPPID);
+    licqDaemon->protoSetStatus(ownerId, ICQ_STATUS_OFFLINE);
     fprintf(fs, "%d [0] Event done.\n", CODE_STATUSxDONE);
     return 0;
   }
@@ -907,17 +899,11 @@ int CRMSClient::ChangeStatus(unsigned long nPPID, unsigned long nStatus, const c
     ICQOwner *o = gUserManager.FetchOwner(nPPID, LOCK_R);
     bool b = o->StatusOffline();
     gUserManager.DropOwner(o);
-    unsigned long tag = 0;
+    unsigned long tag = licqDaemon->protoSetStatus(ownerId, nStatus);
     if (b)
-    {
-      tag = licqDaemon->ProtoLogon(nPPID, nStatus);
       fprintf(fs, "%d [%ld] Logging on to %s.\n", CODE_COMMANDxSTART, tag, szStatus);
-    }
     else
-    {
-      tag = licqDaemon->ProtoSetStatus(nPPID, nStatus);
       fprintf(fs, "%d [%ld] Setting status for %s.\n", CODE_COMMANDxSTART, tag, szStatus);
-    }
     tags.push_back(tag);
   }
   return 0;
@@ -987,6 +973,74 @@ int CRMSClient::Process_GROUPS()
   return fflush(fs);
 }
 
+int CRMSClient::Process_HISTORY()
+{
+  char* s = strtok(data_arg, " ");
+  if (s == NULL)
+  {
+    fprintf(fs, "%d Invalid User.\n", CODE_INVALIDxUSER);
+    return fflush(fs);
+  }
+  ParseUser(s);
+
+  int length = 10;
+  s = strtok(NULL, " ");
+  if (s != NULL)
+    length = atoi(s);
+
+  int offset = 0;
+  s = strtok(NULL, " ");
+  if (s != NULL)
+    offset = atoi(s);
+
+  HistoryList history;
+  string userAlias;
+  string ownerAlias = "me";
+
+  {
+    LicqUserReadGuard u(myUserId);
+    if (!u.isLocked())
+    {
+      fprintf(fs, "%d Invalid User (%s).\n", CODE_INVALIDxUSER, USERID_TOSTR(myUserId));
+      return fflush(fs);
+    }
+    if (!u->GetHistory(history))
+    {
+      fprintf(fs, "%d Cannot load history file.\n", CODE_EVENTxERROR);
+      return fflush(fs);
+    }
+
+    if (u->User())
+    {
+      userAlias = u->getAlias();
+      const LicqOwner* o = gUserManager.FetchOwner(u->ppid(), LOCK_R);
+      if (o != NULL)
+      {
+        ownerAlias = o->getAlias();
+        gUserManager.DropOwner(o);
+      }
+    }
+    else
+    {
+      userAlias = "system";
+      ownerAlias = u->getAlias();
+    }
+  }
+
+  int counter = 0;
+  HistoryListRIter it;
+  for (it = history.rbegin(); it != history.rend(); ++it)
+  {
+    ++counter;
+    if (counter < offset || counter > offset + length)
+      continue;
+
+    printUserEvent(*it, ((*it)->Direction() == D_RECEIVER ? userAlias : ownerAlias));
+  }
+  fprintf(fs, "%d End.\n", CODE_HISTORYxEND);
+  return fflush(fs);
+}
+
 
 /*---------------------------------------------------------------------------
  * CRMSClient::Process_LIST
@@ -1049,7 +1103,7 @@ int CRMSClient::Process_LIST()
 
   FOR_EACH_USER_START(LOCK_R)
   {
-    if (pUser->GetInGroup(GROUPS_USER, nGroup) &&
+    if (pUser->GetInGroup(nGroup == 0 ? GROUPS_SYSTEM : GROUPS_USER, nGroup) &&
         ((pUser->StatusOffline() && n&2) || (!pUser->StatusOffline() && n&1)))
     {
       ubuf = pUser->usprintf(format);
@@ -1082,7 +1136,7 @@ int CRMSClient::Process_LIST()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_MESSAGE()
 {
-  if (m_nEventPPID || m_szEventId)
+  if (USERID_ISVALID(myEventUserId))
   {
     //client is trying to send another message before we've received
     //the event tag for a previous one
@@ -1105,21 +1159,21 @@ int CRMSClient::Process_MESSAGE_text()
 {
   //XXX Give a tag...
   m_szText[strlen(m_szText) - 1] = '\0';
-  unsigned long tag = licqDaemon->ProtoSendMessage(m_szId, m_nPPID, m_szText,
-    false, ICQ_TCPxMSG_NORMAL);
+  unsigned long tag = licqDaemon->sendMessage(myUserId, m_szText,
+      true, ICQ_TCPxMSG_NORMAL);
 
   m_nState = STATE_COMMAND;
 
+  unsigned long m_nPPID = LicqUser::getUserProtocolId(myUserId);
   if (m_nPPID == LICQ_PPID)
   {
     fprintf(fs, "%d [%ld] Sending message to %s.\n", CODE_COMMANDxSTART,
-       tag, m_szId);
+        tag, USERID_TOSTR(myUserId));
     tags.push_back(tag);
   }
   else
   {
-    m_nEventPPID = m_nPPID;
-    m_szEventId = strdup(m_szId);
+    myEventUserId = myUserId;
   }
   return fflush(fs);
 }
@@ -1172,13 +1226,13 @@ int CRMSClient::Process_URL_url()
 
 int CRMSClient::Process_URL_text()
 {
-  unsigned long tag = licqDaemon->ProtoSendUrl(m_szId, m_nPPID, m_szLine,
-    m_szText, false, ICQ_TCPxMSG_NORMAL);
+  unsigned long tag = licqDaemon->sendUrl(myUserId, m_szLine,
+      m_szText, true, ICQ_TCPxMSG_NORMAL);
 
   fprintf(fs, "%d [%ld] Sending URL to %s.\n", CODE_COMMANDxSTART,
-     tag, m_szId);
+      tag, USERID_TOSTR(myUserId));
 
-  if (m_nPPID == LICQ_PPID)
+  if (LicqUser::getUserProtocolId(myUserId) == LICQ_PPID)
     tags.push_back(tag);
     
   m_nState = STATE_COMMAND;
@@ -1271,14 +1325,14 @@ int CRMSClient::Process_AR()
 {
   ParseUser(data_arg);
 
-  if (m_szId && !gUserManager.IsOnList(m_szId, m_nPPID))
+  if (USERID_ISVALID(myUserId) && !gUserManager.userExists(myUserId))
   {
     fprintf(fs, "%d Invalid User.\n", CODE_INVALIDxUSER);
     return fflush(fs);
   }
 
   fprintf(fs, "%d Enter %sauto response, terminate with a . on a line by itself:\n",
-     CODE_ENTERxTEXT, m_szId == 0 ? "" : "custom " );
+     CODE_ENTERxTEXT, USERID_ISVALID(myUserId) ? "custom " : "");
 
   m_szText[0] = '\0';
   m_nTextPos = 0;
@@ -1289,15 +1343,15 @@ int CRMSClient::Process_AR()
 
 int CRMSClient::Process_AR_text()
 {
-  if (m_szId == 0)
+  if (!USERID_ISVALID(myUserId))
   {
-    ICQOwner *o = gUserManager.FetchOwner(m_nPPID, LOCK_W);
+    ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
     o->SetAutoResponse(m_szText);
     gUserManager.DropOwner(o);
   }
   else
   {
-    ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+    LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
     u->SetCustomAutoResponse(m_szText);
     gUserManager.DropUser(u);
   }
@@ -1384,23 +1438,20 @@ int CRMSClient::Process_VIEW()
     {
       if(pUser->NewMessages() > 0)
       {
-        if (m_szId)
-          free(m_szId);
-        m_szId = strdup(pUser->IdString());
-        m_nPPID = pUser->PPID();
+        myUserId = pUser->id();
         FOR_EACH_USER_BREAK
       }
     }
     FOR_EACH_USER_END
   
-    if (m_szId == 0)
+    if (!USERID_ISVALID(myUserId))
     {
       fprintf(fs, "%d No new messages.\n", CODE_VIEWxNONE);
       return fflush(fs);
     }
   }
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u == NULL)
   {
     fprintf(fs, "%d No such user.\n", CODE_INVALIDxUSER);
@@ -1408,6 +1459,14 @@ int CRMSClient::Process_VIEW()
   }
 
   CUserEvent *e = u->EventPop();
+  printUserEvent(e, u->getAlias());
+  gUserManager.DropUser(u);
+
+  return fflush(fs);
+}
+
+void CRMSClient::printUserEvent(const CUserEvent* e, const string& alias)
+{
   if (e)
   {
     char szEventHeader[75]; // Allows 50 chars for a nick
@@ -1434,7 +1493,7 @@ int CRMSClient::Process_VIEW()
     }
 
     strcat(szEventHeader, "from ");
-    strncat(szEventHeader, u->GetAlias(), 50);
+    strncat(szEventHeader, alias.c_str(), 50);
     strcat(szEventHeader, "\n\0");
 
     // Write out the event header
@@ -1445,7 +1504,7 @@ int CRMSClient::Process_VIEW()
     char szTime[25];
     time_t nMessageTime = e->Time();
     struct tm *pTM = localtime(&nMessageTime);
-    strftime(szTime, 25, "%H:%M:%S", pTM);
+    strftime(szTime, 25, "%Y-%m-%d %H:%M:%S", pTM);
     sprintf(szTimestamp, "%d Sent At ", CODE_VIEWxTIME);
     strncat(szTimestamp, szTime, 25);
     strcat(szTimestamp, "\n\0");
@@ -1461,10 +1520,6 @@ int CRMSClient::Process_VIEW()
   {
     fprintf(fs, "%d Invalid event\n", CODE_EVENTxERROR);
   }
-
-  gUserManager.DropUser(u);
-    
-  return fflush(fs);
 }
 
 /*---------------------------------------------------------------------------
@@ -1481,8 +1536,9 @@ int CRMSClient::Process_ADDUSER()
   char *szId = strdup(data_arg);
   NEXT_WORD(data_arg);
   unsigned long nPPID = GetProtocol(data_arg);
+  UserId userId = LicqUser::makeUserId(szId, nPPID);
 
-  if (licqDaemon->AddUserToList(szId, nPPID))
+  if (gUserManager.addUser(userId) != 0)
   {
     fprintf(fs, "%d User added\n", CODE_ADDUSERxDONE);
   }
@@ -1510,7 +1566,7 @@ int CRMSClient::Process_REMUSER()
 
   if (nUin >= 10000)
   {
-    licqDaemon->RemoveUserFromList(data_arg, LICQ_PPID);
+    gUserManager.removeUser(LicqUser::makeUserId(data_arg, LICQ_PPID));
     fprintf(fs, "%d User removed\n", CODE_REMUSERxDONE);
   }
   else
@@ -1546,6 +1602,7 @@ int CRMSClient::Process_SECURE()
     return fflush(fs);
   }
   char* id = strdup(data_arg);
+  UserId userId = LicqUser::makeUserId(id, LICQ_PPID);
   nUin = strtoul(data_arg, (char**)NULL, 10);
   while (*data_arg != '\0' && *data_arg != ' ') data_arg++;
   NEXT_WORD(data_arg);
@@ -1559,17 +1616,17 @@ int CRMSClient::Process_SECURE()
   if (strncasecmp(data_arg, "open", 4) == 0)
   {
     fprintf(fs, "%d Opening secure connection.\n", CODE_SECURExOPEN);
-    licqDaemon->icqOpenSecureChannel(id);
+    licqDaemon->secureChannelOpen(userId);
   }
   else
   if (strncasecmp(data_arg, "close", 5) == 0)
   {
     fprintf(fs, "%d Closing secure connection.\n", CODE_SECURExCLOSE);
-    licqDaemon->icqCloseSecureChannel(id);
+    licqDaemon->secureChannelClose(userId);
   }
   else
   {
-    ICQUser* u = gUserManager.FetchUser(id, LICQ_PPID, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(userId);
    if (u->Secure() == 0)
    {
     fprintf(fs, "%d Status: secure connection is closed.\n", CODE_SECURExSTAT);

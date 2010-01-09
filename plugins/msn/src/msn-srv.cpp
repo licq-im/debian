@@ -73,20 +73,19 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       }
       else
       {
-        const char *szParam = strServer.c_str();
-        char szNewServer[16];
-        char *szPort;
-        if ((szPort = strchr(szParam, ':')))
+        size_t sep = strServer.rfind(':');
+        string host;
+        int port = 0;
+        if (sep != string::npos)
         {
-          strncpy(szNewServer, szParam, szPort - szParam);
-          szNewServer[szPort - szParam] = '\0';
-          *szPort++ = '\0';
+          host = strServer.substr(0, sep);
+          port = atoi(strServer.substr(sep+1).c_str());
         }
-        
+
         gSocketMan.CloseSocket(m_nServerSocket, false, true);
   
         // Make the new connection
-        MSNLogon(szNewServer, atoi(szPort), m_nStatus);
+        MSNLogon(host.c_str(), port, m_nStatus);
       }
     }
     else if (strCmd == "USR")
@@ -103,7 +102,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
        
         // Set our alias here
         ICQOwner *o = gUserManager.FetchOwner(MSN_PPID, LOCK_W);
-        o->SetAlias(strDecodedNick.c_str());
+        o->setAlias(strDecodedNick);
         gUserManager.DropOwner(o);
          
         // This cookie doesn't work anymore now that we are online
@@ -161,18 +160,18 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       string strLists = packet->GetParameter();
       string strUserLists;
 
-      if (gUserManager.FindOwner(strUser.c_str(), MSN_PPID))
+      if (strUser == gUserManager.OwnerId(MSN_PPID))
         return;
 
       int nLists = atoi(strLists.c_str());
       if (nLists & FLAG_CONTACT_LIST)
         strUserLists = packet->GetParameter();
-        
-      if ((nLists & FLAG_CONTACT_LIST) &&
-          !gUserManager.IsOnList(strUser.c_str(), MSN_PPID))
-        m_pDaemon->AddUserToList(strUser.c_str(), MSN_PPID);
 
-      ICQUser *u = gUserManager.FetchUser(strUser.c_str(), MSN_PPID, LOCK_W);
+      UserId userId = LicqUser::makeUserId(strUser, MSN_PPID);
+      if (nLists & FLAG_CONTACT_LIST)
+        gUserManager.addUser(userId, true, false);
+
+      LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
       if (u)
       {
         u->SetEnableSave(false);
@@ -182,14 +181,12 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         if (!u->KeepAliasOnUpdate())
         {
           string strDecodedNick = Decode(strNick);
-          u->SetAlias(strDecodedNick.c_str());
-          m_pDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL,
-                            u->IdString(), u->PPID()));
-
+          u->setAlias(strDecodedNick);
+          m_pDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->id()));
         }
-        u->SetEmailPrimary(strUser.c_str());
+        u->setUserInfoString("Email1", strUser);
         string strURL = "http://members.msn.com/"+strUser;
-        u->SetHomepage(strURL.c_str());
+        u->setUserInfoString("Homepage", strURL);
         u->SetNewUser(false);
         u->SetEnableSave(true);
         u->SaveLicqInfo();             
@@ -206,21 +203,22 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       string strList = packet->GetParameter();
       string strVersion = packet->GetParameter();
       string strUser = packet->GetParameter();
+      UserId userId = LicqUser::makeUserId(strUser, MSN_PPID);
       string strNick = packet->GetParameter();
       m_nListVersion = atol(strVersion.c_str());
       
       if (strList == "RL")
       {
         gLog.Info("%sAuthorization request from %s.\n", L_MSNxSTR, strUser.c_str());
-        
-        CUserEvent *e = new CEventAuthRequest(strUser.c_str(), MSN_PPID,
+
+        CUserEvent* e = new CEventAuthRequest(userId,
           strNick.c_str(), "", "", "", "", ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
       
         ICQOwner *o = gUserManager.FetchOwner(MSN_PPID, LOCK_W);
         if (m_pDaemon->AddUserEvent(o, e))
         {
+          e->AddToHistory(o, D_RECEIVER);
           gUserManager.DropOwner(o);
-          e->AddToHistory(NULL, MSN_PPID, D_RECEIVER);
           m_pDaemon->m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
         }
         else
@@ -229,17 +227,16 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       else
       {
         gLog.Info("%sAdded %s to contact list.\n", L_MSNxSTR, strUser.c_str());
-        
-        ICQUser *u = gUserManager.FetchUser(strUser.c_str(), MSN_PPID, LOCK_W);
+
+        LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
         if (u)
         {
           if (!u->KeepAliasOnUpdate())
           {
             string strDecodedNick = Decode(strNick);
-            u->SetAlias(strDecodedNick.c_str());
+            u->setAlias(strDecodedNick);
           }
-          m_pDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL,
-                            u->IdString(), u->PPID()));
+          m_pDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->id()));
           gUserManager.DropUser(u);
         }
       }
@@ -266,7 +263,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       {
         ICQOwner *o = gUserManager.FetchOwner(MSN_PPID, LOCK_W);
         string strDecodedNick = Decode(strNick);
-        o->SetAlias(strDecodedNick.c_str());
+        o->setAlias(strDecodedNick);
         gUserManager.DropOwner(o);
       }
       
@@ -322,10 +319,8 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         if (!u->KeepAliasOnUpdate())
         {
           string strDecodedNick = Decode(strNick);
-          u->SetAlias(strDecodedNick.c_str());
-          m_pDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL,
-                             u->IdString(), u->PPID()));
-
+          u->setAlias(strDecodedNick);
+          m_pDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, u->id()));
         }
 
 	// Get the display picture here, so it can be shown with the notify
@@ -338,7 +333,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
 	  }
 	}
 
-        gLog.Info("%s%s changed status (%s).\n", L_MSNxSTR, u->GetAlias(), strStatus.c_str());
+        gLog.Info("%s%s changed status (%s).\n", L_MSNxSTR, u->getAlias().c_str(), strStatus.c_str());
         m_pDaemon->ChangeUserStatus(u, nStatus);
 
         if ((m_pDaemon->m_bAlwaysOnlineNotify || strCmd == "NLN") &&
@@ -354,7 +349,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       ICQUser *u = gUserManager.FetchUser(strUser.c_str(), MSN_PPID, LOCK_W);
       if (u)
       {
-        gLog.Info("%s%s logged off.\n", L_MSNxSTR, u->GetAlias());
+        gLog.Info("%s%s logged off.\n", L_MSNxSTR, u->getAlias().c_str());
         m_pDaemon->ChangeUserStatus(u, ICQ_STATUS_OFFLINE);
       }
       gUserManager.DropUser(u);
@@ -441,8 +436,8 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         ICQOwner *o = gUserManager.FetchOwner(MSN_PPID, LOCK_W);
         if (m_pDaemon->AddUserEvent(o, pEmailAlert))
         {
+          pEmailAlert->AddToHistory(o, D_RECEIVER);
           gUserManager.DropOwner(o);
-          pEmailAlert->AddToHistory(NULL, MSN_PPID, D_RECEIVER);
           m_pDaemon->m_xOnEventManager.Do(ON_EVENT_SYSMSG, NULL);
         }
         else
@@ -468,7 +463,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         {
           gLog.Error("%sCannot send messages while invisible.\n", L_ERRORxSTR);
           pStart = *it;
-          m_pDaemon->PushPluginSignal(pStart->m_pSignal);
+          m_pDaemon->pushPluginSignal(pStart->m_pSignal);
           pStart->m_pEvent->m_eResult = EVENT_FAILED;
           m_pDaemon->PushPluginEvent(pStart->m_pEvent);
           m_lStart.erase(it);
@@ -537,17 +532,17 @@ void CMSN::MSNLogon(const char *_szServer, int _nPort, unsigned long _nStatus)
     return;
   }
   m_szUserName = strdup(o->IdString());
+  UserId myOwnerId = o->id();
   m_szPassword = strdup(o->Password());
   gUserManager.DropOwner(o);
 
-  SrvSocket *sock = new SrvSocket(m_szUserName, MSN_PPID);
-  sock->SetRemoteAddr(_szServer, _nPort);
-  char ipbuf[32];
-  gLog.Info("%sServer found at %s:%d.\n", L_MSNxSTR, sock->RemoteIpStr(ipbuf), sock->RemotePort());
-  
-  if (!sock->OpenConnection())
+  SrvSocket* sock = new SrvSocket(myOwnerId);
+  gLog.Info("%sServer found at %s:%d.\n", L_MSNxSTR,
+      _szServer, _nPort);
+
+  if (!sock->connectTo(_szServer, _nPort))
   {
-    gLog.Info("%sConnect failed.\n", L_MSNxSTR);
+    gLog.Info("%sConnect failed to %s.\n", L_MSNxSTR, _szServer);
     delete sock;
     return;
   }
@@ -608,7 +603,7 @@ void CMSN::MSNLogoff(bool bDisconnected)
   ICQOwner *o = gUserManager.FetchOwner(MSN_PPID, LOCK_W);      
   m_pDaemon->ChangeUserStatus(o, ICQ_STATUS_OFFLINE);
   gUserManager.DropOwner(o);
-  //m_pDaemon->PushPluginSignal(new CICQSignal(SIGNAL_LOGOFF, 0, 0));   
+  //m_pDaemon->pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, 0));
 }
 
 void CMSN::MSNAddUser(const char* szUser)
@@ -634,7 +629,7 @@ void CMSN::MSNRenameUser(const char* szUser)
 {
   const ICQUser* u = gUserManager.FetchUser(szUser, MSN_PPID, LOCK_R);
   if (!u) return;
-  string strNick = u->GetAlias();
+  string strNick = u->getAlias();
   gUserManager.DropUser(u);
 
   string strEncodedNick = Encode(strNick);

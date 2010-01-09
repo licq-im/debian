@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -112,6 +112,11 @@ private slots:
    */
   void updateIcons();
 
+  /**
+   * Update shortcuts in menu
+   */
+  void updateShortcuts();
+
   void aboutToShowMenu();
   void aboutToShowGroupMenu();
   void aboutToShowFollowMeMenu();
@@ -134,12 +139,11 @@ private slots:
   void showEditGrpDlg();
   void showRandomChatSearchDlg();
   void showSettingsDlg();
-  void showSkinBrowser();
   void showPluginDlg();
   void showGPGKeyManager();
 
 private:
-  // Actions on system menu
+  // Actions on top menu
   QAction* mySetArAction;
   QAction* myLogWinAction;
   QAction* myMiniModeAction;
@@ -147,16 +151,26 @@ private:
   QAction* myThreadViewAction;
   QAction* myShowEmptyGroupsAction;
   QAction* myOptionsAction;
-  QAction* mySkinBrowserAction;
   QAction* myPluginManagerAction;
   QAction* myKeyManagerAction;
   QAction* mySaveOptionsAction;
   QAction* myShutdownAction;
 
+  // Actions on system menu
+  QAction* myAccountManagerAction;
+
   // Actions on user menu
   QAction* myUserSearchAction;
   QAction* myUserAutorizeAction;
   QAction* myUserReqAutorizeAction;
+  QAction* myUserPopupAllAction;
+  QAction* myEditGroupsAction;
+  QAction* myRedrawContactListAction;
+
+  // Actions not on menu
+  QAction* myPopupMessageAction;
+  QAction* myHideMainwinAction;
+  QAction* myShowHeaderAction;
 
   // Actions on status menu
   QAction* myStatusOnlineAction;
@@ -164,7 +178,7 @@ private:
   QAction* myStatusNotAvailableAction;
   QAction* myStatusOccupiedAction;
   QAction* myStatusDoNotDisturbAction;
-  QAction* myStatusFreeForChaActiont;
+  QAction* myStatusFreeForChatAction;
   QAction* myStatusOfflineAction;
   QAction* myStatusInvisibleAction;
 

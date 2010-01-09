@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,6 +48,8 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ContactUserData */
 
+using std::string;
+
 #define FLASH_TIME 500
 
 // Can't initialize timers here in static context so set to zero and let first object take care of initialization
@@ -57,7 +59,7 @@ QTimer* ContactUserData::myAnimateTimer = NULL;
 int ContactUserData::myAnimatorCount = 0;
 
 
-ContactUserData::ContactUserData(const ICQUser* licqUser, QObject* parent)
+ContactUserData::ContactUserData(const LicqUser* licqUser, QObject* parent)
   : myStatus(ICQ_STATUS_OFFLINE),
     myEvents(0),
     myFlash(false),
@@ -67,15 +69,9 @@ ContactUserData::ContactUserData(const ICQUser* licqUser, QObject* parent)
     myAnimating(false),
     myUserIcon(NULL)
 {
+  myUserId = licqUser->id();
   myPpid = licqUser->PPID();
-
-  if (licqUser->IdString() != NULL)
-  {
-    char* szRealId = NULL;
-    ICQUser::MakeRealId(licqUser->IdString(), licqUser->PPID(), szRealId);
-    myId = szRealId;
-    delete [] szRealId;
-  }
+  myAccountId = licqUser->realAccountId().c_str();
 
   if (myRefreshTimer == NULL)
   {
@@ -109,12 +105,12 @@ ContactUserData::~ContactUserData()
     delete myUserIcon;
 }
 
-void ContactUserData::update(CICQSignal* sig)
+void ContactUserData::update(unsigned long subSignal, int argument)
 {
-  switch (sig->SubSignal())
+  switch (subSignal)
   {
     case USER_EVENTS:
-      if (sig->Argument() == 0)
+      if (argument == 0)
       {
         // User fetched our auto response message
         myCarCounter = ((5*1000/FLASH_TIME)+1)&(-2);
@@ -124,7 +120,7 @@ void ContactUserData::update(CICQSignal* sig)
       break;
 
     case USER_STATUS:
-      if (sig->Argument() == 1)
+      if (argument == 1)
       {
         // User came online
         myOnlCounter = 5*1000/FLASH_TIME; // run about 5 seconds
@@ -143,20 +139,22 @@ void ContactUserData::update(CICQSignal* sig)
   // TODO: Add better handling of subsignals so we don't have to update everything so often
 
 
-  const ICQUser* u = gUserManager.FetchUser(sig->Id(), sig->PPID(), LOCK_R);
-  if (u != NULL)
   {
-    // Group membership is handled by ContactList so send it a signal to update
-    emit updateUserGroups(this, u);
+    LicqUserReadGuard u(myUserId);
+    if (u.isLocked())
+    {
+      // Group membership is handled by ContactList so send it a signal to update
+      emit updateUserGroups(this, *u);
 
-    // No specific handling for this signal so reread everything from the daemon
-    updateAll(u);
-
-    gUserManager.DropUser(u);
+      // No specific handling for this signal so reread everything from the daemon
+      updateAll(*u);
+    }
   }
+
+  emit dataChanged(this);
 }
 
-void ContactUserData::updateAll(const ICQUser* u)
+void ContactUserData::updateAll(const LicqUser* u)
 {
   myStatus = u->Status();
   myStatusFull = u->StatusFull();
@@ -169,8 +167,8 @@ void ContactUserData::updateAll(const ICQUser* u)
   mySecure = u->Secure();
   myUrgent = false;
   myBirthday = (u->Birthday() == 0);
-  myPhone = u->GetPhoneNumber()[0] != '\0';
-  myCellular = u->GetCellularNumber()[0] != '\0';
+  myPhone = !u->getUserInfoString("PhoneNumber").empty();
+  myCellular = !u->getCellularNumber().empty();
   myGPGKey = (u->GPGKey() != 0) && (strcmp(u->GPGKey(), "") != 0);
   myGPGKeyEnabled = u->UseGPG();
 
@@ -222,7 +220,7 @@ void ContactUserData::updateAll(const ICQUser* u)
   if (u->GetPicturePresent())
   {
     myUserIcon = new QImage(QString::fromLocal8Bit(BASE_DIR) + USER_DIR + "/" +
-        myId + ".pic");
+        myAccountId + ".pic");
     if (myUserIcon->isNull())
     {
       delete myUserIcon;
@@ -279,8 +277,6 @@ void ContactUserData::updateAll(const ICQUser* u)
 
   updateSorting();
   updateVisibility();
-
-  emit dataChanged(this);
 }
 
 void ContactUserData::updateExtendedStatus()
@@ -395,18 +391,18 @@ void ContactUserData::updateSorting()
   mySortKey += myText[0];
 }
 
-bool ContactUserData::updateText(const ICQUser* licqUser)
+bool ContactUserData::updateText(const LicqUser* licqUser)
 {
   bool hasChanged = false;
 
-  myAlias = QString::fromUtf8(licqUser->GetAlias());
+  myAlias = QString::fromUtf8(licqUser->getAlias().c_str());
 
   for (unsigned short i = 0; i < Config::ContactList::instance()->columnCount(); i++)
   {
     QString format = Config::ContactList::instance()->columnFormat(i);
     format.replace("%a", "@_USER_ALIAS_@");
 
-    QTextCodec* codec = UserCodec::codecForICQUser(licqUser);
+    const QTextCodec* codec = UserCodec::codecForUser(licqUser);
     char* temp = licqUser->usprintf(codec->fromUnicode(format));
     QString newStr = codec->toUnicode(temp);
     free(temp);
@@ -424,15 +420,15 @@ bool ContactUserData::updateText(const ICQUser* licqUser)
 
 void ContactUserData::configUpdated()
 {
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
-  if (u == NULL)
-    return;
+  {
+    LicqUserReadGuard u(myUserId);
+    if (!u.isLocked())
+      return;
 
-  updateText(u);
-  updateSorting();
-  updateVisibility();
-
-  gUserManager.DropUser(u);
+    updateText(*u);
+    updateSorting();
+    updateVisibility();
+  }
 
   emit dataChanged(this);
 }
@@ -463,7 +459,7 @@ void ContactUserData::updateVisibility()
 
   // Update groups
   foreach (ContactUser* user, myUserInstances)
-    user->group()->updateVisibility(visibility);
+    user->group()->updateVisibility(visibility, mySubGroup);
 
   myVisibility = visibility;
 }
@@ -476,19 +472,19 @@ bool ContactUserData::setData(const QVariant& value, int role)
   if (value.toString() == myAlias)
     return true;
 
-  ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_W);
-  if (u == NULL)
-    return false;
+  {
+    LicqUserWriteGuard u(myUserId);
+    if (!u.isLocked())
+      return false;
 
-  myAlias = value.toString();
-  u->SetAlias(myAlias.toUtf8());
-  u->SetKeepAliasOnUpdate(true);
+    myAlias = value.toString();
+    u->setAlias(myAlias.toUtf8().data());
+    u->SetKeepAliasOnUpdate(true);
 
-  // Daemon doesn't send signal when alias is changed so trigger update from here
-  updateText(u);
-  updateSorting();
-
-  gUserManager.DropUser(u);
+    // Daemon doesn't send signal when alias is changed so trigger update from here
+    updateText(*u);
+    updateSorting();
+  }
 
   emit dataChanged(this);
   return true;
@@ -498,15 +494,17 @@ void ContactUserData::refresh()
 {
   // Here we update any content that may be dynamic, for example timestamps
 
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
-  if (u == NULL)
-    return;
+  bool birthday;
+  bool hasChanged;
+  {
+    LicqUserReadGuard u(myUserId);
+    if (!u.isLocked())
+      return;
 
-  // Check if birthday icon should be updated
-  bool birthday = (u->Birthday() == 0);
-  bool hasChanged = updateText(u);
-
-  gUserManager.DropUser(u);
+    // Check if birthday icon should be updated
+    birthday = (u->Birthday() == 0);
+    hasChanged = updateText(*u);
+  }
 
   if (birthday != myBirthday)
   {
@@ -603,7 +601,10 @@ QVariant ContactUserData::data(int column, int role) const
       return tooltip();
 
     case ContactListModel::UserIdRole:
-      return myId;
+      return QVariant::fromValue(myUserId);
+
+    case ContactListModel::AccountIdRole:
+      return myAccountId;
 
     case ContactListModel::PpidRole:
       return static_cast<unsigned int>(myPpid);
@@ -668,13 +669,13 @@ QVariant ContactUserData::data(int column, int role) const
 
 QString ContactUserData::tooltip() const
 {
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
-  if (u == NULL)
+  LicqUserReadGuard u(myUserId);
+  if (!u.isLocked())
     return "";
 
   Config::ContactList* config = Config::ContactList::instance();
 
-  QTextCodec* codec = UserCodec::codecForICQUser(u);
+  const QTextCodec* codec = UserCodec::codecForUser(*u);
   QString s = "<nobr>";
   if (config->popupPicture() && u->GetPicturePresent())
   {
@@ -687,18 +688,14 @@ QString ContactUserData::tooltip() const
 
   s += LicqStrings::getStatus(myStatus, myStatusInvisible);
 
-  if (config->popupAlias() && *u->GetAlias())
-    s += "<br>" + QString::fromUtf8(u->GetAlias());
+  if (config->popupAlias() && !u->getAlias().empty())
+    s += "<br>" + QString::fromUtf8(u->getAlias().c_str());
 
-  if (config->popupName() && (*u->GetFirstName() || *u->GetLastName()))
+  if (config->popupName())
   {
-    s += "<br>";
-    if (*u->GetFirstName())
-      s += codec->toUnicode(u->GetFirstName());
-    if (*u->GetFirstName() && *u->GetLastName())
-      s += " ";
-    if (*u->GetLastName())
-      s += codec->toUnicode(u->GetLastName());
+    string fullName = u->getFullName();
+    if (!fullName.empty())
+      s += "<br>" + codec->toUnicode(fullName.c_str());
   }
 
   if (myBirthday)
@@ -741,17 +738,25 @@ QString ContactUserData::tooltip() const
       codec->toUnicode(u->AutoResponse()).trimmed()
       .replace("\n", "<br>&nbsp;&nbsp;&nbsp;");
 
-  if (config->popupEmail() && *u->GetEmailPrimary())
-    s += "<br>" + tr("E: ") + codec->toUnicode(u->GetEmailPrimary());
+  if (config->popupEmail())
+  {
+    string email = u->getEmail();
+    if (!email.empty())
+      s += "<br>" + tr("E: ") + codec->toUnicode(email.c_str());
+  }
 
   if (config->popupPhone() && myPhone)
-    s += "<br>" + tr("P: ") + codec->toUnicode(u->GetPhoneNumber());
+    s += "<br>" + tr("P: ") + codec->toUnicode(u->getUserInfoString("PhoneNumber").c_str());
 
   if (config->popupCellular() && myCellular)
-    s += "<br>" + tr("C: ") + codec->toUnicode(u->GetCellularNumber());
+    s += "<br>" + tr("C: ") + codec->toUnicode(u->getCellularNumber().c_str());
 
-  if (config->popupEmail() && *u->GetFaxNumber())
-    s += "<br>" + tr("F: ") + codec->toUnicode(u->GetFaxNumber());
+  if (config->popupFax())
+  {
+    string faxNumber = u->getUserInfoString("FaxNumber");
+    if (!faxNumber.empty())
+      s += "<br>" + tr("F: ") + codec->toUnicode(faxNumber.c_str());
+  }
 
   if (config->popupIP() && (u->Ip() || u->IntIp()))
   {
@@ -839,8 +844,6 @@ QString ContactUserData::tooltip() const
     free(szTemp);
     s += "<br>" + tr("ID: ") + temp;
   }
-
-  gUserManager.DropUser(u);
 
   s += "</nobr>";
 

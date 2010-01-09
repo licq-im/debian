@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,6 @@ class QComboBox;
 class QGridLayout;
 class QGroupBox;
 class QLabel;
-class QLineEdit;
 class QVBoxLayout;
 class QWidget;
 
@@ -38,6 +37,7 @@ namespace LicqQtGui
 {
 class FileNameEdit;
 class SettingsDlg;
+class ShortcutEdit;
 
 namespace Settings
 {
@@ -81,6 +81,7 @@ private:
   QCheckBox* myOnEventOccupiedCheck;
   QCheckBox* myOnEventDndCheck;
   QCheckBox* myAlwaysOnlineNotifyCheck;
+  QCheckBox* myNoSoundInActiveChatCheck;
   QCheckBox* myBoldOnMsgCheck;
   QComboBox* myAutoPopupCombo;
   QCheckBox* myAutoRaiseCheck;
@@ -93,7 +94,7 @@ private:
   QCheckBox* myIgnoreMassMsgCheck;
   QCheckBox* myIgnoreEmailPagerCheck;
   QLabel* myHotKeyLabel;
-  QLineEdit* myHotKeyField;
+  ShortcutEdit* myHotKeyEdit;
 
   // Widget for sounds settings
   QVBoxLayout* myPageSoundsLayout;

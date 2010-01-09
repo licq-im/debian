@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -46,7 +46,7 @@ using namespace std;
 //=====CUtilityManager==========================================================
 int SelectUtility(const struct dirent *d)
 {
-  char *pcDot = strrchr(d->d_name, '.');
+  const char* pcDot = strrchr(d->d_name, '.');
   if (pcDot == NULL) return (0);
   return (strcmp(pcDot, ".utility") == 0);
 }
@@ -197,16 +197,9 @@ CUtility::~CUtility()
   delete []m_szFullCommand;
 }
 
-bool CUtility::SetFields(unsigned long _nUin)
+bool CUtility::setFields(const UserId& userId)
 {
-  char id[16];
-  snprintf(id, 16, "%lu", _nUin);
-  return SetFields(id, LICQ_PPID);
-}
-
-bool CUtility::SetFields(const char *szId, unsigned long nPPID)
-{
-  const ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   if (u == NULL) return false;
   if (m_szFullCommand != NULL) delete [] m_szFullCommand;
   char *szTmp;

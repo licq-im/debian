@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,8 +47,8 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendMsgEvent */
 
-UserSendMsgEvent::UserSendMsgEvent(QString id, unsigned long ppid, QWidget* parent)
-  : UserSendCommon(MessageEvent, id, ppid, parent, "UserSendMsgEvent")
+UserSendMsgEvent::UserSendMsgEvent(const UserId& userId, QWidget* parent)
+  : UserSendCommon(MessageEvent, userId, parent, "UserSendMsgEvent")
 {
   myMainWidget->addWidget(myViewSplitter);
   myMessageEdit->setFocus();
@@ -70,12 +70,12 @@ UserSendMsgEvent::~UserSendMsgEvent()
   // Empty
 }
 
-bool UserSendMsgEvent::sendDone(ICQEvent* /* e */)
+bool UserSendMsgEvent::sendDone(const LicqEvent* /* e */)
 {
   myMessageEdit->setText(QString::null);
 
   bool showAwayDlg = false;
-  const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
   if (u != NULL)
   {
     showAwayDlg = u->Away() && u->ShowAwayMsg();
@@ -83,7 +83,7 @@ bool UserSendMsgEvent::sendDone(ICQEvent* /* e */)
   }
 
   if (showAwayDlg && Config::Chat::instance()->popupAutoResponse())
-    new ShowAwayMsgDlg(myUsers.front().c_str(), myPpid);
+    new ShowAwayMsgDlg(myUsers.front());
 
   return true;
 }
@@ -105,7 +105,7 @@ void UserSendMsgEvent::send()
   if (mySendTypingTimer->isActive())
     mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, false, myConvoId);
+  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
 
   // do nothing if a command is already being processed
   unsigned long icqEventTag = 0;
@@ -126,7 +126,7 @@ void UserSendMsgEvent::send()
   if (!checkSecure())
     return;
 
-  const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
   bool userOffline = true;
   if (u != NULL)
   {
@@ -190,19 +190,19 @@ void UserSendMsgEvent::send()
     if (myMassMessageCheck->isChecked())
     {
       MMSendDlg* m = new MMSendDlg(myMassMessageList, this);
+      connect(m, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
       m->go_message(message);
     }
 
-    icqEventTag = gLicqDaemon->ProtoSendMessage(
-        myUsers.front().c_str(),
-        myPpid,
+    icqEventTag = gLicqDaemon->sendMessage(
+        myUsers.front(),
         messageRaw.data(),
-        mySendServerCheck->isChecked() ? false : true,
+        mySendServerCheck->isChecked(),
         myUrgentCheck->isChecked() ? ICQ_TCPxMSG_URGENT : ICQ_TCPxMSG_NORMAL,
         myMassMessageCheck->isChecked(),
         &myIcqColor,
         myConvoId);
-    if (myPpid == LICQ_PPID)
+    if (LicqUser::getUserProtocolId(myUsers.front()) == LICQ_PPID)
       myEventTag.push_back(icqEventTag);
 
     tmp = gTranslator.NToRN(messageRaw);

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
 
 #ifndef AWAYMSG_H
 #define AWAYMSG_H
+
+#include <licq_types.h>
 
 #include "licqdialog.h"
 
@@ -64,12 +66,11 @@ class CustomAwayMsgDlg : public LicqDialog
 {
   Q_OBJECT
 public:
-  CustomAwayMsgDlg(const char *, unsigned long, QWidget *parent = 0);
+  CustomAwayMsgDlg(const UserId& userId, QWidget *parent = 0);
 
 protected:
   MLEditWrap *mleAwayMsg;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
 
 protected slots:
   void slot_clear();

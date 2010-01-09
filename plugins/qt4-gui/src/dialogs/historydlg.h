@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include <QDialog>
 
 #include <licq_history.h>
+#include <licq_types.h>
 
 class QCalendarWidget;
 class QCheckBox;
@@ -35,8 +36,7 @@ class QPushButton;
 class QRegExp;
 class QTextCodec;
 
-class CICQSignal;
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -54,11 +54,10 @@ public:
   /**
    * Constructor
    *
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    * @param parent Parent widget
    */
-  HistoryDlg(QString id, unsigned long ppid, QWidget* parent = 0);
+  HistoryDlg(const UserId& userId, QWidget* parent = 0);
 
   /**
    * Desstructor
@@ -114,16 +113,18 @@ private slots:
   /**
    * A user was updated. Add to history if it was a message recieved for this user
    *
-   * @param signal Signal from daemon
+   * @param userId Id for affected user
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
    */
-  void updatedUser(CICQSignal* signal);
+  void updatedUser(const UserId& userId, unsigned long subSignal, int argument);
 
   /**
    * A message was sent. Add to history if it was for the current user
    *
    * @param event Event object for message
    */
-  void eventSent(const ICQEvent* event);
+  void eventSent(const LicqEvent* event);
 
 private:
   /**
@@ -145,12 +146,11 @@ private:
    */
   void showHistory();
 
-  QString myId;
-  unsigned long myPpid;
+  UserId myUserId;
   bool myIsOwner;
   QString myContactName;
   QString myOwnerName;
-  QTextCodec* myContactCodec;
+  const QTextCodec* myContactCodec;
   bool myUseHtml;
   bool myPatternChanged;
 

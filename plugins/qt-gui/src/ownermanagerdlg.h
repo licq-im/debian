@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ class QComboBox;
 
 class CICQDaemon;
 class CSignalManager;
-class ICQEvent;
+class LicqEvent;
 class CMainWindow;
 
 class OwnerEditDlg : public LicqDialog
@@ -80,7 +80,7 @@ class OwnerManagerDlg : public LicqDialog
 public:
   OwnerManagerDlg(CMainWindow *m, CICQDaemon *s, CSignalManager *sm);
   virtual ~OwnerManagerDlg();
-  void slot_doneRegisterUser(ICQEvent *);
+  void slot_doneRegisterUser(LicqEvent*);
 
 protected slots:
   void slot_listClicked(QListViewItem *);

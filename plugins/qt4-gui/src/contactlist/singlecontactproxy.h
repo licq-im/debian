@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #define SINGLECONTACTPROXY_H
 
 #include <QAbstractProxyModel>
+#include <licq_types.h>
 
 #include "core/gui-defines.h"
 
@@ -42,11 +43,10 @@ public:
    * Constructor
    *
    * @param contactList The contact list to get the user data from
-   * @param id Licq user id
-   * @param ppid Licq protocol id
+   * @param userId Licq user id
    * @param parent Parent object
    */
-  SingleContactProxy(ContactListModel* contactList, QString id, unsigned long ppid, QObject* parent);
+  SingleContactProxy(ContactListModel* contactList, const UserId& userId, QObject* parent);
 
   /**
    * Destructor
@@ -146,8 +146,7 @@ private slots:
 
 private:
   ContactListModel* myContactList;
-  QString myId;
-  unsigned long myPpid;
+  UserId myUserId;
   QModelIndex mySourceIndex[MAX_COLUMNCOUNT];
 };
 

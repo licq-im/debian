@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,13 @@ class UserSendSmsEvent : public UserSendCommon
   Q_OBJECT
 
 public:
-  UserSendSmsEvent(QString id, unsigned long ppid, QWidget* parent = 0);
+  /**
+   * Constructor, create and open send SMS dialog
+   *
+   * @param userId User to open dialog for
+   * @param parent Parent widget
+   */
+  UserSendSmsEvent(const UserId& userId, QWidget* parent = 0);
   virtual ~UserSendSmsEvent();
 
 private:
@@ -42,7 +48,7 @@ private:
   InfoField* myNumberField;
   InfoField* myCountField;
 
-  virtual bool sendDone(ICQEvent* e);
+  virtual bool sendDone(const LicqEvent* e);
   virtual void resetSettings();
 
 private slots:

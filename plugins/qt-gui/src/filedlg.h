@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 
 #include "ewidgets.h"
 #include "licq_filetransfer.h"
+#include <licq_types.h>
 
 class QPushButton;
 class QProgressBar;
@@ -38,16 +39,14 @@ class CFileDlg : public QWidget
 {
    Q_OBJECT
 public:
-  CFileDlg(const char *szId, unsigned long nPPID, CICQDaemon *daemon,
-    QWidget *parent = 0);
+  CFileDlg(const UserId& userId, CICQDaemon *daemon, QWidget *parent = 0);
   virtual ~CFileDlg();
 
   bool SendFiles(ConstFileList filelist, unsigned short nPort);
   bool ReceiveFiles();
 
   unsigned short LocalPort();
-  char *Id()  { return m_szId; }
-  unsigned long PPID()  { return m_nPPID; }
+  const UserId& userId() const { return myUserId; }
 
 protected:
    QLabel *lblTransferFileName, *lblLocalFileName, *lblFileSize,
@@ -66,8 +65,7 @@ protected:
 
    CFileTransferManager *ftman;
 
-   char *m_szId;
-   unsigned long m_nPPID;
+  UserId myUserId;
    CICQDaemon *licqDaemon;
    QSocketNotifier *sn;
 

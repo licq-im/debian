@@ -21,6 +21,7 @@
 //option vars
 var showOffline = false;
 var maxLogLines = 20;
+var loadHistory = 3;
 
 var xmlhttp = new XMLHttpRequest(); //for serverpush connection
 xmlhttp.multipart = true;
@@ -59,7 +60,8 @@ function Message(id, pp, uid, message) {
 
 //callback for server push reponses
 function acceptResponse() {
-	if (xmlhttp.readyState == 4) {
+  if (xmlhttp.readyState == 4 && xmlhttp.responseXML != null)
+  {
 		if (xmlhttp.status == 200) {
 			response = xmlhttp.responseXML.documentElement;
 			method = response.getElementsByTagName('method')[0].firstChild.data;
@@ -115,9 +117,11 @@ function viewEvent(response) {
 	var txtdiv = document.getElementById(id + '-' + pp + '-txt');
 	var messages = response.getElementsByTagName('message');
 	var times = response.getElementsByTagName('time');
-	for (var i = 0; i < messages.length; ++i) {
-		txtdiv.innerHTML += '(' + times[i].firstChild.data + ') ' + contacts[pp][id].nick + ': ' + messages[i].firstChild.data + "<br/>";
-	}
+  for (var i = 0; i < messages.length; ++i)
+    txtdiv.innerHTML += '(<span class="msgDate">' + times[i].firstChild.data
+        + '</span>) <span class="msgNick">' + contacts[pp][id].nick
+        + '</span>: <span class="msgText">' + messages[i].firstChild.data
+        + "</span><br/>";
 	txtdiv.scrollTop = txtdiv.scrollHeight;
 }
 
@@ -168,7 +172,7 @@ function sortContacts() {
 			} else {
 				pp = contact.pp.toLowerCase();
 			}
-			var imgsrc = "images/" + pp + "." + contact.status.toLowerCase() + ".png";
+      var imgsrc = "images/" + pp + "." + contact.status.toLowerCase().replace(/ /g,"") + ".png";
 			if (parseInt(contact.nummsgs) > 0) {
 				uclass = "newmessage";
 				imgsrc = "images/msg.png";
@@ -192,7 +196,10 @@ function _updateUser(id, pp, status, messages, nick) {
 		contacts[pp][id].status = status;
 		contacts[pp][id].nummsgs = messages;
 		contacts[pp][id].nick = nick;
-	} else {
+    contacts[pp][id].historyShowed = false;
+  }
+  else
+  {
 		contacts[pp][id] = new Contact(id, pp, nick, status, messages);
 		var newcontact = document.createElement('div');
 		newcontact.innerHTML = getWindowHtml(id, pp, nick);
@@ -205,7 +212,7 @@ function _updateUser(id, pp, status, messages, nick) {
 
 function getWindowHtml(id, pp, nick) {
 	var key = id + '-' + pp;
-	return "<div class=\"window\" style=\"left:300px;top:150px\" id=\"" + key + "-w\">" +
+	return "<div onClick=\"set_focus(event, '" + key + "')\" class=\"window\" style=\"left:300px;top:150px\" id=\"" + key + "-w\">" +
 				"<div onmousedown=\"init_drag(event, '" + key + "-w')\" class=\"bar\">" +
 					"<div class=\"wintitle\">" + nick + " (" + pp + ")</div>" +
 					"<div onclick=\"showContactWindow('" + id + "', '" + pp + "')\" class=\"close\">[close]</div>" +
@@ -213,6 +220,7 @@ function getWindowHtml(id, pp, nick) {
 				"<div class=\"convo\" id=\"" + key + "-txt\"></div>" + 
 				"<div class=\"msginput\"><textarea id=\"" + key + "-input\" onKeyPress=\"textarea_keypress(event, '" + id + "', '" + pp + "')\"></textarea><br>" +
 					"<input type=\"submit\" class=\"button\" value=\"Send\" onclick=\"sendMessage('" + id + "', '" + pp + "'); return false\" />" +
+          "<div class=\"resizer\" onmousedown=\"init_resize(event, '" + key + "-txt', 150, 50)\"><img class=\"resizerImage\" src=\"images/resizerMsg.png\" /></div>" +
 				"</div>" +
 			"</div>";
 }
@@ -249,11 +257,10 @@ function ackSendMessage(response) {
 	var ts = response.getElementsByTagName('datetime')[0].firstChild.data;
 	var message = ackMessages[uid];
 	var txt = document.getElementById(message.id + '-' + message.pp + '-txt');
-	if (res == "done.") {
-		txt.innerHTML += "(" + ts + ") " + nick + ": " + message.message.replace(/[\r\n]+/g, "<br/>") + "<br/>";
-	} else {
+  if (res == "done.")
+    txt.innerHTML += "(<span class=\"msgDate\">" + ts + "</span>) <span class=\"msgNick\">" + nick + "</span>: <span class=\"msgText\">" + message.message.replace(/[\r\n]+/g, "<br/>") + "</span><br/>";
+  else
 		txt.innerHTML += "--- Message failed!<br/>";
-	}
 	txt.scrollTop = txt.scrollHeight;
 	document.getElementById(message.id + '-' + message.pp + '-input').disabled = false;
 	delete ackMessages[uid];
@@ -264,6 +271,12 @@ function showContactWindow(id, pp) {
 	if (contacts[pp][id].nummsgs > 0) {
 		requestViewEvent(id, pp);
 	}
+  if (loadHistory > 0 && contacts[pp][id].historyShowed != true)
+  { 
+    requestViewHistory(id, pp);
+    contacts[pp][id].historyShowed = true;
+  }
+
 	win = document.getElementById(id + '-' + pp + '-w');
 	if (win.style.display == 'block') {
 		win.style.display = 'none';
@@ -315,10 +328,9 @@ function newMessage(response) {
 			document.getElementById(key + '-i').src = "images/msg.png";
 		} else {
 			document.getElementById(key + '-s').className = contacts[pp][id].status;
-			document.getElementById(key + '-i').src = "images/" + pp.toLowerCase() + "." + contacts[pp][id].status.toLowerCase() + '.png';
-		}
-	} else {
-	}
+      document.getElementById(key + '-i').src = "images/" + pp.toLowerCase() + "." + contacts[pp][id].status.toLowerCase().replace(/ /g,"") + '.png';
+    }
+  }
 	window.parent.document.title = 'licq - ' + totalMessages + " messages";
 	sortContacts();
 }
@@ -339,25 +351,25 @@ function setOwnerInfo(response) {
 
 function _updateOwners() {
 	var statushtml = "";
-	for (var pp in owners) {
-		statushtml += "<img onclick=\"showSelectStatus(event, '" + owners[pp].id + "', '" + pp + "'); return false\" src=\"images/" + pp.toLowerCase() + "." + owners[pp].status.toLowerCase() + ".png\"/> ";
-	}
+  for (var pp in owners)
+    statushtml += "<img onclick=\"showSelectStatus(event, '" + owners[pp].id + "', '" + pp + "'); return false\" src=\"images/" + pp.toLowerCase() + "." + owners[pp].status.toLowerCase().replace(/ /g,"") + ".png\"/> ";
 	document.getElementById('ownerStatus').innerHTML = statushtml;
 }
 
 function showSelectStatus(e, id, pp) {
 	var statusMenu = document.getElementById('statusMenu');
 	var statuss = new Array();
-	statuss["Licq"] = new Array('Online', 'Away', 'Occupied', 'DoNotDisturb', 'NotAvailable');
-	statuss["MSN"] = new Array('Online', 'Away', 'Occupied');
+  statuss["Licq"] = new Array('Online', 'Away', 'Occupied', 'Do Not Disturb', 'Not Available', 'Offline');
+	statuss["MSN"] = new Array('Online', 'Away', 'Occupied', 'Offline');
 	var statushtml = "";
 	for (var i = 0; i < statuss[pp].length; ++i) {
-		statushtml += "<div onclick=\"changeStatus('" + pp + "', '" + statuss[pp][i] + "')\"><img src=\"images/" + pp.toLowerCase() + "." + statuss[pp][i].toLowerCase() + ".png\">" + statuss[pp][i] + "</div>";
+    statushtml += "<div onclick=\"changeStatus('" + pp + "', '" + statuss[pp][i] + "')\"><img src=\"images/" + pp.toLowerCase() + "." + statuss[pp][i].toLowerCase().replace(/ /g,"") + ".png\">" + statuss[pp][i] + "</div>";
 	}
 	statusMenu.innerHTML = statushtml;
-	statusMenu.style.left = e.pageX;
-	statusMenu.style.top = e.pageY;
+  statusMenu.style.left = e.pageX + 'px';
+  statusMenu.style.top = e.pageY + 'px';
 	statusMenu.style.display = 'block';
+  if (dragwin.win != null)
 	statusMenu.style.zIndex = ++dragwin.win.style.zIndex; //fix this
 }
 
@@ -366,7 +378,7 @@ function changeStatus(pp, status) {
 	xmlhttp2.onreadystatechange = acceptResponse2;
 	xmlhttp2.open("POST", baseurl + "/changeStatus.php", true);
 	xmlhttp2.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-	xmlhttp2.send('pp=' + pp + '&status=' + escape(status));
+  xmlhttp2.send('pp=' + pp + '&status=' + escape(status.replace(/ /g,"")));
 	document.getElementById('statusMenu').style.display = 'none';
 }
 
@@ -400,10 +412,9 @@ function doLogin(uin, password) {
 		login = "&uin=" + uin + "&password=" + password;
 	}
 	xmlhttp.open("GET", baseurl + "/push.php?listtype=" + listtype + login, true);
-	xmlhttp.onload = acceptResponse;
+	xmlhttp.onreadystatechange = acceptResponse;
 	xmlhttp.send(null);
 	document.getElementById('login').style.display = 'none';
-	document.getElementById('newsid').style.display = 'none';
 	document.getElementById('contactList').style.display = 'block';
 }
 
@@ -459,10 +470,8 @@ document.onmousemove = positionToolTip
 var dragwin = new Object();
 dragwin.zIndex = 0;
 
-function init_drag(event, id) {
-	var el;
-	var x, y;
-
+function init_drag(event, id)
+{
 	dragwin.win = document.getElementById(id);
 
 	dragwin.startX = event.clientX + window.scrollX;
@@ -493,4 +502,96 @@ function start_drag(event) {
 function stop_drag(event) {
 	document.removeEventListener("mousemove", start_drag, true);
 	document.removeEventListener("mouseup", stop_drag, true);
+}
+
+function set_focus(event, key)
+{
+  win = document.getElementById(key + "-w");
+  win.style.zIndex = ++dragwin.zIndex;
+  event.preventDefault();
+
+  input = document.getElementById(key + "-input");
+  input.focus();
+
+  //stop_propagate(event);
+}
+
+function stop_propagate(event)
+{
+  if (!event)
+    var event = window.event;
+  event.cancelBubble = true;
+  if (event.stopPropagation)
+    event.stopPropagation();
+}
+
+/* Window resizing stuff */
+var resizewin = new Object();
+
+function init_resize(event, id, minW, minH)
+{
+  resizewin.win = document.getElementById(id);
+  resizewin.minW = minW;
+  resizewin.minH = minH;
+
+  resizewin.startX = event.clientX + window.scrollX;
+  resizewin.startY = event.clientY + window.scrollY;
+  resizewin.startWidth = parseInt(resizewin.win.style.width, 10);
+  resizewin.startHeight = parseInt(resizewin.win.style.height, 10);
+
+  if (isNaN(resizewin.startWidth))
+    resizewin.startWidth = resizewin.win.offsetWidth;
+  if (isNaN(resizewin.startHeight))
+    resizewin.startHeight = resizewin.win.offsetHeight;
+
+  //resizewin.win.style.zIndex = ++resizewin.zIndex;
+
+  document.addEventListener("mousemove", do_resize, true);
+  document.addEventListener("mouseup", stop_resize, true);
+  event.preventDefault();
+}
+
+function do_resize(event)
+{
+  var x, y;
+  x = event.clientX + window.scrollX;
+  y = event.clientY + window.scrollY;
+
+  if(resizewin.minW < (resizewin.startWidth + x - resizewin.startX))
+  {
+    resizewin.win.style.width = (resizewin.startWidth + x - resizewin.startX) + "px";
+    resizewin.win.parentNode.style.width = (resizewin.startWidth + x - resizewin.startX) + "px";
+  }
+  if(resizewin.minH < (resizewin.startHeight + y - resizewin.startY))
+    resizewin.win.style.height = (resizewin.startHeight + y - resizewin.startY) + "px";
+
+  event.preventDefault();
+}
+
+function stop_resize(event)
+{
+  document.removeEventListener("mousemove", do_resize, true);
+  document.removeEventListener("mouseup", stop_resize, true);
+}
+
+function requestViewHistory(id, pp)
+{
+  xmlhttp2 = new XMLHttpRequest();
+  xmlhttp2.onreadystatechange = acceptResponse2;
+  xmlhttp2.open("GET", baseurl + "/viewHistory.php?id=" + id + "&pp=" + pp + "&lenght=" + loadHistory + "&offset=0", true);
+  xmlhttp2.send(null);
+}
+
+function viewHistory(response)
+{
+  var id = response.getElementsByTagName('id')[0].firstChild.data;
+  var pp = response.getElementsByTagName('pp')[0].firstChild.data;
+  var txtdiv = document.getElementById(id + '-' + pp + '-txt');
+  var messages = response.getElementsByTagName('message');
+  var times = response.getElementsByTagName('time');
+  var froms = response.getElementsByTagName('from');
+  for (var i = messages.length-1; i >=0 ; --i)
+    txtdiv.innerHTML += '(<span class="msgDate">' + times[i].firstChild.data + '</span>) <span class="msgNick">' + froms[i].firstChild.data + '</span>: <span class="msgText">' + messages[i].firstChild.data + "</span><br/>";
+
+  txtdiv.scrollTop = txtdiv.scrollHeight;
 }

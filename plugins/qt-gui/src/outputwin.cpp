@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,10 +49,11 @@ CQtLogWindow::CQtLogWindow(QWidget *parent)
 
   QBoxLayout* top_lay = new QVBoxLayout(this, 8);
 
-  outputBox = new CLogWidget(this);
+  outputBox = new MLEditWrap(false, this, true);
   outputBox->setMinimumHeight(outputBox->frameWidth() * 2
       + 16 * outputBox->fontMetrics().lineSpacing());
   outputBox->setMinimumWidth(outputBox->minimumHeight() * 2);
+  outputBox->setReadOnly(true);
   top_lay->addWidget(outputBox);
 
   QBoxLayout* lay = new QHBoxLayout(top_lay, 8);
@@ -150,16 +151,6 @@ void CQtLogWindow::slot_save()
     f.close();
   }
 
-}
-
-
-// -----------------------------------------------------------------------------
-
-CLogWidget::CLogWidget(QWidget* parent, const char* name)
-  : MLEditWrap(false, parent, true, name)
-{
-  setReadOnly(true);
-//  setTextFormat(LogText);
 }
 
 #include "outputwin.moc"

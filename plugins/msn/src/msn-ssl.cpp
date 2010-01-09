@@ -68,7 +68,7 @@ void CMSN::ProcessSSLServerPacket(CMSNBuffer &packet)
   if (strFirstLine == "HTTP/1.1 200 OK")
   {
     m_pSSLPacket->ParseHeaders();
-    char *fromPP = strstr(m_pSSLPacket->GetValue("Authentication-Info").c_str(), "from-PP=");
+    const char* fromPP = strstr(m_pSSLPacket->GetValue("Authentication-Info").c_str(), "from-PP=");
     char *tag;
 
     if (fromPP == 0)
@@ -76,7 +76,7 @@ void CMSN::ProcessSSLServerPacket(CMSNBuffer &packet)
     else
     {
       fromPP+= 9; // skip to the tag
-      char *endTag = strchr(fromPP, '\'');
+      const char* endTag = strchr(fromPP, '\'');
       tag = strndup(fromPP, endTag - fromPP); // Thanks, this is all we need
     }
 
@@ -145,8 +145,8 @@ void CMSN::ProcessNexusPacket(CMSNBuffer &packet)
   *m_pNexusBuff >> cTmp; // skip the \n as well
 
   m_pNexusBuff->ParseHeaders();
-  
-  char *szLogin = strstr(m_pNexusBuff->GetValue("PassportURLs").c_str(), "DALogin=");
+
+  const char* szLogin = strstr(m_pNexusBuff->GetValue("PassportURLs").c_str(), "DALogin=");
   szLogin += 8; // skip to the tag
   //char *szEndURL = strchr(szLogin, '/');
   //char *szServer = strndup(szLogin, szEndURL - szLogin); // this is all we need
@@ -158,10 +158,9 @@ void CMSN::ProcessNexusPacket(CMSNBuffer &packet)
 
 void CMSN::MSNGetServer()
 {
-  TCPSocket *sock = new TCPSocket(m_szUserName, MSN_PPID);
-  sock->SetRemoteAddr("nexus.passport.com", 443);
-//  char ipbuf[32];
-  if (!sock->OpenConnection())
+  UserId myOwnerId = LicqUser::makeUserId(m_szUserName, MSN_PPID);
+  TCPSocket* sock = new TCPSocket(myOwnerId);
+  if (!sock->connectTo(string("nexus.passport.com"), 443))
   {
     delete sock;
     return;
@@ -182,15 +181,13 @@ void CMSN::MSNGetServer()
 
 void CMSN::MSNAuthenticateRedirect(const string &strHost, const string& /* strParam */)
 {
-  TCPSocket *sock = new TCPSocket(m_szUserName, MSN_PPID);
-  sock->SetRemoteAddr(strHost.c_str(), 443);
-  char ipbuf[32];
-  gLog.Info("%sAuthenticating to %s:%d\n", L_MSNxSTR, sock->RemoteIpStr(ipbuf),
-sock->RemotePort());
-
-  if (!sock->OpenConnection())
+  UserId myOwnerId = LicqUser::makeUserId(m_szUserName, MSN_PPID);
+  TCPSocket* sock = new TCPSocket(myOwnerId);
+  gLog.Info("%sAuthenticating to %s:%d\n", L_MSNxSTR,
+      strHost.c_str(), 443);
+  if (!sock->connectTo(strHost, 443))
   {
-    gLog.Error("%sConnection to %s failed.\n", L_MSNxSTR, sock->RemoteIpStr(ipbuf));
+    gLog.Error("%sConnection to %s failed.\n", L_MSNxSTR, strHost.c_str());
     delete sock;
     return;
   }
@@ -211,14 +208,14 @@ sock->RemotePort());
 
 void CMSN::MSNAuthenticate(char *szCookie)
 {
-  TCPSocket *sock = new TCPSocket(m_szUserName, MSN_PPID);
-  sock->SetRemoteAddr("loginnet.passport.com", 443);
-  char ipbuf[32];
-  gLog.Info("%sAuthenticating to %s:%d\n", L_MSNxSTR, sock->RemoteIpStr(ipbuf), sock->RemotePort());
-  
-  if (!sock->OpenConnection())
+  UserId myOwnerId = LicqUser::makeUserId(m_szUserName, MSN_PPID);
+  string server = "loginnet.passport.com";
+  TCPSocket* sock = new TCPSocket(myOwnerId);
+  gLog.Info("%sAuthenticating to %s:%d\n", L_MSNxSTR,
+      server.c_str(), 443);
+  if (!sock->connectTo(server, 443))
   {
-    gLog.Error("%sConnection to %s failed.\n", L_MSNxSTR, sock->RemoteIpStr(ipbuf));
+    gLog.Error("%sConnection to %s failed.\n", L_MSNxSTR, server.c_str());
     delete sock;
     free(szCookie);
     szCookie = 0;

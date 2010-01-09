@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2006 Licq developers
+ * Copyright (C) 2005-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,17 +21,17 @@
 #include "config.h"
 #endif
 
-#ifdef HAVE_LIBGPGME
-
 #include "gpgkeyselect.moc"
+
+#include <cstring>
+#include <memory>
 
 #include "mainwin.h"
 #include "userbox.h"
 
+#include <licq_gpg.h>
 #include <licq_user.h>
 #include <licq_events.h>
-
-#include <gpgme.h>
 
 #include <qheader.h>
 #include <qlabel.h>
@@ -40,19 +40,21 @@
 #include <qcheckbox.h>
 #include <qlineedit.h>
 
-GPGKeySelect::GPGKeySelect ( const char *szId, unsigned long nPPID, QWidget *parent) : QDialog( parent )
+using namespace std;
+
+
+GPGKeySelect::GPGKeySelect(const UserId& userId, QWidget *parent) : QDialog( parent )
 {
-  if ( !szId || !nPPID ) return;
+  if (!USERID_ISVALID(userId))
+    return;
 
   setWFlags( WDestructiveClose );
 
-  ICQUser *u = gUserManager.FetchUser( szId, nPPID, LOCK_R );
+  myUserId = userId;
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if ( !u ) return;
 
   setCaption( tr("Select GPG Key for user %1").arg(QString::fromUtf8(u->GetAlias())) );
-
-  this->szId = strdup( szId );
-  this->nPPID = nPPID;
 
   QBoxLayout* top_lay = new QVBoxLayout(this, 11, 6);
   
@@ -77,7 +79,7 @@ GPGKeySelect::GPGKeySelect ( const char *szId, unsigned long nPPID, QWidget *par
   gUserManager.DropUser(u);
 
   // public keys
-  keySelect = new KeyView( this, szId, nPPID );
+  keySelect = new KeyView(this, myUserId);
   top_lay->addWidget( keySelect );
   connect( keySelect, SIGNAL(doubleClicked ( QListViewItem *, const QPoint &, int )), this, SLOT(slot_doubleClicked( QListViewItem *, const QPoint &, int )));
 
@@ -113,9 +115,6 @@ GPGKeySelect::GPGKeySelect ( const char *szId, unsigned long nPPID, QWidget *par
 
 GPGKeySelect::~GPGKeySelect()
 {
-  if ( szId )
-    free( szId );
-
   emit signal_done();
 };
 
@@ -142,7 +141,7 @@ void GPGKeySelect::slot_ok()
   if ( curItem->parent() ) curItem=curItem->parent();
   if ( curItem )
   {
-    ICQUser *u = gUserManager.FetchUser( szId, nPPID, LOCK_W );
+    LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
     if ( u )
     {
       u->SetGPGKey( curItem->text(2).ascii() );
@@ -156,15 +155,14 @@ void GPGKeySelect::slot_ok()
 
 void GPGKeySelect::updateIcon()
 {
-  CICQSignal s(SIGNAL_UPDATExUSER, USER_GENERAL, szId, nPPID);
-  gMainWindow->slot_updatedUser(&s);
+  gMainWindow->slot_updatedUser(myUserId, USER_GENERAL);
   return;
 }
 
 
 void GPGKeySelect::slotNoKey()
 {
-  ICQUser *u = gUserManager.FetchUser( szId, nPPID, LOCK_W );
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if ( u )
   {
     u->SetGPGKey( "" );
@@ -180,11 +178,9 @@ void GPGKeySelect::slotCancel()
   close();
 };
 
-gpgme_ctx_t mCtx;
-gpgme_key_t key;
 
-
-KeyView::KeyView( QWidget *parent, const char *szId, unsigned long nPPID ) : QListView( parent )
+KeyView::KeyView(QWidget *parent, const UserId& userId)
+  : QListView( parent )
 {
   header()->setClickEnabled(false);
   addColumn( tr("Name") );
@@ -193,8 +189,7 @@ KeyView::KeyView( QWidget *parent, const char *szId, unsigned long nPPID ) : QLi
     
   setAllColumnsShowFocus(true);
 
-  this->szId = szId;
-  this->nPPID = nPPID;
+  myUserId = userId;
 
   initKeyList();
 
@@ -223,15 +218,15 @@ void KeyView::resizeEvent(QResizeEvent *e)
   }
 }
 
-void KeyView::testViewItem( QListViewItem *item, ICQUser *u )
+void KeyView::testViewItem(QListViewItem *item, const LicqUser* u)
 {
   int val = 0;
   for ( int i = 0; i<2; i++ )
   {
-    if ( item->text(i).contains( u->GetFirstName(), false ) ) val++;
-    if ( item->text(i).contains( u->GetLastName(), false ) ) val++;
+    if (item->text(i).contains(u->getFirstName().c_str(), false)) val++;
+    if (item->text(i).contains(u->getLastName().c_str(), false)) val++;
     if ( item->text(i).contains( u->GetAlias(), false ) ) val++;
-    if ( item->text(i).contains( u->GetEmailPrimary(), false ) ) val++;
+    if (item->text(i).contains(u->getEmail().c_str(), false )) val++;
   }
   
   if ( item->text(2).contains( u->GPGKey(), false ) ) val += 10;
@@ -246,40 +241,36 @@ void KeyView::testViewItem( QListViewItem *item, ICQUser *u )
 
 void KeyView::initKeyList()
 {
-  gpgme_new( &mCtx );
-
-  ICQUser *u = gUserManager.FetchUser( szId, nPPID, LOCK_R );
+  LicqUserReadGuard u(myUserId);
   maxItemVal = -1;
   maxItem = NULL;
 
-  int err = gpgme_op_keylist_start( mCtx, NULL, 0);
-
-  while ( !err)
+  auto_ptr<list<GpgKey> > keyList(gGPGHelper.getKeyList());
+  list<GpgKey>::const_iterator i;
+  for (i = keyList->begin(); i != keyList->end(); ++i)
   {
-    err = gpgme_op_keylist_next( mCtx, &key );
-    if ( err ) break;
-    gpgme_user_id_t uid = key->uids;
-    if ( uid && key->can_encrypt && key->subkeys )
+    // There shouldn't be any key without a user id in list, but make just in case
+    if (i->uids.empty())
+      continue;
+
+    // First user id is primary uid
+    list<GpgUid>::const_iterator uid = i->uids.begin();
+
+    QListViewItem* keyItem = new QListViewItem( this, QString::fromUtf8(uid->name.c_str()),
+        QString::fromUtf8(uid->email.c_str()), QString(i->keyid.c_str()).right(8) );
+    if (u.isLocked())
+      testViewItem(keyItem, *u);
+
+    ++uid;
+    for ( ;uid != i->uids.end(); ++uid)
     {
-      QListViewItem *f = new QListViewItem( this, QString::fromUtf8(uid->name), QString::fromUtf8(uid->email), QString( key->subkeys->keyid ).right(8) );
-      if ( u ) testViewItem( f, u );
-      uid = uid->next;
-      while ( uid )
-      {
-        QListViewItem *g = new QListViewItem( f, QString::fromUtf8(uid->name), QString::fromUtf8(uid->email) );
-        if ( u ) testViewItem( g, u );
-        uid = uid->next;
-      }
+      QListViewItem* uidItem = new QListViewItem(keyItem, QString::fromUtf8(uid->name.c_str()),
+          QString::fromUtf8(uid->email.c_str()));
+      if (u.isLocked())
+        testViewItem(uidItem, *u);
     }
-    gpgme_key_release (key);
   }
 
-  if ( u )
-    gUserManager.DropUser( u );
-  
-  gpgme_release( mCtx );
   if ( maxItem )
     setCurrentItem( maxItem );
 }
-
-#endif

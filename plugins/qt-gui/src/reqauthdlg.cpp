@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2006 Licq developers
+ * Copyright (C) 2002-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -91,11 +91,12 @@ ReqAuthDlg::ReqAuthDlg(CICQDaemon *s, const char *szId, unsigned long /* nPPID *
 void ReqAuthDlg::ok()
 {
   char *szId = (char *)edtUin->text().ascii();
+  UserId userId = LicqUser::makeUserId(szId, LICQ_PPID);
 
   if (szId)
   {
     //TODO add a drop down list for protocol
-    QTextCodec *codec = UserCodec::codecForProtoUser(szId, LICQ_PPID);
+    const QTextCodec* codec = UserCodec::codecForUserId(userId);
     server->icqRequestAuth(szId, codec->fromUnicode(mleRequest->text()));
     close(true);
   }

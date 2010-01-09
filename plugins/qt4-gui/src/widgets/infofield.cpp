@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,9 @@
 #include "infofield.h"
 
 #include <QDateTime>
+#include <QKeyEvent>
+
+#include "config/shortcuts.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::InfoField */
@@ -59,4 +62,15 @@ void InfoField::setDateTime(uint timestamp)
     setText(tr("Unknown"));
   else
     setText(QDateTime::fromTime_t(timestamp).toString());
+}
+
+void InfoField::keyPressEvent(QKeyEvent* event)
+{
+  Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+  QKeySequence ks = QKeySequence(event->key() | event->modifiers());
+
+  if (ks ==  shortcuts->getShortcut(Config::Shortcuts::InputClear))
+    clear();
+
+  QLineEdit::keyPressEvent(event);
 }

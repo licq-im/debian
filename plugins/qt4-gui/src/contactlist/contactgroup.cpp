@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 
 using namespace LicqQtGui;
 
-ContactGroup::ContactGroup(unsigned short id, QString name)
+ContactGroup::ContactGroup(int id, const QString& name)
   : ContactItem(ContactListModel::GroupItem),
     myGroupId(id),
     myName(name),
@@ -74,13 +74,14 @@ void ContactGroup::update()
   if (myGroupId == 0 || myGroupId >= ContactListModel::SystemGroupOffset)
     return;
 
-  LicqGroup* g = gUserManager.FetchGroup(myGroupId, LOCK_R);
-  if (g == NULL)
-    return;
+  {
+    LicqGroupReadGuard g(myGroupId);
+    if (!g.isLocked())
+      return;
 
-  myName = QString::fromLocal8Bit(g->name().c_str());
-  mySortKey = g->sortIndex();
-  gUserManager.DropGroup(g);
+    myName = QString::fromLocal8Bit(g->name().c_str());
+    mySortKey = g->sortIndex();
+  }
 
   emit dataChanged(this);
 }
@@ -91,12 +92,11 @@ void ContactGroup::updateSortKey()
   if (myGroupId == 0 || myGroupId >= ContactListModel::SystemGroupOffset)
     return;
 
-  LicqGroup* g = gUserManager.FetchGroup(myGroupId, LOCK_R);
-  if (g == NULL)
+  LicqGroupReadGuard g(myGroupId);
+  if (!g.isLocked())
     return;
 
   mySortKey = g->sortIndex();
-  gUserManager.DropGroup(g);
 }
 
 ContactItem* ContactGroup::item(int row) const
@@ -136,11 +136,14 @@ void ContactGroup::addUser(ContactUser* user, ContactListModel::SubGroupType sub
   emit beginInsert(this, rowCount());
 
   myUsers.append(user);
-  if (user->visibility())
-    myVisibleContacts++;
   myBars[subGroup]->countIncrease();
   myEvents += user->numEvents();
   myBars[subGroup]->updateNumEvents(user->numEvents());
+  if (user->visibility())
+  {
+    myVisibleContacts++;
+    myBars[subGroup]->updateVisibility(true);
+  }
 
   // Signal that we're done adding
   emit endInsert();
@@ -156,11 +159,14 @@ void ContactGroup::removeUser(ContactUser* user, ContactListModel::SubGroupType 
   emit beginRemove(this, indexOf(user));
 
   myUsers.removeAll(user);
-  if (user->visibility())
-    myVisibleContacts--;
   myBars[subGroup]->countDecrease();
   myEvents -= user->numEvents();
   myBars[subGroup]->updateNumEvents(-user->numEvents());
+  if (user->visibility())
+  {
+    myVisibleContacts--;
+    myBars[subGroup]->updateVisibility(false);
+  }
 
   // Signal that we're done removing
   emit endRemove();
@@ -189,16 +195,19 @@ void ContactGroup::updateNumEvents(int counter, ContactListModel::SubGroupType s
   myEvents += counter;
   myBars[subGroup]->updateNumEvents(counter);
 
+  emit barDataChanged(myBars[subGroup], subGroup);
   emit dataChanged(this);
 }
 
-void ContactGroup::updateVisibility(bool increase)
+void ContactGroup::updateVisibility(bool increase, ContactListModel::SubGroupType subGroup)
 {
   if (increase)
     myVisibleContacts++;
   else
     myVisibleContacts--;
+  myBars[subGroup]->updateVisibility(increase);
 
+  emit barDataChanged(myBars[subGroup], subGroup);
   emit dataChanged(this);
 }
 

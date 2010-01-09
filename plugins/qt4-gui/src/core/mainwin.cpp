@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -71,6 +71,7 @@
 #include "config/contactlist.h"
 #include "config/general.h"
 #include "config/iconmanager.h"
+#include "config/shortcuts.h"
 #include "config/skin.h"
 
 #include "dockicons/dockicon.h"
@@ -79,6 +80,7 @@
 #include "dialogs/adduserdlg.h"
 #include "dialogs/awaymsgdlg.h"
 #include "dialogs/hintsdlg.h"
+#include "dialogs/historydlg.h"
 #include "dialogs/logwindow.h"
 #include "dialogs/ownermanagerdlg.h"
 #include "dialogs/showawaymsgdlg.h"
@@ -150,31 +152,36 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
 
   mySystemMenu = new SystemMenu(this);
 
-  QAction* a;
   QActionGroup* userFuncGroup = new QActionGroup(this);
   userFuncGroup->setExclusive(false);
   connect(userFuncGroup,
       SIGNAL(triggered(QAction*)), SLOT(callUserFunction(QAction*)));
-#define ADD_USERFUNCACTION(key, data) \
-  a = new QAction(userFuncGroup); \
-  a->setShortcut(key); \
-  a->setData(data);
+#define ADD_USERFUNCACTION(var, data) \
+  var = new QAction(userFuncGroup); \
+  var->setData(data);
 
-  ADD_USERFUNCACTION(Qt::CTRL + Qt::Key_V, -1)
-  ADD_USERFUNCACTION(Qt::CTRL + Qt::Key_S, MessageEvent)
-  ADD_USERFUNCACTION(Qt::CTRL + Qt::Key_U, UrlEvent)
-  ADD_USERFUNCACTION(Qt::CTRL + Qt::Key_C, ChatEvent)
-  ADD_USERFUNCACTION(Qt::CTRL + Qt::Key_F, FileEvent)
+  ADD_USERFUNCACTION(myViewEventAction, -1)
+  ADD_USERFUNCACTION(mySendMessageAction, MessageEvent)
+  ADD_USERFUNCACTION(mySendUrlAction, UrlEvent)
+  ADD_USERFUNCACTION(mySendFileAction, ChatEvent)
+  ADD_USERFUNCACTION(mySendChatRequestAction, FileEvent)
 #undef ADD_USERFUNCACTION
   addActions(userFuncGroup->actions());
 
+  myCheckUserArAction = new QAction(this);
+  addAction(myCheckUserArAction);
+  connect(myCheckUserArAction, SIGNAL(triggered()), SLOT(checkUserAutoResponse()));
+  myViewHistoryAction = new QAction(this);
+  addAction(myViewHistoryAction);
+  connect(myViewHistoryAction, SIGNAL(triggered()), SLOT(showUserHistory()));
   QShortcut* shortcut;
-  shortcut = new QShortcut(Qt::CTRL + Qt::Key_A, this);
-  connect(shortcut, SIGNAL(activated()), SLOT(checkUserAutoResponse()));
   shortcut = new QShortcut(Qt::CTRL + Qt::Key_Delete, this);
   connect(shortcut, SIGNAL(activated()), SLOT(removeUserFromList()));
   shortcut = new QShortcut(Qt::Key_Delete, this);
   connect(shortcut, SIGNAL(activated()), SLOT(removeUserFromGroup()));
+
+  updateShortcuts();
+  connect(Config::Shortcuts::instance(), SIGNAL(shortcutsChanged()), SLOT(updateShortcuts()));
 
   CreateUserView();
 
@@ -199,17 +206,17 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       "<li><tt>%w - </tt>webpage</li></ul>");
 
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(updatedList(CICQSignal*)),
-      SLOT(slot_updatedList(CICQSignal*)));
+      SIGNAL(updatedList(unsigned long, int, const UserId&)),
+      SLOT(slot_updatedList(unsigned long)));
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(updatedUser(CICQSignal*)),
-      SLOT(slot_updatedUser(CICQSignal*)));
+      SIGNAL(updatedUser(const UserId&, unsigned long, int, unsigned long)),
+      SLOT(slot_updatedUser(const UserId&, unsigned long, int)));
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(updatedStatus(CICQSignal*)),
-      SLOT(updateStatus(CICQSignal*)));
+      SIGNAL(updatedStatus(unsigned long)),
+      SLOT(updateStatus(unsigned long)));
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneOwnerFcn(ICQEvent*)),
-      SLOT(slot_doneOwnerFcn(ICQEvent*)));
+      SIGNAL(doneOwnerFcn(const LicqEvent*)),
+      SLOT(slot_doneOwnerFcn(const LicqEvent*)));
   connect(LicqGui::instance()->signalManager(),
       SIGNAL(logon()),
       SLOT(slot_logon()));
@@ -229,6 +236,7 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
   }
   updateSkin();
   connect(Config::Skin::active(), SIGNAL(changed()), SLOT(updateSkin()));
+  connect(Config::General::instance(), SIGNAL(styleChanged()), SLOT(updateSkin()));
 
   updateGroups(true);
 
@@ -269,8 +277,8 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       SIGNAL(sendChatRequest(const char*, unsigned long)),
       LicqGui::instance(), SLOT(sendChatRequest(const char*, unsigned long)));
   connect(kdeIMInterface,
-      SIGNAL(addUser(const char*, unsigned long)),
-      SLOT(addUser(const char*, unsigned long)));
+      SIGNAL(addUser(const UserId&)),
+      SLOT(addUser(const UserId&)));
   */
 #endif
 
@@ -306,6 +314,19 @@ void MainWindow::updateConfig()
 
   // Redraw group/event label with new settings
   updateEvents();
+}
+
+void MainWindow::updateShortcuts()
+{
+  Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+
+  myViewEventAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserViewMessage));
+  mySendMessageAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendMessage));
+  mySendUrlAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendUrl));
+  mySendFileAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendFile));
+  mySendChatRequestAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendChatRequest));
+  myCheckUserArAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserCheckAutoresponse));
+  myViewHistoryAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserViewHistory));
 }
 
 void MainWindow::trayIconClicked()
@@ -395,6 +416,8 @@ void MainWindow::updateSkin()
         mySystemMenu->getGroupMenu(), this);
     connect(myMessageField, SIGNAL(doubleClicked()),
         LicqGui::instance(), SLOT(showNextEvent()));
+    connect(myMessageField, SIGNAL(wheelDown()), SLOT(nextGroup()));
+    connect(myMessageField, SIGNAL(wheelUp()), SLOT(prevGroup()));
     myMessageField->setToolTip(tr("Right click - User groups\n"
           "Double click - Show next message"));
     myMessageField->show();
@@ -423,8 +446,8 @@ void MainWindow::updateSkin()
 void MainWindow::CreateUserView()
 {
   myUserView = new UserView(LicqGui::instance()->contactList(), this);
-  connect (myUserView, SIGNAL(userDoubleClicked(QString, unsigned long)),
-      LicqGui::instance(), SLOT(showDefaultEventDialog(QString, unsigned long)));
+  connect (myUserView, SIGNAL(userDoubleClicked(const UserId&)),
+      LicqGui::instance(), SLOT(showDefaultEventDialog(const UserId&)));
 }
 
 void MainWindow::resizeEvent(QResizeEvent* /* e */)
@@ -492,17 +515,15 @@ void MainWindow::closeEvent(QCloseEvent* e)
 
 void MainWindow::removeUserFromList()
 {
-  QString id;
-  unsigned long ppid = 0;
-  myUserView->MainWindowSelectedItemUser(id, ppid);
+  UserId userId = myUserView->currentUserId();
 
-  LicqGui::instance()->removeUserFromList(id, ppid, this);
+  LicqGui::instance()->removeUserFromList(userId, this);
 }
 
 void MainWindow::removeUserFromGroup()
 {
   GroupType gtype = Config::ContactList::instance()->groupType();
-  unsigned short gid = Config::ContactList::instance()->groupId();
+  int gid = Config::ContactList::instance()->groupId();
 
   // Removing "All users" is the same as removing user from the list
   if (gtype == GROUPS_SYSTEM && gid == 0)
@@ -516,34 +537,34 @@ void MainWindow::removeUserFromGroup()
     return;
 
   // Get currently selected user
-  QString id;
-  unsigned long ppid = 0;
-  myUserView->MainWindowSelectedItemUser(id, ppid);
+  UserId userId = myUserView->currentUserId();
 
-  gUserManager.SetUserInGroup(id.toLatin1(), ppid, GROUPS_USER, gid, false);
+  gUserManager.setUserInGroup(userId, GROUPS_USER, gid, false);
 }
 
 void MainWindow::callUserFunction(QAction* action)
 {
   int index = action->data().toInt();
-
-  QString id;
-  unsigned long ppid = 0;
-  myUserView->MainWindowSelectedItemUser(id, ppid);
+  UserId userId = myUserView->currentUserId();
 
   if (index == -1)
-    LicqGui::instance()->showViewEventDialog(id, ppid);
+    LicqGui::instance()->showViewEventDialog(userId);
   else
-    LicqGui::instance()->showEventDialog(index, id, ppid);
+    LicqGui::instance()->showEventDialog(index, userId);
 }
 
 void MainWindow::checkUserAutoResponse()
 {
-  QString id;
-  unsigned long ppid = 0;
-  myUserView->MainWindowSelectedItemUser(id, ppid);
-  if (!id.isEmpty() && ppid)
-    new ShowAwayMsgDlg(id, ppid, true);
+  UserId userId = myUserView->currentUserId();
+  if (USERID_ISVALID(userId))
+    new ShowAwayMsgDlg(userId, true);
+}
+
+void MainWindow::showUserHistory()
+{
+  UserId userId = myUserView->currentUserId();
+  if (USERID_ISVALID(userId))
+    new HistoryDlg(userId);
 }
 
 void MainWindow::hide()
@@ -574,24 +595,21 @@ void MainWindow::mouseMoveEvent(QMouseEvent* m)
   }
 }
 
-void MainWindow::slot_updatedUser(CICQSignal* sig)
+void MainWindow::slot_updatedUser(const UserId& userId, unsigned long subSignal, int argument)
 {
-  QString id = sig->Id();
-  unsigned long ppid = sig->PPID();
-
-  switch(sig->SubSignal())
+  switch(subSignal)
   {
     case USER_EVENTS:
     {
       // Skip all this if it was just an away message check
-      if (sig->Argument() == 0)
+      if (argument == 0)
         break;
 
       // Otherwise an event was added or removed
       updateEvents();
       // autoRaise if needed
       if (Config::General::instance()->autoRaiseMainwin() &&
-          sig->Argument() > 0)
+          argument > 0)
         raise();
 
       // Fall through
@@ -607,18 +625,18 @@ void MainWindow::slot_updatedUser(CICQSignal* sig)
     case USER_SECURITY:
     case USER_TYPING:
     {
-      if (gUserManager.FindOwner(id.toLatin1(), ppid) != NULL)
+      if (gUserManager.isOwner(userId))
       {
-        if (sig->SubSignal() == USER_STATUS ||
-            sig->SubSignal() == USER_EXT)
+        if (subSignal == USER_STATUS ||
+            subSignal == USER_EXT)
           break;
 
         myCaption = "Licq (|)";
-        const ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_R);
+        const LicqUser* o = gUserManager.fetchUser(userId, LOCK_R);
         if (o != NULL)
         {
           myCaption.replace("|", QString::fromUtf8(o->GetAlias()));
-          gUserManager.DropOwner(o);
+          gUserManager.DropUser(o);
         }
         else
         {
@@ -632,18 +650,16 @@ void MainWindow::slot_updatedUser(CICQSignal* sig)
         break;
       }
 
-      const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
       if (u == NULL)
       {
-        char* ppidString = PPIDSTRING(ppid);
-        gLog.Warn("%sMainWindow::slot_updatedUser(): Invalid user received: %s (%s)\n",
-          L_ERRORxSTR, id.toLatin1().data(), ppidString);
-        delete[] ppidString;
+        gLog.Warn("%sMainWindow::slot_updatedUser(): Invalid user received: %s\n",
+            L_ERRORxSTR, USERID_TOSTR(userId));
         break;
       }
 
-      if (sig->SubSignal() == USER_STATUS &&
-          sig->Argument() == 1 &&
+      if (subSignal == USER_STATUS &&
+          argument == 1 &&
           Config::General::instance()->trayMsgOnlineNotify())
       {
         // User on notify list went online -> show popup at systray icon
@@ -662,9 +678,9 @@ void MainWindow::slot_updatedUser(CICQSignal* sig)
   }
 }
 
-void MainWindow::slot_updatedList(CICQSignal* sig)
+void MainWindow::slot_updatedList(unsigned long subSignal)
 {
-  switch(sig->SubSignal())
+  switch(subSignal)
   {
     case LIST_REMOVE:
       updateEvents();
@@ -683,7 +699,7 @@ void MainWindow::updateEvents()
   }
   FOR_EACH_OWNER_END
 
-  unsigned short nNumUserEvents = ICQUser::getNumUserEvents() - nNumOwnerEvents;
+  unsigned short nNumUserEvents = LicqUser::getNumUserEvents() - nNumOwnerEvents;
 
   if (myMessageField != NULL)
     myMessageField->setBold(false);
@@ -710,7 +726,7 @@ void MainWindow::updateEvents()
   else
   {
     // Update the msg label if necessary
-    if (Config::General::instance()->showGroupIfNoMsg() && ICQUser::getNumUserEvents() == 0)
+    if (Config::General::instance()->showGroupIfNoMsg() && LicqUser::getNumUserEvents() == 0)
     {
       s = myUserGroupsBox->currentText();
       l = myUserGroupsBox->currentText();
@@ -741,7 +757,7 @@ void MainWindow::updateEvents()
 
 void MainWindow::setCurrentGroup(int index)
 {
-  unsigned short groupId = myUserGroupsBox->itemData(index).toUInt();
+  int groupId = myUserGroupsBox->itemData(index).toInt();
   GroupType groupType = GROUPS_USER;
   if (groupId >= ContactListModel::SystemGroupOffset)
   {
@@ -752,6 +768,116 @@ void MainWindow::setCurrentGroup(int index)
   Config::ContactList::instance()->setGroup(groupType, groupId);
 }
 
+void MainWindow::nextGroup()
+{
+  GroupType curGroupType = Config::ContactList::instance()->groupType();
+  int curGroup = Config::ContactList::instance()->groupId();
+  int groupId = 0;
+
+  FOR_EACH_GROUP_START_SORTED(LOCK_R)
+  {
+    // If current selection is all users, select first group in list
+    if (groupId == 0 && curGroupType == GROUPS_SYSTEM && curGroup == GROUP_ALL_USERS)
+    {
+      pGroup->Unlock();
+      gUserManager.UnlockGroupList();
+      Config::ContactList::instance()->setGroup(GROUPS_USER, pGroup->id());
+      return;
+    }
+
+    // If previous group is selected, select current group
+    if (groupId != 0 && curGroupType == GROUPS_USER && curGroup == groupId)
+    {
+      pGroup->Unlock();
+      gUserManager.UnlockGroupList();
+      Config::ContactList::instance()->setGroup(GROUPS_USER, pGroup->id());
+      return;
+    }
+    groupId = pGroup->id();
+  }
+  FOR_EACH_GROUP_END
+
+  // Last user group is currently selected, set first system group
+  if (groupId != 0 && curGroupType == GROUPS_USER && curGroup == groupId)
+  {
+    Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, 1);
+    return;
+  }
+
+  // No users groups exist and current selection is all users, set first system group
+  if (groupId == 0 && curGroupType == GROUPS_SYSTEM && curGroup == GROUP_ALL_USERS)
+  {
+    Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, 1);
+    return;
+  }
+
+  groupId = 0;
+
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  {
+    // If previous system group is selected, set current group
+    if (groupId != 0 && curGroupType == GROUPS_SYSTEM && groupId == curGroup)
+    {
+      Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, i);
+      return;
+    }
+    groupId = i;
+  }
+
+  // Last system group is currently selected or selection not found, set all users
+  Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, GROUP_ALL_USERS);
+}
+
+
+void MainWindow::prevGroup()
+{
+  GroupType curGroupType = Config::ContactList::instance()->groupType();
+  int curGroup = Config::ContactList::instance()->groupId();
+  int groupId = 0;
+
+  FOR_EACH_GROUP_START_SORTED(LOCK_R)
+  {
+    // If current group is selected, set previous group
+    if (curGroupType == GROUPS_USER && curGroup == pGroup->id())
+    {
+      pGroup->Unlock();
+      gUserManager.UnlockGroupList();
+      if (groupId == 0)
+        Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, GROUP_ALL_USERS);
+      else
+        Config::ContactList::instance()->setGroup(GROUPS_USER, groupId);
+      return;
+    }
+
+    groupId = pGroup->id();
+  }
+  FOR_EACH_GROUP_END
+
+  // If first system group is selected, set last user group
+  if (groupId != 0 && curGroupType == GROUPS_SYSTEM && curGroup == 1)
+  {
+    if (groupId == 0)
+      Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, GROUP_ALL_USERS);
+    else
+      Config::ContactList::instance()->setGroup(GROUPS_USER, groupId);
+    return;
+  }
+  groupId = 0;
+
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  {
+    // If current system group is selected, set previous group
+    if (curGroupType == GROUPS_SYSTEM && curGroup == i)
+    {
+      Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, groupId);
+      return;
+    }
+    groupId = i;
+  }
+
+  // If current selection is all users or selection not faund, set last system group
+  Config::ContactList::instance()->setGroup(GROUPS_SYSTEM, NUM_GROUPS_SYSTEM_ALL - 1);
+}
 void MainWindow::updateCurrentGroup()
 {
   GroupType groupType = Config::ContactList::instance()->groupType();
@@ -769,7 +895,7 @@ void MainWindow::updateCurrentGroup()
   // Update the msg label if necessary
   if (myMessageField != NULL &&
       Config::General::instance()->showGroupIfNoMsg() &&
-      ICQUser::getNumUserEvents() == 0)
+      LicqUser::getNumUserEvents() == 0)
     myMessageField->setText(myUserGroupsBox->currentText());
 }
 
@@ -792,14 +918,14 @@ void MainWindow::updateGroups(bool initial)
   }
   FOR_EACH_GROUP_END
 
-  for (unsigned short i = 1; i < NUM_GROUPS_SYSTEM_ALL; i++)
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; i++)
     myUserGroupsBox->addItem(LicqStrings::getSystemGroupName(i),
         ContactListModel::SystemGroupOffset + i);
 
   updateCurrentGroup();
 }
 
-void MainWindow::updateStatus(CICQSignal* s)
+void MainWindow::updateStatus(unsigned long nPPID)
 {
   if (LicqGui::instance()->dockIcon() != NULL)
     LicqGui::instance()->dockIcon()->updateIconStatus();
@@ -809,10 +935,9 @@ void MainWindow::updateStatus(CICQSignal* s)
 
   Config::Skin* skin = Config::Skin::active();
   QColor theColor = skin->offlineColor;
-  unsigned long nPPID = LICQ_PPID;
 
-  if (s != NULL)
-    nPPID = s->PPID();
+  if (nPPID == 0)
+    nPPID = LICQ_PPID;
 
   IconManager* iconman = IconManager::instance();
 
@@ -941,7 +1066,7 @@ void MainWindow::slot_protocolPlugin(unsigned long nPPID)
 #endif
 }
 
-void MainWindow::slot_doneOwnerFcn(ICQEvent* e)
+void MainWindow::slot_doneOwnerFcn(const LicqEvent* e)
 {
   updateStatus();
   switch (e->SNAC())
@@ -1069,12 +1194,12 @@ void MainWindow::showAutoResponseHints(QWidget* parent)
   AwayMsgDlg::showAutoResponseHints(parent);
 }
 
-void MainWindow::addUser(QString id, unsigned long ppid)
+void MainWindow::addUser(const UserId& userId)
 {
-  if (id.isEmpty() || ppid == 0)
+  if (!USERID_ISVALID(userId))
     return;
 
-  new AddUserDlg(id, ppid);
+  new AddUserDlg(userId);
 }
 
 void MainWindow::setMainwinSticky(bool sticky)

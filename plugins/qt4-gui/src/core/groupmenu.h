@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,16 +56,18 @@ public:
    * Change which group the menu will be displayed for.
    *
    * @param groupId Group id
+   * @param online True if menu is opened for single or online instance of group
    */
-  void setGroup(unsigned int groupId);
+  void setGroup(int groupId, bool online);
 
   /**
    * Convenience function to set group and popup the menu on a given location.
    *
    * @param pos Posititon to show menu in global coordinates
    * @param groupId Group id
+   * @param online True if menu is opened for single or online instance of group
    */
-  void popup(QPoint pos, unsigned int groupId);
+  void popup(QPoint pos, int groupId, bool online);
 
 private slots:
   /**
@@ -89,6 +91,11 @@ private slots:
   void moveGroupDown();
 
   /**
+   * Rename the current group
+   */
+  void renameGroup();
+
+  /**
    * Delete the group from the list
    */
   void removeGroup();
@@ -100,13 +107,15 @@ private slots:
 
 private:
   // Current group
-  unsigned int myGroupId;
-  unsigned short mySortIndex;
+  int myGroupId;
+  bool myOnline;
+  int mySortIndex;
   QString myGroupName;
 
   // Actions not in any sub menu
   QAction* myMoveUpAction;
   QAction* myMoveDownAction;
+  QAction* myRenameAction;
   QAction* myRemoveGroupAction;
 
   // Sub menus
