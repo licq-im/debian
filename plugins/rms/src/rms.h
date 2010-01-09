@@ -8,13 +8,13 @@
 #include <list>
 
 #include <licq_socket.h>
+#include <licq_types.h>
 
 class CICQDaemon;
 class TCPSocket;
-class ICQUser;
 class CUserEvent;
-class CICQSignal;
-class ICQEvent;
+class LicqSignal;
+class LicqEvent;
 class CLogService_Plugin;
 
 const unsigned short MAX_LINE_LENGTH = 1024 * 1;
@@ -44,11 +44,11 @@ protected:
 
 public:
   void ProcessPipe();
-  void ProcessSignal(CICQSignal *);
-  void ProcessEvent(ICQEvent *);
+  void ProcessSignal(LicqSignal* s);
+  void ProcessEvent(LicqEvent* e);
   void ProcessServer();
   void ProcessLog();
-  void AddEventTag(const char *, unsigned long, unsigned long);
+  void AddEventTag(const UserId& userId, unsigned long eventTag);
 
 friend class CRMSClient;
 
@@ -71,6 +71,7 @@ public:
   int Process_STATUS();
   int Process_HELP();
   int Process_GROUPS();
+  int Process_HISTORY();
   int Process_LIST();
   int Process_MESSAGE();
   int Process_URL();
@@ -97,23 +98,21 @@ protected:
   bool m_bNotify;
 
   unsigned long m_nUin;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   char m_szText[MAX_TEXT_LENGTH + 1];
   char m_szLine[MAX_LINE_LENGTH + 1];
   unsigned short m_nTextPos;
-  char *m_szEventId;
-  unsigned long m_nEventPPID;
+  UserId myEventUserId;
 
   int StateMachine();
   int ProcessCommand();
-  bool ProcessEvent(ICQEvent *);
+  bool ProcessEvent(LicqEvent* e);
   bool AddLineToText();
   unsigned long GetProtocol(const char *);
   void ParseUser(const char *);
   int ChangeStatus(unsigned long, unsigned long, const char *);
-  void AddEventTag(const char *, unsigned long, unsigned long);
-  
+  void AddEventTag(const UserId& userId, unsigned long);
+
   int Process_MESSAGE_text();
   int Process_URL_url();
   int Process_URL_text();
@@ -121,8 +120,13 @@ protected:
   int Process_SMS_message();
   int Process_AR_text();
 
-
-  static char buf[128];
+  /**
+   * Output a user event
+   *
+   * @param e User event
+   * @param alias Alias of sender
+   */
+  void printUserEvent(const CUserEvent* e, const std::string& alias);
 
 friend class CLicqRMS;
 };

@@ -44,10 +44,6 @@
         <translation>Autorisierung für %1 ablehnen</translation>
     </message>
     <message>
-        <source>Authorize which user (UIN):</source>
-        <translation type="obsolete">Benutzer autorisieren (UIN):</translation>
-    </message>
-    <message>
         <source>Grant authorization to %1</source>
         <translation>%1 autorisieren</translation>
     </message>
@@ -295,7 +291,7 @@ See Network Window for details.</source>
         <translation>Datei E/A Fehler:
 %1
 
-Siehe Netzwerkfenster für Details</translation>
+Siehe Netzwerkfenster für Details.</translation>
     </message>
     <message>
         <source>File transfer cancelled.</source>
@@ -560,7 +556,7 @@ Siehe Netzwerkfenster für Details.</translation>
     </message>
     <message>
         <source>Send</source>
-        <translation>&amp;Senden</translation>
+        <translation>Senden</translation>
     </message>
     <message>
         <source>Online to User</source>
@@ -620,7 +616,7 @@ Sie müssen den Browser selbst starten und die URL in die Adressleiste kopieren.
     </message>
     <message>
         <source>Check %1 Response</source>
-        <translation>%1-Antwort &amp;lesen</translation>
+        <translation>%1-Antwort lesen</translation>
     </message>
     <message>
         <source>Server Group</source>
@@ -674,7 +670,7 @@ Sie müssen den Browser selbst starten und die URL in die Adressleiste kopieren.
     </message>
     <message>
         <source>Custom Auto Response...</source>
-        <translation>Spezielle &amp;Auto-Antwort...</translation>
+        <translation>Spezielle Auto-Antwort...</translation>
     </message>
     <message>
         <source>(Error! No owner set)</source>
@@ -686,7 +682,7 @@ Sie müssen den Browser selbst starten und die URL in die Adressleiste kopieren.
     </message>
     <message>
         <source>Remove From List</source>
-        <translation>Von &amp;Kontaktliste entfernen</translation>
+        <translation>Von Kontaktliste entfernen</translation>
     </message>
     <message>
         <source>System Message</source>
@@ -1312,11 +1308,11 @@ Doppelklick - Nächste Nachricht</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation>Ab&amp;brechen</translation>
+        <translation>Abbrechen</translation>
     </message>
     <message>
         <source>Refuse</source>
-        <translation>Ab&amp;lehnen</translation>
+        <translation>Ablehnen</translation>
     </message>
 </context>
 <context>
@@ -1904,10 +1900,6 @@ Sie können mir eine Nachricht hinterlassen.</translation>
         <translation>Umbenennen</translation>
     </message>
     <message>
-        <source>Set New Users</source>
-        <translation type="obsolete">Neue Benutzer</translation>
-    </message>
-    <message>
         <source>Cancel</source>
         <translation>Abbrechen</translation>
     </message>
@@ -1929,28 +1921,8 @@ the group &apos;%1&apos;?</source>
         <translation>unbenannt</translation>
     </message>
     <message>
-        <source>The group to which new users will be automatically added.  All new users will be in the local system group New Users but for server side storage will also be stored in the specified group.</source>
-        <translation type="obsolete">Die Gruppe, zu der alle neuen Benutzer auf der Serverseitigen Kontaktliste hinzugefügt werden.</translation>
-    </message>
-    <message>
         <source>Save the name of a group being modified.</source>
         <translation>Speichert den Namen der gerade bearbeiteten Gruppe.</translation>
-    </message>
-    <message>
-        <source>New User:</source>
-        <translation type="obsolete">Neue Benutzer:</translation>
-    </message>
-    <message>
-        <source>Set Default</source>
-        <translation type="obsolete">Als Standard einstellen</translation>
-    </message>
-    <message>
-        <source>Default:</source>
-        <translation type="obsolete">Standard:</translation>
-    </message>
-    <message>
-        <source>The default group to start up in.</source>
-        <translation type="obsolete">Die Gruppe, mit der standardmäßig gestartet wird.</translation>
     </message>
     <message>
         <source>Edit group name (hit enter to save).</source>
@@ -2171,7 +2143,7 @@ the group &apos;%1&apos;?</source>
     </message>
     <message>
         <source>&lt;qt&gt;Drag&amp;Drop user to add to list.&lt;/qt&gt;</source>
-        <translation>&lt;qt&gt;Ein Benutzer kann durch Ziehen und Ablegen zur Liste hinzugefügt werden&lt;/qt&gt;</translation>
+        <translation>&lt;qt&gt;Ein Benutzer kann durch Ziehen und Ablegen zur Liste hinzugefügt werden.&lt;/qt&gt;</translation>
     </message>
     <message>
         <source>Not yet implemented. Use licq_gpg.conf.</source>
@@ -2226,7 +2198,7 @@ the group &apos;%1&apos;?</source>
     </message>
     <message>
         <source>Select a GPG key for user %1.</source>
-        <translation>Bitte einen GPG-Schlüssel für den Benutzer %1 auswählen</translation>
+        <translation>Bitte einen GPG-Schlüssel für den Benutzer %1 auswählen.</translation>
     </message>
     <message>
         <source>Select GPG Key for user %1</source>
@@ -5491,7 +5463,7 @@ Anfrage wurde abgebrochen.</translation>
     </message>
     <message>
         <source>&amp;View Info</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;Informationen</translation>
     </message>
 </context>
 <context>

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include <qtextcodec.h>
 #include <qtimer.h>
 
+#include <licq_events.h>
 #include "licq_icqd.h"
 #include "licq_icq.h"
 #include "keyrequestdlg.h"
@@ -37,16 +38,14 @@
 
 
 // -----------------------------------------------------------------------------
-KeyRequestDlg::KeyRequestDlg(CSignalManager* _sigman, const char *szId,
-  unsigned long nPPID, QWidget *parent)
+KeyRequestDlg::KeyRequestDlg(CSignalManager* _sigman, const UserId& userId, QWidget *parent)
   : LicqDialog(parent, "KeyRequestDialog", false, WDestructiveClose)
 {
-  m_szId = szId ? strdup(szId) : 0;
-  m_nPPID = nPPID;
+  myUserId = userId;
   sigman = _sigman;
   icqEventTag = 0;
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   setCaption(tr("Licq - Secure Channel with %1").arg(QString::fromUtf8(u->GetAlias())));
 
   QBoxLayout *top_lay = new QVBoxLayout(this, 10);
@@ -129,16 +128,13 @@ KeyRequestDlg::~KeyRequestDlg()
     gLicqDaemon->CancelEvent(icqEventTag);
     icqEventTag = 0;
   }
-  if (m_szId) free(m_szId);
 }
-
-
 
 // -----------------------------------------------------------------------------
 
 void KeyRequestDlg::startSend()
 {
-  connect (sigman, SIGNAL(signal_doneUserFcn(ICQEvent *)), this, SLOT(doneEvent(ICQEvent *)));
+  connect(sigman, SIGNAL(signal_doneUserFcn(LicqEvent*)), SLOT(doneEvent(LicqEvent*)));
   btnSend->setEnabled(false);
 
   if (m_bOpen)
@@ -155,14 +151,12 @@ void KeyRequestDlg::startSend()
 
 void KeyRequestDlg::openConnection()
 {
-  if (m_nPPID == LICQ_PPID )
-    icqEventTag = gLicqDaemon->icqOpenSecureChannel(m_szId);
+  icqEventTag = gLicqDaemon->secureChannelOpen(myUserId);
 }
 
 void KeyRequestDlg::closeConnection()
 {
-  if (m_nPPID == LICQ_PPID )
-    icqEventTag = gLicqDaemon->icqCloseSecureChannel(m_szId);
+  icqEventTag = gLicqDaemon->secureChannelClose(myUserId);
 }
 
 // -----------------------------------------------------------------------------
@@ -212,7 +206,7 @@ void KeyRequestDlg::doneEvent(ICQEvent *e)
 /*
  * Disabled
  *   if ( m_bOpen ) {
- *     ICQUser *u = gUserManager.FetchUser(m_nUin, LOCK_W);
+ *     LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
  *     if ( u ) {
  *       u->SetAutoSecure( e->Result() == EVENT_SUCCESS );
  *       gUserManager.DropUser( u );

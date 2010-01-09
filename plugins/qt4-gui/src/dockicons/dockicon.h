@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@
 
 class QPixmap;
 
-class ICQOwner;
 
 namespace LicqQtGui
 {
@@ -90,7 +89,7 @@ signals:
    * New tooltip is available
    * Emitted when myIcon isn't set
    */
-  void newToolTip(QString tooltip);
+  void newToolTip(const QString& tooltip);
 
 protected slots:
   /**

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,8 +19,6 @@
  */
 
 #include "userviewbase.h"
-
-#include <QUrl>
 
 #include <licq_icqd.h>
 
@@ -140,16 +138,40 @@ void UserViewBase::popupMenu(QPoint point, QModelIndex item)
 
   if (itemType == ContactListModel::UserItem)
   {
-    QString id = item.data(ContactListModel::UserIdRole).toString();
-    unsigned long ppid = item.data(ContactListModel::PpidRole).toUInt();
+    UserId userId = item.data(ContactListModel::UserIdRole).value<UserId>();
 
-    LicqGui::instance()->userMenu()->popup(point, id, ppid);
+    LicqGui::instance()->userMenu()->popup(point, userId);
   }
   else if (itemType == ContactListModel::GroupItem)
   {
-    unsigned int id = item.data(ContactListModel::GroupIdRole).toUInt();
+    int id = item.data(ContactListModel::GroupIdRole).toInt();
+    bool online = (item.data(ContactListModel::SortPrefixRole).toInt() < 2);
 
-    LicqGui::instance()->groupMenu()->popup(point, id);
+    LicqGui::instance()->groupMenu()->popup(point, id, online);
+  }
+}
+
+void UserViewBase::editGroupName(int groupId, bool online)
+{
+  // We cannot just ask the model which index to use since the proxy/proxies
+  //   use different indexes, so we'll just have to search for it.
+  int rowCount = model()->rowCount();
+  for (int i = 0; i < rowCount; ++i)
+  {
+    QModelIndex item = model()->index(i, 0);
+    if (static_cast<ContactListModel::ItemType>(item.data(ContactListModel::ItemTypeRole).toInt()) != ContactListModel::GroupItem)
+      continue;
+
+    // Check if we got the correct group
+    if (item.data(ContactListModel::GroupIdRole).toInt() != groupId)
+      continue;
+    if ((item.data(ContactListModel::SortPrefixRole).toInt() < 2) != online)
+      continue;
+
+    // We found it, make sure it's selected and start editing it
+    setCurrentIndex(item);
+    edit(item);
+    return;
   }
 }
 
@@ -177,90 +199,17 @@ void UserViewBase::dropEvent(QDropEvent* event)
   {
     case ContactListModel::UserItem:
     {
-      QString id = dropIndex.data(ContactListModel::UserIdRole).toString();
-      unsigned long ppid = dropIndex.data(ContactListModel::PpidRole).toUInt();
+      UserId userId = dropIndex.data(ContactListModel::UserIdRole).value<UserId>();
 
-      if (event->mimeData()->hasUrls())
-      {
-        QList<QUrl> urlList = event->mimeData()->urls();
-        QListIterator<QUrl> urlIter(urlList);
-        QString text;
-        QUrl firstUrl = urlIter.next();
+      // Drops for user is handled by common function
+      if (!LicqGui::instance()->userDropEvent(userId, *event->mimeData()))
+        return;
 
-        if (!(text = firstUrl.toLocalFile()).isEmpty())
-        {
-          UserSendFileEvent* sendFile = dynamic_cast<UserSendFileEvent*>(
-              LicqGui::instance()->showEventDialog(FileEvent, id, ppid));
-          if (!sendFile)
-            return;
-
-          sendFile->setFile(text, QString::null);
-
-          // Add all the files
-          while (urlIter.hasNext())
-          {
-            if (!(text = urlIter.next().toLocalFile()).isEmpty())
-              sendFile->addFile(text);
-          }
-
-          sendFile->show();
-        }
-        else
-        {
-          UserSendUrlEvent* sendUrl = dynamic_cast<UserSendUrlEvent*>(
-              LicqGui::instance()->showEventDialog(UrlEvent, id, ppid));
-          if (!sendUrl)
-            return;
-
-          sendUrl->setUrl(firstUrl.toString(), QString::null);
-          sendUrl->show();
-        }
-      }
-      else if (event->mimeData()->hasText())
-      {
-        QString text = event->mimeData()->text();
-
-        unsigned long dropPpid = 0;
-        FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
-        {
-          if (text.startsWith(PPIDSTRING((*_ppit)->PPID())))
-          {
-            dropPpid = (*_ppit)->PPID();
-            break;
-          }
-        }
-        FOR_EACH_PROTO_PLUGIN_END
-
-        if (dropPpid != 0 && text.length() > 4)
-        {
-          QString dropId = text.mid(4);
-          if (id == dropId && ppid == dropPpid)
-            return;
-
-          UserSendContactEvent* sendContact = dynamic_cast<UserSendContactEvent*>(
-              LicqGui::instance()->showEventDialog(ContactEvent, id, ppid));
-          if (!sendContact)
-            return;
-
-          sendContact->setContact(dropId, dropPpid);
-          sendContact->show();
-        }
-        else
-        {
-          UserSendMsgEvent* sendMsg = dynamic_cast<UserSendMsgEvent*>(
-              LicqGui::instance()->showEventDialog(MessageEvent, id, ppid));
-          if (!sendMsg)
-            return;
-
-          sendMsg->setText(text);
-          sendMsg->show();
-        }
-      }
       break;
     }
     case ContactListModel::GroupItem:
     {
-      unsigned short gid = dropIndex.data(ContactListModel::GroupIdRole).toUInt();
+      int gid = dropIndex.data(ContactListModel::GroupIdRole).toInt();
 
       if (event->mimeData()->hasText() && event->mimeData()->text().length() > 4)
       {
@@ -281,8 +230,9 @@ void UserViewBase::dropEvent(QDropEvent* event)
           return;
 
         QString dropId = text.mid(4);
+        UserId dropUserId = LicqUser::makeUserId(dropId.toLatin1().data(), dropPpid);
 
-        if (!dropId.isEmpty())
+        if (USERID_ISVALID(dropUserId))
         {
           // Should user be moved or just added to the new group?
           bool moveUser;
@@ -293,7 +243,7 @@ void UserViewBase::dropEvent(QDropEvent* event)
           else
             moveUser = Config::ContactList::instance()->dragMovesUser();
 
-          gUserManager.SetUserInGroup(dropId.toLatin1(), dropPpid, GROUPS_USER, gid, true, moveUser);
+          gUserManager.setUserInGroup(dropUserId, GROUPS_USER, gid, true, moveUser);
 
           // If we are moving user we now need to remove it from the old group.
           // However, since the drop event doesn't contain the originating
@@ -301,7 +251,7 @@ void UserViewBase::dropEvent(QDropEvent* event)
           // remove the user from all other groups.
           if (moveUser)
           {
-            const ICQUser* u = gUserManager.FetchUser(dropId.toLatin1(), dropPpid, LOCK_R);
+            const LicqUser* u = gUserManager.fetchUser(dropUserId);
             if (u != NULL)
             {
               UserGroupList userGroups = u->GetGroups();
@@ -310,7 +260,7 @@ void UserViewBase::dropEvent(QDropEvent* event)
               UserGroupList::const_iterator i;
               for (i = userGroups.begin(); i != userGroups.end(); ++i)
                 if (*i != gid)
-                  gUserManager.SetUserInGroup(dropId.toLatin1(), dropPpid, GROUPS_USER, *i, false, false);
+                  gUserManager.setUserInGroup(dropUserId, GROUPS_USER, *i, false, false);
             }
           }
         }
@@ -336,10 +286,8 @@ void UserViewBase::slotDoubleClicked(const QModelIndex& index)
   if (static_cast<ContactListModel::ItemType>
       (index.data(ContactListModel::ItemTypeRole).toInt()) == ContactListModel::UserItem)
   {
-    QString id = index.data(ContactListModel::UserIdRole).toString();
-    unsigned long ppid = index.data(ContactListModel::PpidRole).toUInt();
-
-    emit userDoubleClicked(id, ppid);
+    UserId userId = index.data(ContactListModel::UserIdRole).value<UserId>();
+    emit userDoubleClicked(userId);
   }
   else
   if (static_cast<ContactListModel::ItemType>

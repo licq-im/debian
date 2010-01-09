@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include <QString>
 
 #ifdef USE_KDE
+# include <QInternal>
 #include <KDE/KCmdLineArgs>
 #else
 # include <QStyleFactory>
@@ -61,9 +62,6 @@ const char* LP_Usage()
 {
   static QString usage = QString(
     "Usage:  Licq [options] -p %1 -- [-hdD] [-s skinname] [-i iconpack] [-e extendediconpack]"
-#ifndef USE_KDE
-    " [-g guistyle]"
-#endif
     "\n"
     " -h : this help screen\n"
     " -d : start hidden (dock icon only)\n"
@@ -71,9 +69,6 @@ const char* LP_Usage()
     " -s : set the skin to use (must be in %2%3%4)\n"
     " -i : set the icons to use (must be in %2%3%5)\n"
     " -e : set the extended icons to use (must be in %2%3%6)"
-#ifndef USE_KDE
-    "\n -g : set the gui style (%7, or 'default' to follow global Qt settings)"
-#endif
     )
     .arg(PLUGIN_NAME)
     .arg(BASE_DIR)
@@ -81,9 +76,6 @@ const char* LP_Usage()
     .arg(SKINS_DIR)
     .arg(ICONS_DIR)
     .arg(EXTICONS_DIR)
-#ifndef USE_KDE
-    .arg(QStyleFactory::keys().join(" | "))
-#endif
     ;
 
   return usage.toLatin1().constData();
@@ -132,6 +124,16 @@ bool LP_Init(int argc, char** argv)
 int LP_Main(CICQDaemon* daemon)
 {
 #ifdef USE_KDE
+  // Since plugin is loaded in Licq daemon before thread is spawned, any code
+  // executed during library init is run as the daemon thread. KDE library
+  // init functions calls Qt functions causing theMainThread in
+  // QCoreApplication to be set to daemon thread. When we later get called here
+  // with our own thread Qt will complain that we're not running from the main
+  // thread.
+  // This is a hack using the undocumented call in QInternal to switch main
+  // thread in QCoreApplication.
+  QInternal::callFunction(QInternal::SetCurrentThreadToMainThread, NULL);
+
   // Don't use the KDE crash handler (drkonqi).
   setenv("KDE_DEBUG", "true", 0);
 

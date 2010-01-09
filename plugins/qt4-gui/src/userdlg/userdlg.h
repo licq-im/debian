@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,12 +23,13 @@
 
 #include <config.h>
 
+#include <licq_types.h>
+
 #include <QDialog>
 #include <QMap>
 #include <QPushButton>
 
-class CICQSignal;
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -68,11 +69,10 @@ public:
   /**
    * Constructor
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    * @param parent Parent widget
    */
-  UserDlg(const QString& id, unsigned long ppid, QWidget* parent = 0);
+  UserDlg(const UserId& userId, QWidget* parent = 0);
 
   /**
    * Destructor
@@ -106,21 +106,14 @@ public:
    * @param title Page title
    * @param parent Parent page if not a top level page
    */
-  void addPage(UserPage page, QWidget* widget, QString title, UserPage parent = UnknownPage);
+  void addPage(UserPage page, QWidget* widget, const QString& title, UserPage parent = UnknownPage);
 
   /**
    * Get user id for dialog
    *
-   * @return User id
+   * @ return User id
    */
-  QString id() const { return myId; }
-
-  /**
-   * Get user protocol id for dialog
-   *
-   * @return User protocol id
-   */
-  unsigned long ppid() const { return myPpid; }
+  const UserId& userId() const { return myUserId; }
 
 signals:
   void finished(UserDlg* userDlg);
@@ -157,16 +150,17 @@ private slots:
   /**
    * User has updated
    *
-   * @prama sig Signal from daemon
+   * @param userId Id for affected user
+   * @param subSignal Sub signal telling what the change was
    */
-  void userUpdated(CICQSignal* sig);
+  void userUpdated(const UserId& userId, unsigned long subSignal);
 
   /**
    * Server request has finished
    *
    * @param event Event from server with result
    */
-  void doneFunction(ICQEvent* event);
+  void doneFunction(const LicqEvent* event);
 
   /**
    * Show user menu
@@ -179,8 +173,7 @@ private slots:
   void resetCaption();
 
 private:
-  QString myId;
-  unsigned long myPpid;
+  UserId myUserId;
   bool myIsOwner;
   unsigned long myIcqEventTag;
   QString myBasicTitle;

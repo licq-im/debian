@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,8 @@
 
 #ifdef USE_KDE
 #include <KDE/KGlobalSettings>
+#else
+#include <QStyle>
 #endif
 
 #include <licq_file.h>
@@ -47,12 +49,14 @@ Config::General::General(QObject* parent)
     myDockHasChanged(false),
     myDockModeHasChanged(false),
     myFontHasChanged(false),
+    myStyleHasChanged(false),
     myBlockUpdates(false)
 {
 #ifdef USE_KDE
   myDefaultFont = KGlobalSettings::generalFont();
 #else
   myDefaultFont = qApp->font();
+  myDefaultStyle = qApp->style()->objectName();
 #endif
 
   myDefaultFixedFont = QFont(myDefaultFont);
@@ -70,6 +74,12 @@ void Config::General::loadConfiguration(CIniFile& iniFile)
 
   iniFile.SetSection("appearance");
   iniFile.ReadBool("UseDoubleReturn", myUseDoubleReturn, false);
+
+#ifndef USE_KDE
+  iniFile.ReadStr("QtStyle", szTemp, "default");
+  if (strcmp(szTemp, "default") != 0)
+    setGuiStyle(szTemp);
+#endif
 
   iniFile.ReadStr("Font", szTemp, "default");
   if (strcmp(szTemp, "default") == 0)
@@ -134,6 +144,7 @@ void Config::General::loadConfiguration(CIniFile& iniFile)
   emit mainwinChanged();
   emit dockModeChanged();
   emit fontChanged();
+  emit styleChanged();
 }
 
 void Config::General::saveConfiguration(CIniFile& iniFile) const
@@ -144,6 +155,12 @@ void Config::General::saveConfiguration(CIniFile& iniFile) const
 
   iniFile.SetSection("appearance");
   iniFile.WriteBool("UseDoubleReturn", myUseDoubleReturn);
+
+#ifndef USE_KDE
+  QString currentStyle = qApp->style()->objectName();
+  iniFile.WriteStr("QtStyle", currentStyle.isEmpty() ||
+      currentStyle == myDefaultStyle ? "default" : currentStyle.toLatin1());
+#endif
 
   iniFile.WriteStr("Font", qApp->font() == myDefaultFont ?
       "default" : qApp->font().toString().toLatin1());
@@ -211,6 +228,11 @@ void Config::General::blockUpdates(bool block)
     myFontHasChanged = false;
     emit fontChanged();
   }
+  if (myStyleHasChanged)
+  {
+    myStyleHasChanged = false;
+    emit styleChanged();
+  }
 }
 
 void Config::General::setUseDoubleReturn(bool useDoubleReturn)
@@ -229,7 +251,7 @@ void Config::General::setDelayStatusChange(bool delayStatusChange)
   myDelayStatusChange = delayStatusChange;
 }
 
-void Config::General::setMsgPopupKey(QString msgPopupKey)
+void Config::General::setMsgPopupKey(const QString& msgPopupKey)
 {
   if (msgPopupKey == myMsgPopupKey)
     return;
@@ -243,7 +265,7 @@ QFont Config::General::normalFont() const
   return qApp->font();
 }
 
-void Config::General::setNormalFont(QString normalFont)
+void Config::General::setNormalFont(const QString& normalFont)
 {
   QFont f;
   if (normalFont.isEmpty())
@@ -258,7 +280,7 @@ void Config::General::setNormalFont(QString normalFont)
   // No need to emit fontChanged for normal font, qt will handle this for us
 }
 
-void Config::General::setEditFont(QString editFont)
+void Config::General::setEditFont(const QString& editFont)
 {
   QFont f;
   if (editFont.isEmpty())
@@ -276,7 +298,7 @@ void Config::General::setEditFont(QString editFont)
     emit fontChanged();
 }
 
-void Config::General::setHistoryFont(QString historyFont)
+void Config::General::setHistoryFont(const QString& historyFont)
 {
   QFont f;
   if (historyFont.isEmpty())
@@ -294,7 +316,7 @@ void Config::General::setHistoryFont(QString historyFont)
     emit fontChanged();
 }
 
-void Config::General::setFixedFont(QString fixedFont)
+void Config::General::setFixedFont(const QString& fixedFont)
 {
   QFont f;
   if (fixedFont.isEmpty())
@@ -311,6 +333,34 @@ void Config::General::setFixedFont(QString fixedFont)
   else
     emit fontChanged();
 }
+
+#ifndef USE_KDE
+QString Config::General::guiStyle() const
+{
+  return qApp->style()->objectName();
+}
+
+void Config::General::setGuiStyle(const QString& guiStyle)
+{
+  if (guiStyle.compare(QApplication::style()->objectName(), Qt::CaseInsensitive) == 0)
+    return;
+
+  qApp->setStyle(guiStyle);
+
+  // Since Licq daemon blocks SIGCHLD and Qt never receives it,
+  // QProcess hangs. By this we avoid Qt's attempts to be
+  // conformant to desktop settings in Cleanlooks style.
+  if (guiStyle.compare("Cleanlooks", Qt::CaseInsensitive) == 0)
+    qApp->setDesktopSettingsAware(false);
+  else
+    qApp->setDesktopSettingsAware(true);
+
+  if (myBlockUpdates)
+    myStyleHasChanged = true;
+  else
+    emit styleChanged();
+}
+#endif
 
 void Config::General::setMiniMode(bool miniMode)
 {
@@ -423,7 +473,7 @@ void Config::General::setDefaultIconFortyEight(bool defaultIconFortyEight)
     emit dockChanged();
 }
 
-void Config::General::setThemedIconTheme(QString themedIconTheme)
+void Config::General::setThemedIconTheme(const QString& themedIconTheme)
 {
   if (themedIconTheme == myThemedIconTheme)
     return;

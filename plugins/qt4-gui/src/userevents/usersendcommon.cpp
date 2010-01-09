@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include <QDateTime>
 #include <QDesktopWidget>
 #include <QDialogButtonBox>
+#include <QDropEvent>
 #include <QGroupBox>
 #include <QKeyEvent>
 #include <QLabel>
@@ -55,6 +56,7 @@
 #include "config/chat.h"
 #include "config/emoticons.h"
 #include "config/iconmanager.h"
+#include "config/shortcuts.h"
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
@@ -90,15 +92,15 @@ using namespace LicqQtGui;
 
 const size_t SHOW_RECENT_NUM = 5;
 
-typedef pair<const CUserEvent*, char*> messagePair;
+typedef pair<const CUserEvent*, UserId> messagePair;
 
 bool orderMessagePairs(const messagePair& mp1, const messagePair& mp2)
 {
   return (mp1.first->Time() < mp2.first->Time());
 }
 
-UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget* parent, const char* name)
-  : UserEventCommon(id, ppid, parent, name),
+UserSendCommon::UserSendCommon(int type, const UserId& userId, QWidget* parent, const char* name)
+  : UserEventCommon(userId, parent, name),
     myType(type)
 {
   myMassMessageBox = NULL;
@@ -152,20 +154,16 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
   mnuSendType->addActions(myEventTypeGroup->actions());
 
   myEventTypeMenu = myToolBar->addAction(tr("Message type"), this, SLOT(showSendTypeMenu()));
-  myEventTypeMenu->setShortcut(Qt::ALT + Qt::Key_P);
-  pushToolTip(myEventTypeMenu, tr("Select type of message to send"));
   myEventTypeMenu->setMenu(mnuSendType);
   if (eventTypesCount <= 1)
     myEventTypeMenu->setEnabled(false);
 
   mySendServerCheck = myToolBar->addAction(tr("Send through server"));
-  mySendServerCheck->setShortcut(Qt::ALT + Qt::Key_N);
-  pushToolTip(mySendServerCheck, tr("Send through server"));
   mySendServerCheck->setCheckable(true);
 
   bool canSendDirect = (mySendFuncs & PP_SEND_DIRECT);
 
-  const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
 
   if (u != NULL)
   {
@@ -185,29 +183,17 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
   }
 
   myUrgentCheck = myToolBar->addAction(tr("Urgent"));
-  myUrgentCheck->setShortcut(Qt::ALT + Qt::Key_R);
-  pushToolTip(myUrgentCheck, tr("Urgent"));
   myUrgentCheck->setCheckable(true);
 
   myMassMessageCheck = myToolBar->addAction(tr("Multiple Recipients"));
-  myMassMessageCheck->setShortcut(Qt::ALT + Qt::Key_U);
-  pushToolTip(myMassMessageCheck, tr("Multiple recipients"));
   myMassMessageCheck->setCheckable(true);
   connect(myMassMessageCheck, SIGNAL(toggled(bool)), SLOT(massMessageToggled(bool)));
 
   myToolBar->addSeparator();
 
   myEmoticon = myToolBar->addAction(tr("Smileys"), this, SLOT(showEmoticonsMenu()));
-  myEmoticon->setShortcut(Qt::ALT + Qt::Key_L);
-  pushToolTip(myEmoticon, tr("Insert smileys"));
-
   myForeColor = myToolBar->addAction(tr("Text Color..."), this, SLOT(setForegroundICQColor()));
-  myForeColor->setShortcut(Qt::ALT + Qt::Key_T);
-  pushToolTip(myForeColor, tr("Change text color"));
-
   myBackColor = myToolBar->addAction(tr("Background Color..."), this, SLOT(setBackgroundICQColor()));
-  myBackColor->setShortcut(Qt::ALT + Qt::Key_B);
-  pushToolTip(myBackColor, tr("Change background color"));
 
   QDialogButtonBox* buttons = new QDialogButtonBox();
   myTopLayout->addWidget(buttons);
@@ -230,10 +216,10 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
   myHistoryView = 0;
   if (Config::Chat::instance()->msgChatView())
   {
-    myHistoryView = new HistoryView(false, myUsers.front().c_str(), myPpid, myViewSplitter);
+    myHistoryView = new HistoryView(false, myUsers.front(), myViewSplitter);
     connect(myHistoryView, SIGNAL(messageAdded()), SLOT(messageAdded()));
 
-    u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+    u = gUserManager.fetchUser(myUsers.front());
     if (u != NULL && Config::Chat::instance()->showHistory())
     {
       // Show the last SHOW_RECENT_NUM messages in the history
@@ -247,10 +233,10 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
         for (size_t i = 0; i < (SHOW_RECENT_NUM + nNewMessages) && lHistoryIter != lHistoryList.begin(); i++)
           lHistoryIter--;
 
-        bool bUseHTML = !isdigit((myUsers.front().c_str())[1]);
-        QTextCodec* myCodec = UserCodec::codecForICQUser(u);
+        bool bUseHTML = !isdigit(u->accountId()[1]);
+        const QTextCodec* myCodec = UserCodec::codecForUser(u);
         QString contactName = QString::fromUtf8(u->GetAlias());
-        const ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_R);
+        const ICQOwner* o = gUserManager.FetchOwner(u->ppid(), LOCK_R);
         QString ownerName;
         if (o)
         {
@@ -300,7 +286,7 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
 
         myHistoryView->GotoEnd();
 
-        ICQUser::ClearHistory(lHistoryList);
+        LicqUser::ClearHistory(lHistoryList);
       }
     }
 
@@ -323,7 +309,7 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
           if (e->Id() > myHighestEventId)
             myHighestEventId = e->Id();
 
-          messages.push_back(make_pair(e, strdup(u->IdString())));
+          messages.push_back(make_pair(e, u->id()));
         }
       }
       gUserManager.DropUser(u);
@@ -333,11 +319,11 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
       {
         FOR_EACH_PROTO_USER_START(myPpid, LOCK_R)
         {
-          if (pUser->NewMessages() && strcmp(myUsers.front().c_str(), pUser->IdString()) != 0)
+          if (pUser->NewMessages() && myUsers.front() != pUser->id())
           {
             for (unsigned short i = 0; i < pUser->NewMessages(); i++)
             {
-              CUserEvent* e = pUser->EventPeek(i);
+              const CUserEvent* e = pUser->EventPeek(i);
 
               if (e->ConvoId() == myConvoId)
               {
@@ -345,11 +331,8 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
                   myHighestEventId = e->Id();
 
                 // add to the convo list (but what if they left by the time we open this?)
-                char* realId;
-                ICQUser::MakeRealId(pUser->IdString(), pUser->PPID(), realId);
-                myUsers.push_back(realId);
-                delete [] realId;
-                messages.push_back(make_pair(e, strdup(pUser->IdString())));
+                myUsers.push_back(pUser->id());
+                messages.push_back(make_pair(e, pUser->id()));
               }
             }
           }
@@ -363,10 +346,7 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
       // Now, finally add them
       vector<messagePair>::iterator messageIter;
       for (messageIter = messages.begin(); messageIter != messages.end(); messageIter++)
-      {
-        myHistoryView->addMsg((*messageIter).first, (*messageIter).second, myPpid);
-        free((*messageIter).second);
-      }
+        myHistoryView->addMsg((*messageIter).first, (*messageIter).second);
       messages.clear();
 
       // If the user closed the chat window, we have to make sure we aren't
@@ -375,7 +355,7 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
         myConvoId = 0;
 
       // Fetch the user again since we dropped it above
-      u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+      u = gUserManager.fetchUser(myUsers.front());
     }
 
     // Do we already have an open socket?
@@ -402,8 +382,8 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
 
     gUserManager.DropUser(u);
 
-    connect(LicqGui::instance(), SIGNAL(eventSent(const ICQEvent*)),
-        myHistoryView, SLOT(addMsg(const ICQEvent*)));
+    connect(LicqGui::instance(), SIGNAL(eventSent(const LicqEvent*)),
+        myHistoryView, SLOT(addMsg(const LicqEvent*)));
     //myViewSplitter->setResizeMode(myHistoryView, QSplitter::FollowSizeHint);
   }
 
@@ -416,8 +396,17 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
 
   myMessageEdit = new MLEdit(true, myPictureSplitter);
   myMessageEdit->setSizeHintLines(3);
-  myMessageEdit->setCheckSpellingEnabled(Config::Chat::instance()->checkSpelling());
+  if (Config::Chat::instance()->checkSpelling())
+  {
+#ifdef HAVE_HUNSPELL
+    myMessageEdit->setSpellingDictionary(Config::Chat::instance()->spellingDictionary());
+#endif
+    myMessageEdit->setCheckSpellingEnabled(true);
+  }
   myMessageEdit->installEventFilter(this); // Enables send with enter
+
+  // Disable drops for edit box so our own handler gets them
+  myMessageEdit->setAcceptDrops(false);
 
   if (Config::Chat::instance()->msgChatView())
   {
@@ -426,6 +415,12 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
 
     connect(myHistoryView, SIGNAL(quote(const QString&)),
         myMessageEdit, SLOT(insertPlainText(const QString&)));
+
+    // Connect scroll up/down shortcuts from edit to scroll the history
+    connect(myMessageEdit, SIGNAL(scrollDownPressed()),
+        myHistoryView, SLOT(scrollPageDown()));
+    connect(myMessageEdit, SIGNAL(scrollUpPressed()),
+        myHistoryView, SLOT(scrollPageUp()));
   }
 
   setFocusProxy(myMessageEdit);
@@ -441,15 +436,35 @@ UserSendCommon::UserSendCommon(int type, QString id, unsigned long ppid, QWidget
 
   updateIcons();
   updatePicture();
+  updateShortcuts();
 
   connect(myMessageEdit, SIGNAL(ctrlEnterPressed()), mySendButton, SIGNAL(clicked()));
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
   connect(mySendServerCheck, SIGNAL(triggered(bool)), SLOT(sendServerToggled(bool)));
+
+  QSize dialogSize = Config::Chat::instance()->sendDialogSize();
+  if (dialogSize.isValid())
+    resize(dialogSize);
+
+  setAcceptDrops(true);
 }
 
 UserSendCommon::~UserSendCommon()
 {
   // Empty
+}
+
+void UserSendCommon::closeEvent(QCloseEvent* event)
+{
+  UserEventCommon::closeEvent(event);
+
+  if (event->isAccepted())
+  {
+    // This widget is about to be destroyed so remove us from the tab dialog
+    UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
+    if (tabDlg != NULL && tabDlg->tabExists(this))
+      tabDlg->removeTab(this);
+  }
 }
 
 bool UserSendCommon::eventFilter(QObject* watched, QEvent* e)
@@ -497,13 +512,37 @@ void UserSendCommon::updateIcons()
     a->setIcon(iconForType(a->data().toInt()));
 }
 
-void UserSendCommon::updatePicture(const ICQUser* u)
+void UserSendCommon::updateShortcuts()
+{
+  UserEventCommon::updateShortcuts();
+
+  Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+
+  myEventTypeMenu->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatEventMenu));
+  mySendServerCheck->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatToggleSendServer));
+  myUrgentCheck->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatToggleUrgent));
+  myMassMessageCheck->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatToggleMassMessage));
+  myEmoticon->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatEmoticonMenu));
+  myForeColor->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatColorFore));
+  myBackColor->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatColorBack));
+
+  // Tooltips include shortcut so update them here as well
+  pushToolTip(myEventTypeMenu, tr("Select type of message to send"));
+  pushToolTip(mySendServerCheck, tr("Send through server"));
+  pushToolTip(myUrgentCheck, tr("Urgent"));
+  pushToolTip(myMassMessageCheck, tr("Multiple recipients"));
+  pushToolTip(myEmoticon, tr("Insert smileys"));
+  pushToolTip(myForeColor, tr("Change text color"));
+  pushToolTip(myBackColor, tr("Change background color"));
+}
+
+void UserSendCommon::updatePicture(const LicqUser* u)
 {
   bool fetched = false;
 
   if (u == NULL)
   {
-    u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+    u = gUserManager.fetchUser(myUsers.front());
     fetched = true;
   }
   if (u == NULL)
@@ -519,13 +558,16 @@ void UserSendCommon::updatePicture(const ICQUser* u)
       u->GetPicturePresent())
   {
     QString picPath = QString(BASE_DIR) + USER_DIR + "/" + u->IdString() + ".pic";
-    QMovie* picMovie = new QMovie(picPath);
+    QMovie* picMovie = new QMovie(picPath, QByteArray(), this);
     if (picMovie->isValid())
     {
       myPictureLabel = new QLabel();
       myPictureSplitter->insertWidget(1, myPictureLabel);
       myPictureLabel->setMovie(picMovie);
-      picMovie->start();
+      if (picMovie->frameCount() > 1)
+        picMovie->start();
+      else
+        picMovie->jumpToNextFrame();
       myPictureLabel->setFixedWidth(myPictureLabel->sizeHint().width());
       if (Config::Chat::instance()->showUserPicHidden())
         myPictureSplitter->setSizes(QList<int>() << 1 << 0);
@@ -573,14 +615,14 @@ void UserSendCommon::setText(const QString& text)
   myMessageEdit->document()->setModified(false);
 }
 
-void UserSendCommon::convoJoin(QString id, unsigned long convoId)
+void UserSendCommon::convoJoin(const UserId& userId)
 {
-  if (id.isEmpty())
+  if (!USERID_ISVALID(userId))
     return;
 
   if (Config::Chat::instance()->msgChatView())
   {
-    const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), myPpid, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(userId);
     QString userName;
     if (u != 0)
     {
@@ -588,21 +630,14 @@ void UserSendCommon::convoJoin(QString id, unsigned long convoId)
       gUserManager.DropUser(u);
     }
     else
-      userName = id;
+      userName = "";
 
     myHistoryView->addNotice(QDateTime::currentDateTime(),
         tr("%1 has joined the conversation.").arg(userName));
   }
 
-  if (!isUserInConvo(id))
-  {
-    char* realId;
-    ICQUser::MakeRealId(id.toLatin1(), myPpid, realId);
-    myUsers.push_back(realId);
-    delete [] realId;
-  }
-
-  myConvoId = convoId;
+  if (!isUserInConvo(userId))
+    myUsers.push_back(userId);
 
   // Now update the tab label
   UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
@@ -610,19 +645,19 @@ void UserSendCommon::convoJoin(QString id, unsigned long convoId)
     tabDlg->updateConvoLabel(this);
 }
 
-void UserSendCommon::convoLeave(QString id, unsigned long /* convoId */)
+void UserSendCommon::convoLeave(const UserId& userId)
 {
-  if (id.isEmpty())
+  if (!USERID_ISVALID(userId))
     return;
 
   if (Config::Chat::instance()->msgChatView())
   {
-    ICQUser* u = gUserManager.FetchUser(id.toLatin1(), myPpid, LOCK_W);
+    LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
     QString userName;
     if (u != 0)
       userName = QString::fromUtf8(u->GetAlias());
     else
-      userName = id;
+      userName = "";
 
     myHistoryView->addNotice(QDateTime::currentDateTime(),
         tr("%1 has left the conversation.").arg(userName));
@@ -644,16 +679,16 @@ void UserSendCommon::convoLeave(QString id, unsigned long /* convoId */)
 
   if (myUsers.size() > 1)
   {
-    list<string>::iterator it;
+    list<UserId>::iterator it;
     for (it = myUsers.begin(); it != myUsers.end(); it++)
     {
-      if (id.compare(it->c_str(), Qt::CaseInsensitive) == 0)
+      if (*it == userId)
       {
         myUsers.remove(*it);
         break;
       }
     }
-    myHistoryView->setOwner(myUsers.front().c_str());
+    myHistoryView->setOwner(myUsers.front());
   }
   else
     myConvoId = 0;
@@ -674,10 +709,10 @@ void UserSendCommon::windowActivationChange(bool oldActive)
   QWidget::windowActivationChange(oldActive);
 }
 
-void UserSendCommon::changeEventType(int type)
+UserSendCommon* UserSendCommon::changeEventType(int type)
 {
   if (myType == type)
-    return;
+    return this;
 
   UserSendCommon* e = 0;
   QWidget* parent = 0;
@@ -686,31 +721,33 @@ void UserSendCommon::changeEventType(int type)
   if (tabDlg != NULL && tabDlg->tabExists(this))
     parent = tabDlg;
 
+  UserId userId = myUsers.front();
+
   switch (type)
   {
     case MessageEvent:
       if (mySendFuncs & PP_SEND_MSG)
-        e = new UserSendMsgEvent(myUsers.front().c_str(), myPpid, parent);
+        e = new UserSendMsgEvent(userId, parent);
       break;
     case UrlEvent:
       if (mySendFuncs & PP_SEND_URL)
-        e = new UserSendUrlEvent(myUsers.front().c_str(), myPpid, parent);
+        e = new UserSendUrlEvent(userId, parent);
       break;
     case ChatEvent:
       if (mySendFuncs & PP_SEND_CHAT)
-        e = new UserSendChatEvent(myUsers.front().c_str(), myPpid, parent);
+        e = new UserSendChatEvent(userId, parent);
       break;
     case FileEvent:
       if (mySendFuncs & PP_SEND_FILE)
-        e = new UserSendFileEvent(myUsers.front().c_str(), myPpid, parent);
+        e = new UserSendFileEvent(userId, parent);
       break;
     case ContactEvent:
       if (mySendFuncs & PP_SEND_CONTACT)
-        e = new UserSendContactEvent(myUsers.front().c_str(), myPpid, parent);
+        e = new UserSendContactEvent(userId, parent);
       break;
     case SmsEvent:
       if (mySendFuncs & PP_SEND_SMS)
-        e = new UserSendSmsEvent(myUsers.front().c_str(), myPpid, parent);
+        e = new UserSendSmsEvent(userId, parent);
       break;
     default:
       assert(false);
@@ -735,8 +772,7 @@ void UserSendCommon::changeEventType(int type)
       e->move(p);
     }
 
-    LicqGui::instance()->replaceEventDialog(this, e, myUsers.front().c_str(), myPpid);
-
+    LicqGui::instance()->replaceEventDialog(this, e, userId);
     emit msgTypeChanged(this, e);
 
     if (parent == 0)
@@ -747,10 +783,13 @@ void UserSendCommon::changeEventType(int type)
     else
       tabDlg->replaceTab(this, e);
   }
+  return e;
 }
 
-void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
+void UserSendCommon::retrySend(const LicqEvent* e, bool online, unsigned short level)
 {
+  QString accountId = LicqUser::getUserAccountId(myUsers.front()).c_str();
+
   unsigned long icqEventTag = 0;
   mySendServerCheck->setChecked(!online);
   myUrgentCheck->setChecked(level == ICQ_TCPxMSG_URGENT);
@@ -759,7 +798,7 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
   {
     case ICQ_CMDxSUB_MSG:
     {
-      const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser(myUsers.front());
       bool userOffline = true;
       if (u != 0)
       {
@@ -819,8 +858,8 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
           messageRaw = ue->Message();
         }
 
-        icqEventTag = gLicqDaemon->icqSendMessage(myUsers.front().c_str(), messageRaw.data(),
-            online, level, false, &myIcqColor);
+        icqEventTag = gLicqDaemon->sendMessage(myUsers.front(), messageRaw.data(),
+            !online, level, false, &myIcqColor);
 
         myEventTag.push_back(icqEventTag);
 
@@ -838,8 +877,8 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
     {
       const CEventUrl* ue = dynamic_cast<const CEventUrl*>(e->UserEvent());
 
-      icqEventTag = gLicqDaemon->ProtoSendUrl(myUsers.front().c_str(), myPpid, ue->Url(),
-          ue->Description(), online, level, false, &myIcqColor);
+      icqEventTag = gLicqDaemon->sendUrl(myUsers.front(), ue->Url(),
+          ue->Description(), !online, level, false, &myIcqColor);
 
       break;
     }
@@ -852,12 +891,12 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
 
       // ContactList is const but string list holds "char*" so we have to copy each string
       for (ContactList::const_iterator i = clist.begin(); i != clist.end(); i++)
-        users.push_back((*i)->IdString());
+        users.push_back(LicqUser::getUserAccountId((*i)->userId()));
 
       if (users.size() == 0)
         break;
 
-      icqEventTag = gLicqDaemon->icqSendContactList(myUsers.front().c_str(),
+      icqEventTag = gLicqDaemon->icqSendContactList(accountId.toLatin1(),
           users, online, level, false, &myIcqColor);
 
       break;
@@ -869,11 +908,11 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
 
       if (ue->Clients() == NULL)
         //TODO in the daemon
-        icqEventTag = gLicqDaemon->icqChatRequest(myUsers.front().c_str(),
+        icqEventTag = gLicqDaemon->icqChatRequest(accountId.toLatin1(),
             ue->Reason(), level, !online);
       else
         //TODO in the daemon
-        icqEventTag = gLicqDaemon->icqMultiPartyChatRequest(myUsers.front().c_str(),
+        icqEventTag = gLicqDaemon->icqMultiPartyChatRequest(accountId.toLatin1(),
             ue->Reason(), ue->Clients(), ue->Port(), level, !online);
 
       break;
@@ -885,7 +924,7 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
       ConstFileList filelist(ue->FileList());
 
       //TODO in the daemon
-      icqEventTag = gLicqDaemon->icqFileTransfer(myUsers.front().c_str(),
+      icqEventTag = gLicqDaemon->fileTransferPropose(myUsers.front(),
           ue->Filename(), ue->FileDescription(), filelist, level, !online);
 
       break;
@@ -896,7 +935,7 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
       const CEventSms* ue = dynamic_cast<const CEventSms*>(e->UserEvent());
 
       //TODO in the daemon
-      icqEventTag = gLicqDaemon->icqSendSms(myUsers.front().c_str(), LICQ_PPID,
+      icqEventTag = gLicqDaemon->icqSendSms(accountId.toLatin1(), LICQ_PPID,
           ue->Number(), ue->Message());
       break;
     }
@@ -915,14 +954,14 @@ void UserSendCommon::retrySend(ICQEvent* e, bool online, unsigned short level)
   UserSendCommon::send();
 }
 
-void UserSendCommon::userUpdated(CICQSignal* sig, QString id, unsigned long ppid)
+void UserSendCommon::userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid)
 {
-  ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
 
   if (u == NULL)
     return;
 
-  switch (sig->SubSignal())
+  switch (subSignal)
   {
     case USER_STATUS:
     {
@@ -942,19 +981,19 @@ void UserSendCommon::userUpdated(CICQSignal* sig, QString id, unsigned long ppid
 
     case USER_EVENTS:
     {
-      const CUserEvent* e = u->EventPeekId(sig->Argument());
+      const CUserEvent* e = u->EventPeekId(argument);
 
-      if (e != NULL && myHighestEventId < sig->Argument() &&
-          myHistoryView && sig->Argument() > 0)
+      if (e != NULL && myHighestEventId < argument &&
+          myHistoryView && argument > 0)
       {
-        myHighestEventId = sig->Argument();
-        e = u->EventPeekId(sig->Argument());
+        myHighestEventId = argument;
+        e = u->EventPeekId(argument);
 
         if (e != NULL)
-          if (sig->PPID() != MSN_PPID || (sig->PPID() == MSN_PPID && sig->CID() == myConvoId))
+          if (u->ppid() != MSN_PPID || cid == myConvoId)
           {
             gUserManager.DropUser(u);
-            myHistoryView->addMsg(e, id, ppid);
+            myHistoryView->addMsg(e, userId);
             return;
           }
       }
@@ -980,7 +1019,7 @@ void UserSendCommon::userUpdated(CICQSignal* sig, QString id, unsigned long ppid
 
 bool UserSendCommon::checkSecure()
 {
-  const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
 
   if (u == NULL)
     return false;
@@ -997,7 +1036,7 @@ bool UserSendCommon::checkSecure()
       send_ok = false;
     else
     {
-      ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_W);
+      LicqUser* u = gUserManager.fetchUser(myUsers.front(), LOCK_W);
       if (u != NULL)
       {
         u->SetAutoSecure(false);
@@ -1013,7 +1052,7 @@ void UserSendCommon::send()
   if (!Config::Chat::instance()->manualNewUser())
   {
     bool newUser = false;
-    ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_W);
+    LicqUser* u = gUserManager.fetchUser(myUsers.front(), LOCK_W);
     if (u != NULL)
     {
       if (u->NewUser())
@@ -1021,13 +1060,17 @@ void UserSendCommon::send()
       gUserManager.DropUser(u);
     }
     if (newUser)
-      gUserManager.SetUserInGroup(myUsers.front().c_str(), myPpid, GROUPS_SYSTEM, GROUP_NEW_USERS, false);
+      gUserManager.setUserInGroup(myUsers.front(), GROUPS_SYSTEM, GROUP_NEW_USERS, false);
   }
 
   unsigned long icqEventTag = 0;
 
   if (myEventTag.size() != 0)
     icqEventTag = myEventTag.front();
+
+  LicqUser* user = gUserManager.fetchUser(myUsers.front());
+  unsigned long myPpid = user->ppid();
+  gUserManager.DropUser(user);
 
   if (icqEventTag != 0 || myPpid != LICQ_PPID)
   {
@@ -1052,12 +1095,22 @@ void UserSendCommon::send()
     disconnect(mySendButton, SIGNAL(clicked()), this, SLOT(send()));
     connect(mySendButton, SIGNAL(clicked()), SLOT(cancelSend()));
 
+    connect(LicqGui::instance()->signalManager(), SIGNAL(eventTag(const UserId&, unsigned long)),
+        SLOT(addEventTag(const UserId&, unsigned long)));
     connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(ICQEvent*)), SLOT(eventDoneReceived(ICQEvent*)));
+        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(eventDoneReceived(const LicqEvent*)));
   }
 }
 
-void UserSendCommon::eventDoneReceived(ICQEvent* e)
+void UserSendCommon::addEventTag(const UserId& userId, unsigned long eventTag)
+{
+  if (eventTag == 0 || !USERID_ISVALID(userId) || userId != myUsers.front())
+    return;
+
+  myEventTag.push_back(eventTag);
+}
+
+void UserSendCommon::eventDoneReceived(const LicqEvent* e)
 {
   if (e == NULL)
   {
@@ -1134,8 +1187,12 @@ void UserSendCommon::eventDoneReceived(ICQEvent* e)
     mySendServerCheck->setChecked(true);
 
   if (myEventTag.size() == 0)
+  {
+    disconnect(LicqGui::instance()->signalManager(), SIGNAL(eventTag(const UserId&, unsigned long)),
+        this, SLOT(addEventTag(const UserId&, unsigned long)));
     disconnect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(ICQEvent*)), this, SLOT(eventDoneReceived(ICQEvent*)));
+        SIGNAL(doneUserFcn(const LicqEvent*)), this, SLOT(eventDoneReceived(const LicqEvent*)));
+  }
 
   if (myMessageEdit != NULL)
     if(tabDlg == NULL || !tabDlg->tabExists(this) || tabDlg->tabIsSelected(this))
@@ -1150,12 +1207,12 @@ void UserSendCommon::eventDoneReceived(ICQEvent* e)
     return;
   }
 
-  ICQUser* u = NULL;
+  LicqUser* u = NULL;
   QString msg;
 
   if (e->SubResult() == ICQ_TCPxACK_RETURN)
   {
-    u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_W);
+    u = gUserManager.fetchUser(myUsers.front(), LOCK_W);
 
     msg = tr("%1 is in %2 mode:\n%3\nSend...")
       .arg(QString::fromUtf8(u->GetAlias()))
@@ -1231,12 +1288,12 @@ void UserSendCommon::changeEventType(QAction* action)
 
 void UserSendCommon::clearNewEvents()
 {
-  ICQUser* u = NULL;
+  LicqUser* u = NULL;
 
   // Iterate all users in the conversation
-  for (list<string>::iterator it = myUsers.begin(); it != myUsers.end(); ++it)
+  for (list<UserId>::iterator it = myUsers.begin(); it != myUsers.end(); ++it)
   {
-    u = gUserManager.FetchUser((*it).c_str(), myPpid, LOCK_W);
+    u = gUserManager.fetchUser(*it, LOCK_W);
     if (u != NULL)
     {
       UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
@@ -1249,7 +1306,7 @@ void UserSendCommon::clearNewEvents()
           std::vector<int> idList;
           for (unsigned short i = 0; i < u->NewMessages(); i++)
           {
-            CUserEvent* e = u->EventPeek(i);
+            const CUserEvent* e = u->EventPeek(i);
             if (e->Id() <= myHighestEventId &&
                 e->Direction() == D_RECEIVER &&
                 (e->SubCommand() == ICQ_CMDxSUB_MSG ||
@@ -1269,7 +1326,7 @@ void UserSendCommon::clearNewEvents()
 
 void UserSendCommon::closeDialog()
 {
-  gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, false, myConvoId);
+  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
 
   if (Config::Chat::instance()->msgChatView())
   {
@@ -1280,12 +1337,7 @@ void UserSendCommon::closeDialog()
 
   if (myMessageEdit)
     Config::Chat::instance()->setCheckSpelling(myMessageEdit->checkSpellingEnabled());
-
-  UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
-  if (tabDlg != NULL && tabDlg->tabExists(this))
-    tabDlg->removeTab(this);
-  else
-    close();
+  close();
 }
 
 void UserSendCommon::showEmoticonsMenu()
@@ -1332,13 +1384,17 @@ void UserSendCommon::massMessageToggled(bool b)
 {
   if (myMassMessageBox == NULL)
   {
+    // If the box doesn't exist and we're not supposed to show it, there is no point in continuing
+    if (!b)
+      return;
+
     myMassMessageBox = new QGroupBox();
     myTophLayout->addWidget(myMassMessageBox);
     QVBoxLayout* layMR = new QVBoxLayout(myMassMessageBox);
 
     layMR->addWidget(new QLabel(tr("Drag Users Here\nRight Click for Options")));
 
-    myMassMessageList = new MMUserView(myUsers.front().c_str(), myPpid,
+    myMassMessageList = new MMUserView(myUsers.front(),
         LicqGui::instance()->contactList());
     myMassMessageList->setFixedWidth(gMainWindow->getUserView()->width());
     layMR->addWidget(myMassMessageList);
@@ -1371,7 +1427,7 @@ void UserSendCommon::sendServerToggled(bool sendServer)
   // When the "Send through server" checkbox is toggled by the user,
   // we save the setting to disk, so it is persistent.
 
-  ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUsers.front(), LOCK_W);
   if (u != NULL)
   {
     u->SetSendServer(sendServer);
@@ -1429,7 +1485,7 @@ void UserSendCommon::messageTextChanged()
     return;
 
   myTempMessage = myMessageEdit->toPlainText();
-  gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, true, myConvoId);
+  gLicqDaemon->sendTypingNotification(myUsers.front(), true, myConvoId);
   disconnect(myMessageEdit, SIGNAL(textChanged()), this, SLOT(messageTextChanged()));
   mySendTypingTimer->start(5000);
 }
@@ -1449,20 +1505,20 @@ void UserSendCommon::textChangedTimeout()
     myTempMessage = str;
     // Hack to not keep sending the typing notification to ICQ
     if (myPpid != LICQ_PPID)
-      gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, true, myConvoId);
+      gLicqDaemon->sendTypingNotification(myUsers.front(), true, myConvoId);
   }
   else
   {
     if (mySendTypingTimer->isActive())
       mySendTypingTimer->stop();
     connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-    gLicqDaemon->ProtoTypingNotification(myUsers.front().c_str(), myPpid, false, myConvoId);
+    gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
   }
 }
 
 void UserSendCommon::sendTrySecure()
 {
-  const ICQUser* u = gUserManager.FetchUser(myUsers.front().c_str(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
 
   bool autoSecure = false;
   if (u != NULL)
@@ -1478,9 +1534,30 @@ void UserSendCommon::sendTrySecure()
 
   if (autoSecure)
   {
-    QWidget* w = new KeyRequestDlg(QString(myUsers.front().c_str()), myPpid);
+    QWidget* w = new KeyRequestDlg(myUsers.front());
     connect(w, SIGNAL(destroyed()), SLOT(send()));
   }
   else
     send();
+}
+
+void UserSendCommon::resizeEvent(QResizeEvent* event)
+{
+  Config::Chat::instance()->setSendDialogSize(size());
+  UserEventCommon::resizeEvent(event);
+}
+
+void UserSendCommon::dragEnterEvent(QDragEnterEvent* event)
+{
+  if (event->mimeData()->hasText() ||
+      event->mimeData()->hasUrls())
+    event->acceptProposedAction();
+}
+
+void UserSendCommon::dropEvent(QDropEvent* event)
+{
+  event->ignore();
+
+  if (LicqGui::instance()->userDropEvent(myUsers.front(), *event->mimeData()))
+    event->acceptProposedAction();
 }

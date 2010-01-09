@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2006 Licq developers
+ * Copyright (C) 2002-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #include <QTextDocumentFragment>
 #include <QMenu>
 #include <QRegExp>
+#include <QScrollBar>
 
 #include "config/emoticons.h"
 #include "config/general.h"
@@ -121,16 +122,24 @@ QString MLView::toRichText(const QString& s, bool highlightURLs, bool useHTML, Q
     {
       hlPos = s.indexOf(highlight, qMax(hlEnd, lastpos));
       hlLen = highlight.matchedLength();
+
+      // If we matched zero characters, ignore the match
+      if (hlLen == 0)
+        hlPos = -2;
     }
     if (urlPos == -2 && !reURL.isEmpty())
     {
       urlPos = s.indexOf(reURL, qMax(urlEnd, lastpos));
       urlLen = reURL.matchedLength();
+      if (urlLen == 0)
+        urlPos = -2;
     }
     if (mailPos == -2 && !reMail.isEmpty())
     {
       mailPos = s.indexOf(reMail, qMax(mailEnd, lastpos));
       mailLen = reMail.matchedLength();
+      if (mailLen == 0)
+        mailPos = -2;
     }
 
     // Next value for lastpos. Data between newpos and lastpos can be copied as is
@@ -252,6 +261,16 @@ void MLView::GotoEnd()
   QTextCursor tc = textCursor();
   tc.movePosition(QTextCursor::End);
   setTextCursor(tc);
+}
+
+void MLView::scrollPageDown()
+{
+  verticalScrollBar()->triggerAction(QScrollBar::SliderPageStepAdd);
+}
+
+void MLView::scrollPageUp()
+{
+  verticalScrollBar()->triggerAction(QScrollBar::SliderPageStepSub);
 }
 
 void MLView::setBackground(const QColor& c)

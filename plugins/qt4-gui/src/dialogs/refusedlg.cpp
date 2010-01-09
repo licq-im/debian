@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::RefuseDlg */
 
-RefuseDlg::RefuseDlg(QString id, unsigned long ppid, QString t, QWidget* parent)
+RefuseDlg::RefuseDlg(const UserId& userId, const QString& t, QWidget* parent)
    : QDialog(parent)
 {
   Support::setWidgetProps(this, "RefuseDialog");
@@ -44,7 +44,7 @@ RefuseDlg::RefuseDlg(QString id, unsigned long ppid, QString t, QWidget* parent)
 
   QVBoxLayout* lay = new QVBoxLayout(this);
 
-  const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
   QLabel* lbl = new QLabel(tr("Refusal message for %1 with ").arg(t) + QString::fromUtf8(u->GetAlias()) + ":");
   lay->addWidget(lbl);
   gUserManager.DropUser(u);
@@ -64,7 +64,7 @@ RefuseDlg::RefuseDlg(QString id, unsigned long ppid, QString t, QWidget* parent)
   buttons->addButton(btnCancel, QDialogButtonBox::RejectRole);
   connect( btnCancel, SIGNAL(clicked()), SLOT(reject()) );
 
-  setWindowTitle(tr("Licq %1 Refusal").arg(t));
+  setWindowTitle(tr("Licq - %1 Refusal").arg(t));
 }
 
 QString RefuseDlg::RefuseMessage()

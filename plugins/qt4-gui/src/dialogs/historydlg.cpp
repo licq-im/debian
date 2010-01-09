@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,15 +52,14 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::HistoryDlg */
 
-HistoryDlg::HistoryDlg(QString id, unsigned long ppid, QWidget* parent)
+HistoryDlg::HistoryDlg(const UserId& userId, QWidget* parent)
   : QDialog(parent),
-    myId(id),
-    myPpid(ppid)
+    myUserId(userId)
 {
   Support::setWidgetProps(this, "UserHistoryDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
 
-  myIsOwner = (gUserManager.FindOwner(myId.toLatin1(), myPpid) != NULL);
+  myIsOwner = gUserManager.isOwner(myUserId);
 
   QVBoxLayout* topLayout = new QVBoxLayout(this);
 
@@ -141,7 +140,7 @@ HistoryDlg::HistoryDlg(QString id, unsigned long ppid, QWidget* parent)
   connect(findNextShortcut, SIGNAL(activated()), SLOT(findNext()));
 
   // Widget to show history entries
-  myHistoryView = new HistoryView(true, myId, myPpid);
+  myHistoryView = new HistoryView(true, myUserId);
   mainLayout->addWidget(myHistoryView, 1);
 
   // Dialog buttons
@@ -160,21 +159,17 @@ HistoryDlg::HistoryDlg(QString id, unsigned long ppid, QWidget* parent)
 
   show();
 
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
+  unsigned long myPpid = u->ppid();
 
   QString name = tr("INVALID USER");
   myContactCodec = QTextCodec::codecForLocale();
 
   if (u != NULL)
   {
-    myContactCodec = UserCodec::codecForICQUser(u);
+    myContactCodec = UserCodec::codecForUser(u);
 
-    name = myContactCodec->toUnicode(u->GetFirstName());
-    QString lastname = myContactCodec->toUnicode(u->GetLastName());
-    if ((!name.isEmpty()) && (!lastname.isEmpty()))
-      name = name + " " + lastname;
-    else
-      name = name + lastname;
+    name = myContactCodec->toUnicode(u->getFullName().c_str());
     if (!name.isEmpty())
       name = " (" + name + ")";
     name.prepend(QString::fromUtf8(u->GetAlias()));
@@ -225,6 +220,7 @@ HistoryDlg::HistoryDlg(QString id, unsigned long ppid, QWidget* parent)
 
   if (!myIsOwner)
     myContactName = QString::fromUtf8(u->GetAlias());
+  QString myId = u->accountId().c_str();
   for (int x = 0; x < myId.length(); x++)
   {
     if (!myId[x].isDigit())
@@ -257,40 +253,42 @@ HistoryDlg::HistoryDlg(QString id, unsigned long ppid, QWidget* parent)
   calenderClicked();
 
   // Catch sent messages and add them to history
-  connect(LicqGui::instance(), SIGNAL(eventSent(const ICQEvent*)),
-      SLOT(eventSent(const ICQEvent*)));
+  connect(LicqGui::instance(), SIGNAL(eventSent(const LicqEvent*)),
+      SLOT(eventSent(const LicqEvent*)));
 
   // Catch received messages so we can add them to history
-  connect(LicqGui::instance()->signalManager(), SIGNAL(updatedUser(CICQSignal*)), SLOT(updatedUser(CICQSignal*)));
+  connect(LicqGui::instance()->signalManager(),
+      SIGNAL(updatedUser(const UserId&, unsigned long, int, unsigned long)),
+      SLOT(updatedUser(const UserId&, unsigned long, int)));
 }
 
 HistoryDlg::~HistoryDlg()
 {
-  ICQUser::ClearHistory(myHistoryList);
+  LicqUser::ClearHistory(myHistoryList);
 }
 
-void HistoryDlg::updatedUser(CICQSignal* signal)
+void HistoryDlg::updatedUser(const UserId& userId, unsigned long subSignal, int argument)
 {
-  if (signal->Id() != myId || signal->PPID() != myPpid)
+  if (userId != myUserId)
     return;
 
-  if (signal->SubSignal() == USER_EVENTS)
+  if (subSignal == USER_EVENTS)
   {
-    const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(myUserId);
     if (u == NULL)
       return;
 
-    const CUserEvent* event = u->EventPeekId(signal->Argument());
+    const CUserEvent* event = u->EventPeekId(argument);
     gUserManager.DropUser(u);
 
-    if (event != NULL && signal->Argument() > 0 && signal->Argument() > (*(--myHistoryList.end()))->Id())
+    if (event != NULL && argument > 0 && argument > (*(--myHistoryList.end()))->Id())
       addMsg(event);
   }
 }
 
 void HistoryDlg::eventSent(const ICQEvent* event)
 {
-  if (event->Id() == myId && event->PPID() == myPpid && event->UserEvent() != NULL)
+  if (event->userId() == myUserId && event->UserEvent() != NULL)
     addMsg(event->UserEvent());
 }
 
@@ -391,6 +389,10 @@ void HistoryDlg::find(bool backwards)
     return;
 
   QRegExp regExp(getRegExp());
+
+  // An expression that can match zero characters is no better than an empty search text
+  if (regExp.indexIn("") != -1)
+    return;
 
   // If search pattern has changed, find all matching dates and mark them in the calendar
   if (myPatternChanged)
@@ -507,7 +509,7 @@ void HistoryDlg::searchTextChanged(const QString& text)
 
 void HistoryDlg::showUserMenu()
 {
-  LicqGui::instance()->userMenu()->setUser(myId, myPpid);
+  LicqGui::instance()->userMenu()->setUser(myUserId);
 }
 
 void HistoryDlg::nextDate()

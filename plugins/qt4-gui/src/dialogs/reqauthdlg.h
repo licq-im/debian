@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2006 Licq developers
+ * Copyright (C) 2002-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ class ReqAuthDlg : public QDialog
    Q_OBJECT
 
 public:
-   ReqAuthDlg(QString id = QString(), unsigned long ppid = 0, QWidget* parent = 0);
+   ReqAuthDlg(const QString& id = QString(), unsigned long ppid = 0, QWidget* parent = 0);
 
 private:
    QPushButton* btnOk;

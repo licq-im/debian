@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,8 @@
 #include <qwidget.h>
 #include <qlistview.h>
 
+#include <licq_types.h>
+
 #include "mainwin.h"
 
 class QTabWidget;
@@ -38,8 +40,7 @@ class QCheckBox;
 
 class CICQDaemon;
 class CSignalManager;
-class ICQEvent;
-class ICQUser;
+class LicqEvent;
 class CSearchAck;
 
 //TODO for protocol plugin support
@@ -58,12 +59,10 @@ class SearchItem : public QListViewItem
 public:
   SearchItem(const CSearchAck* s, const QString& encoding, QListView* parent);
 
-  QString id() const { return myId; }
-  unsigned long ppid() const { return myPpid; }
+  const UserId& userId() const { return myUserId; }
 
 protected:
-   QString myId;
-   unsigned long myPpid;
+  UserId myUserId;
 };
 
 
@@ -109,7 +108,7 @@ public slots:
    void viewInfo();
    void addUser();
    void resetSearch();
-   void searchResult(ICQEvent *);
+   void searchResult(LicqEvent*);
    void selectionChanged();
 };
 

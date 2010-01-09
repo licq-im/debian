@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,9 +26,11 @@
 #include <qlistview.h>
 #include <qtooltip.h>
 
+#include <licq_types.h>
+
 #include "userbox.h"
 
-class ICQUser;
+class LicqUser;
 class CMainWindow;
 
 
@@ -36,14 +38,12 @@ class CMainWindow;
 class CMMUserViewItem : public QListViewItem
 {
 public:
-  CMMUserViewItem (ICQUser *, QListView *);
+  CMMUserViewItem(const LicqUser* u , QListView *);
   virtual ~CMMUserViewItem();
-  char *Id()  { return m_szId; }
-  unsigned long PPID()  { return m_nPPID; }
+  const UserId& userId() const { return myUserId; }
 
 protected:
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
 
   friend class CMMUserView;
 };
@@ -54,18 +54,16 @@ class CMMUserView : public QListView
 {
   Q_OBJECT
 public:
-  CMMUserView(ColumnInfos &_colInfo, bool, const char*, unsigned long,
+  CMMUserView(ColumnInfos &_colInfo, bool, const UserId& userId,
      CMainWindow *, QWidget *parent = 0);
   virtual ~CMMUserView();
 
-  void AddUser(unsigned long);
-  void AddUser(const char *, unsigned long);
+  void AddUser(const UserId& userId);
 
 protected:
   QPopupMenu *mnuMM;
   ColumnInfos colInfo;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   CMainWindow *mainwin;
 
   virtual void viewportMousePressEvent(QMouseEvent *e);

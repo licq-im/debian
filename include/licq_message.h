@@ -7,6 +7,7 @@
 
 #include "licq_constants.h"
 #include "licq_color.h"
+#include "licq_types.h"
 
 // Define for marking functions as deprecated
 #ifndef LICQ_DEPRECATED
@@ -22,7 +23,6 @@
 
 typedef std::list<const char *> ConstFileList;
 
-#define LICQ_PPID 0x4C696371  // "Licq"
 #define EVENT_HEADER_SIZE  80
 
 // Define some event flags, leave the 2 LSB's for the licq version
@@ -34,7 +34,7 @@ const unsigned long E_CANCELLED     = 0x00080000;
 const unsigned long E_ENCRYPTED     = 0x00100000;
 const unsigned long E_UNKNOWN       = 0x80000000;
 
-class ICQUser;
+class LicqUser;
 
 
 //=====CUserEvent===============================================================
@@ -72,9 +72,9 @@ public:
    void SetPending(bool b)  { m_bPending = b; }
 
 protected:
-  virtual void AddToHistory(ICQUser* user, unsigned long ppid, direction dir) const = 0;
+  virtual void AddToHistory(LicqUser* user, direction dir) const = 0;
   int AddToHistory_Header(direction _nDir, char* szOut) const;
-  void AddToHistory_Flush(ICQUser* u, unsigned long nPPID, const char* szOut) const;
+  void AddToHistory_Flush(LicqUser* u, const char* szOut) const;
 
    void SetDirection(direction d)  { m_eDir = d; }
    void Cancel() { m_nFlags |= E_CANCELLED; }
@@ -106,6 +106,7 @@ protected:
 friend class CICQDaemon;
 friend class CMSN;
 friend class CUserHistory;
+  friend class LicqUser;
 };
 
 
@@ -120,7 +121,7 @@ public:
 
   virtual CEventMsg* Copy() const;
   const char* Message() const { return m_szMessage; }
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 
    static CEventMsg *Parse(char *sz, unsigned short nCmd, time_t nTime,
                            unsigned long nFlags, unsigned long nConvoId = 0);
@@ -141,7 +142,7 @@ public:
               unsigned long _nMsgID1 = 0, unsigned long _nMsgID2 = 0);
    virtual ~CEventFile();
   virtual CEventFile* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 
   const char* Filename() const { return m_szFilename; }
   unsigned long FileSize() const {  return m_nFileSize; }
@@ -167,7 +168,7 @@ public:
              unsigned long _nFlags, unsigned long _nConvoId = 0);
    virtual ~CEventUrl();
   virtual CEventUrl* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
   const char* Url() const { return m_szUrl; }
   const char* Description() const { return m_szUrlDescription; }
 
@@ -192,7 +193,7 @@ public:
       unsigned long _nConvoId = 0, unsigned long nMsgID1 = 0, unsigned long nMsgID2 = 0);
   virtual ~CEventChat();
   virtual CEventChat* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
   const char* Reason() const { return m_szReason; }
   const char* Clients() const { return m_szClients; }
   unsigned short Port() const { return m_nPort; }
@@ -210,26 +211,17 @@ protected:
 class CEventAdded : public CUserEvent
 {
 public:
-   CEventAdded(const char *_szId, unsigned long _nPPID, const char *_szAlias,
+   CEventAdded(const UserId& userId, const char *_szAlias,
                const char *_szFirstName, const char *_szLastName, const char *_szEmail,
                unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
    virtual ~CEventAdded();
   virtual CEventAdded* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
-  const char* IdString() const { return m_szId; }
-  unsigned long PPID() const { return m_nPPID; }
-
-  // Deprecated functions, to be removed
-  CEventAdded(unsigned long _nUin, const char* _szAlias,
-      const char* _szFirstName, const char *_szLastName, const char *_szEmail,
-      unsigned short _nCommand, time_t _tTime, unsigned long _nFlags)
-      LICQ_DEPRECATED;
-  LICQ_DEPRECATED unsigned long Uin() const { return strtoul(m_szId, NULL, 10); };
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
+  const UserId& userId() const { return myUserId; }
 
 protected:
   void CreateDescription() const;
-   char *m_szId;
-   unsigned long m_nPPID;
+  UserId myUserId;
    char *m_szAlias;
    char *m_szFirstName;
    char *m_szLastName;
@@ -242,27 +234,18 @@ protected:
 class CEventAuthRequest : public CUserEvent
 {
 public:
-   CEventAuthRequest(const char *_szId, unsigned long _nPPID, const char *_szAlias,
+   CEventAuthRequest(const UserId& userId, const char *_szAlias,
                      const char *_szFirstName, const char *_szLastName, const char *_szEmail,
                      const char *_szReason, unsigned short _nCommand, time_t _tTime,
                      unsigned long _nFlags);
    virtual ~CEventAuthRequest();
   virtual CEventAuthRequest* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
-  const char* IdString() const { return m_szId; }
-  unsigned long PPID() const { return m_nPPID; }
-
-  // Deprecated functions, to be removed
-  CEventAuthRequest(unsigned long _nUin, const char* _szAlias,
-      const char* _szFirstName, const char* _szLastName, const char* _szEmail,
-      const char* _szReason, unsigned short _nCommand, time_t _tTime,
-      unsigned long _nFlags) LICQ_DEPRECATED;
-  LICQ_DEPRECATED unsigned long Uin() const { return strtoul(m_szId, NULL, 10); };
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
+  const UserId& userId() const { return myUserId; }
 
 protected:
   void CreateDescription() const;
-   char *m_szId;
-   unsigned long m_nPPID;
+  UserId myUserId;
    char *m_szAlias;
    char *m_szFirstName;
    char *m_szLastName;
@@ -275,24 +258,16 @@ protected:
 class CEventAuthGranted : public CUserEvent
 {
 public:
-   CEventAuthGranted(const char *_szId, unsigned long _nPPID, const char *_szMsg,
+   CEventAuthGranted(const UserId& userId, const char *_szMsg,
                      unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
    virtual ~CEventAuthGranted();
   virtual CEventAuthGranted* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
-  const char* IdString() const { return m_szId; }
-  unsigned long PPID() const { return m_nPPID; }
-
-  // Deprecated functions, to be removed
-  CEventAuthGranted(unsigned long _nUin, const char* _szMessage,
-      unsigned short _nCommand, time_t _tTime, unsigned long _nFlags)
-      LICQ_DEPRECATED;
-  LICQ_DEPRECATED unsigned long Uin() const { return strtoul(m_szId, NULL, 10); };
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
+  const UserId& userId() const { return myUserId; }
 
 protected:
   void CreateDescription() const;
-   char *m_szId;
-   unsigned long m_nPPID;
+  UserId myUserId;
    char *m_szMessage;
 };
 
@@ -301,24 +276,16 @@ protected:
 class CEventAuthRefused : public CUserEvent
 {
 public:
-   CEventAuthRefused(const char *_szId, unsigned long _nPPID, const char *_szMsg,
+   CEventAuthRefused(const UserId& userId, const char *_szMsg,
                      unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
    virtual ~CEventAuthRefused();
   virtual CEventAuthRefused* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
-  const char* IdString() const { return m_szId; }
-  unsigned long PPID() const { return m_nPPID; }
-
-  // Deprecated functions, to be removed
-  CEventAuthRefused(unsigned long _nUin, const char* _szMessage,
-      unsigned short _nCommand, time_t _tTime, unsigned long _nFlags)
-      LICQ_DEPRECATED;
-  LICQ_DEPRECATED unsigned long Uin() const { return strtoul(m_szId, NULL, 10); };
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
+  const UserId& userId() const { return myUserId; }
 
 protected:
   void CreateDescription() const;
-   char *m_szId;
-   unsigned long m_nPPID;
+  UserId myUserId;
    char *m_szMessage;
 };
 
@@ -331,7 +298,7 @@ public:
                    unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
    virtual ~CEventWebPanel();
   virtual CEventWebPanel* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 protected:
   void CreateDescription() const;
    char *m_szName;
@@ -348,7 +315,7 @@ public:
                     unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
    virtual ~CEventEmailPager();
   virtual CEventEmailPager* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 protected:
   void CreateDescription() const;
    char *m_szName;
@@ -361,21 +328,15 @@ protected:
 class CContact
 {
 public:
-  CContact(const char *s, unsigned long n, const char *a);
+  CContact(const UserId& userId, const char *a);
   ~CContact();
 
+  const UserId& userId() const { return myUserId; }
   const char* Alias() const { return m_szAlias; }
-  const char* IdString() const { return m_szId; }
-  unsigned long PPID() const { return m_nPPID; }
-
-  // Deprecated functions, to be removed
-  CContact(unsigned long n, const char* a) LICQ_DEPRECATED;
-  LICQ_DEPRECATED unsigned long Uin() const { return strtoul(m_szId, NULL, 10); }
 
 protected:
+  UserId myUserId;
   char *m_szAlias;
-  char *m_szId;
-  unsigned long m_nPPID;
 };
 typedef std::list<CContact *> ContactList;
 
@@ -387,7 +348,7 @@ public:
      time_t tTime, unsigned long nFlags);
   virtual ~CEventContactList();
   virtual CEventContactList* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 
   const ContactList &Contacts() const { return m_vszFields; }
 
@@ -408,7 +369,7 @@ public:
   virtual CEventSms* Copy() const;
   const char* Number() const { return m_szNumber; }
   const char* Message() const { return m_szMessage; }
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 
    static CEventSms *Parse(char *sz, unsigned short nCmd, time_t nTime, unsigned long nFlags);
 protected:
@@ -425,7 +386,7 @@ public:
                       const char *_szMessage, time_t _tTime);
   virtual ~CEventServerMessage();
   virtual CEventServerMessage* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 
   static CEventServerMessage *Parse(char *, unsigned short, time_t, unsigned long);
 
@@ -449,7 +410,7 @@ public:
                    const char *_szCreds = 0, unsigned long _nSessionLength = 0);
   virtual ~CEventEmailAlert();
   virtual CEventEmailAlert* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 
   const char* From() const { return m_szName; }
   const char* To() const { return m_szTo; }
@@ -492,7 +453,7 @@ public:
      time_t tTime, unsigned long nFlags);
   ~CEventPlugin();
   virtual CEventPlugin* Copy() const;
-  virtual void AddToHistory(ICQUser* user, unsigned long ppid, direction dir) const;
+  virtual void AddToHistory(LicqUser* user, direction dir) const;
 protected:
   void CreateDescription() const;
   char *m_sz;
@@ -503,18 +464,15 @@ protected:
 class CEventUnknownSysMsg : public CUserEvent
 {
 public:
-  CEventUnknownSysMsg(unsigned short _nSubCommand,
-                unsigned short _nCommand, const char *_szId, unsigned long _nPPID,
-                const char *_szMsg,
-                time_t _tTime, unsigned long _nFlags);
+  CEventUnknownSysMsg(unsigned short _nSubCommand, unsigned short _nCommand,
+      const UserId& userId, const char *_szMsg, time_t _tTime, unsigned long _nFlags);
   ~CEventUnknownSysMsg();
   virtual CEventUnknownSysMsg* Copy() const;
-  virtual void AddToHistory(ICQUser* u, unsigned long _nPPID, direction _nDir) const;
+  virtual void AddToHistory(LicqUser* u, direction _nDir) const;
 protected:
   void CreateDescription() const;
+  UserId myUserId;
    char *m_szMsg;
-   char *m_szId;
-   unsigned long m_nPPID;
 };
 
 #endif

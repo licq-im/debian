@@ -18,6 +18,7 @@ header file containing all the main procedures to interface with the ICQ server 
 #include "licq_onevent.h"
 #include "licq_plugind.h"
 #include "licq_protoplugind.h"
+#include "licq_user.h"
 
 class CProtoPlugin;
 class CPlugin;
@@ -25,7 +26,6 @@ class CPacket;
 class CPacketTcp;
 class CLicq;
 class CUserManager;
-class ICQUser;
 class CICQEventTag;
 class CICQColor;
 class TCPSocket;
@@ -200,6 +200,14 @@ public:
   pthread_t *Shutdown();
   void SaveConf();
 
+  /**
+   * Check if GPG support is enabled
+   * This function allows plugins to check at runtime if GPG options are available
+   *
+   * @return True if GPG support is available in daemon
+   */
+  bool haveGpgSupport() const;
+
   // GUI Plugins call these now
   //! Add a user to the local contact list.
   /*!
@@ -208,122 +216,268 @@ public:
       \param groupId The group id to add the user into.
       \param _bAuthRequired True if we need to get authorization first.
   */
-  void ProtoAddUser(const char *szId, unsigned long nPPID, bool _bAuthRequired = false, unsigned short groupId = 0);
+  LICQ_DEPRECATED // Use protoAddUser() or gUserManager.addUser() instead
+  void ProtoAddUser(const char *szId, unsigned long nPPID, bool /*_bAuthRequired*/ = false, unsigned short groupId = 0)
+  { protoAddUser(szId, nPPID, groupId); }
+
+  /**
+   * Add a user to server side list
+   * Plugins should call gUserManager.addUser() instead as this function will
+   * not add the user to the local contact list or notify plugins.
+   *
+   * @param accountId Account id of user to add
+   * @param ppid Protocol instance id of user
+   * @param groupId Initial group, only used for ICQ contacts
+   */
+  void protoAddUser(const std::string& accountId, unsigned long ppid, int groupId);
 
   //! Remove a user from the local contact list.
   /*!
       \param szId The user ID to remove.
       \param nPPID The user's protocol plugin ID.
   */
-  void ProtoRemoveUser(const char *szId, unsigned long nPPID);
+  LICQ_DEPRECATED // Use protoRemoveUser or gUserManager.removeUser() instead
+  void ProtoRemoveUser(const char *szId, unsigned long nPPID)
+  { if (szId != NULL) protoRemoveUser(LicqUser::makeUserId(szId, nPPID)); }
 
-  //! Rename a user on the server contact list.
-  /*!
-       \param szId The user ID to rename.
-       \param nPPID The user's protocol plugin ID.
-  */
-  void ProtoRenameUser(const char *szId, unsigned long nPPID);
+  /**
+   * Remove a user from the server side list
+   * Plugins should call gUserManageer.removeUser() instead as this function
+   * will not remove the user from the local contact list or notify plugins.
+   *
+   * @param userId Id of user to remove
+   */
+  void protoRemoveUser(const UserId& userId);
 
-  //! Change status for a protocol.
-  /*!
-       \param nPPID The protocol ID.
-       \param nNewStatus The status to change to.
-  */
-  unsigned long ProtoSetStatus(unsigned long nPPID, unsigned short nNewStatus);
+  /**
+   * Update user alias on server contact list
+   * Alias is taken from local contact list
+   *
+   * @param userId User to update
+   */
+  void updateUserAlias(const UserId& userId);
 
-  //! Logon for a protocol.
-  /*!
-        \param nPPID The protocol ID.
-        \param nLogonStatus The initial status to set after logon is complete.
-  */
-  unsigned long ProtoLogon(unsigned long nPPID, unsigned short nLogonStatus);
+  LICQ_DEPRECATED // Use updateUserAlias() instead
+  void ProtoRenameUser(const char *szId, unsigned long nPPID)
+  { if (szId != NULL) updateUserAlias(LicqUser::makeUserId(szId, nPPID)); }
 
-  //! Logoff from a protocol.
-  /*!
-        \param nPPID The protocol ID.
-  */
-  void ProtoLogoff(unsigned long nPPID);
+  /**
+   * Set status for a protocol
+   *
+   * @param ownerId Owner of protocol to change
+   * @param newStatus The status to change to
+   * @return Event id
+   */
+  unsigned long protoSetStatus(const UserId& ownerId, unsigned short newStatus);
 
-  //! Send typing notification.
+  LICQ_DEPRECATED // Use protoSetStatus() instead
+  unsigned long ProtoSetStatus(unsigned long nPPID, unsigned short nNewStatus)
+  { return protoSetStatus(gUserManager.ownerUserId(nPPID), nNewStatus); }
 
-  /*!
-        \param szId The user ID.
-        \param nPPID The protocol ID.
-        \param bActive The state of the typing notification. TRUE if active.
-  */
+  LICQ_DEPRECATED // Use protoSetStatus() instead
+  unsigned long ProtoLogon(unsigned long nPPID, unsigned short nLogonStatus)
+  { return protoSetStatus(gUserManager.ownerUserId(nPPID), nLogonStatus); }
+
+  LICQ_DEPRECATED // Use protoSetStatus() instead
+  void ProtoLogoff(unsigned long nPPID)
+  { protoSetStatus(gUserManager.ownerUserId(nPPID), ICQ_STATUS_OFFLINE); }
+
+  /**
+   * Notify a user that we've started/stopped typing
+   *
+   * @param userId User to notify
+   * @param active True if we've started typing, false if we've stopped
+   * @param nSocket ?
+   */
+  void sendTypingNotification(const UserId& userId, bool active, int nSocket = -1);
+
+  LICQ_DEPRECATED // Use sendTypingNotification() instead
   void ProtoTypingNotification(const char *szId, unsigned long nPPID,
-                               bool Active, int nSocket = -1);
+                               bool Active, int nSocket = -1)
+  { if (szId != NULL) sendTypingNotification(LicqUser::makeUserId(szId, nPPID), Active, nSocket); }
 
-  //! Send a message to a user on this protocol.
-  /*!
-        \param szId The user ID.
-        \param nPPID The protocol ID.
-        \param szMessage The message to be sent.
-        \param bOnline True if the user is online.
-        \param nLevel Any special flags (protocol specific).
-        \param bMultipleRecipients True if sending the same message to
-          more than one user.
-        \param pColor The color of the text and background.
-        \param nCID The conversation ID for group messages (MSN & IRC)
-  */
+  /**
+   * Send a normal message to a user
+   *
+   * @param userId User to send message to
+   * @param message The message to be sent
+   * @param viaServer True to send via server or false to use direct connection (ICQ only)
+   * @param flags Any special flags (ICQ only)
+   * @param multipleRecipients True if sending the same message to more than one user (ICQ only)
+   * @param color The color of the text and background (ICQ only)
+   * @param convoId Conversation ID for group messages (Non-ICQ only)
+   * @return Event id
+   */
+  unsigned long sendMessage(const UserId& userId, const std::string& message,
+      bool viaServer, unsigned short flags, bool multipleRecipients = false,
+      CICQColor* color = NULL, unsigned long convoId = 0);
+
+  LICQ_DEPRECATED // Use sendMessage() instead
   unsigned long ProtoSendMessage(const char *szId, unsigned long nPPID,
      const char *szMessage, bool bOnline, unsigned short nLevel,
      bool bMultipleRecipients = false, CICQColor *pColor = NULL,
-     unsigned long nCID = 0);
+     unsigned long nCID = 0)
+  { return szId == NULL ? 0 : sendMessage(LicqUser::makeUserId(szId, nPPID),
+      szMessage, !bOnline, nLevel, bMultipleRecipients, pColor, nCID); }
 
-  //! Send a URL to a user on this protocol
-  /*!
-      This may not be available for all protocols.
-        \param szId The user ID.
-        \param szUrl The URL to be sent.
-        \param szDescription A description of the URL that can be sent.
-        \param bOnline True if the user is online.
-        \param nLevel Any special flags (protocol specific).
-        \param bMultipleRecipients True if sending the same URL to
-          more than one user.
-        \param pColor The color of the text and background.
-  */      
+  /**
+   * Send URL message to a user
+   *
+   * @param userId User to sent URL to
+   * @param url The URL to be sent
+   * @param message Message or description of URL
+   * @param viaServer True to send via server or false to use direct connection (ICQ only)
+   * @param flags Any special flags (ICQ only)
+   * @param multipleRecipients True if sending the same message to more than one user (ICQ only)
+   * @param color The color of the text and background (ICQ only)
+   * @return Event id
+   */
+  unsigned long sendUrl(const UserId& userId, const std::string& url,
+      const std::string& message, bool viaServer, unsigned short flags,
+      bool multipleRecipients = false, CICQColor* color = NULL);
+
+  LICQ_DEPRECATED // Use sendUrl() instead
   unsigned long ProtoSendUrl(const char *szId, unsigned long nPPID,
      const char *szUrl, const char *szDescription, bool bOnline,
      unsigned short nLevel, bool bMultipleRecipients = false,
-     CICQColor *pColor = NULL);
+     CICQColor *pColor = NULL)
+  { return szId == NULL ? 0 : sendUrl(LicqUser::makeUserId(szId, nPPID), szUrl,
+      szDescription, !bOnline, nLevel, bMultipleRecipients, pColor); }
 
-  unsigned long ProtoFetchAutoResponseServer(const char *szId, unsigned long nPPID);
+  /**
+   * Request user auto response from server
+   *
+   * @param userId User to fetch auto response for
+   * @return id of event for ICQ users, zero for other protocols
+   */
+  unsigned long requestUserAutoResponse(const UserId& userId);
 
-  unsigned long ProtoChatRequest(const char *szId, unsigned long nPPID,
-     const char *szReason, unsigned short nLevel, bool bServer);
-  unsigned long ProtoMultiPartyChatRequest(const char *szId, unsigned long nPPID,
-     const char *szReason, const char *szChatUsers, unsigned short nPort,
-     unsigned short nLevel, bool bServer);
-  void ProtoChatRequestRefuse(const char *szId, unsigned long nPPID,
-      const char* szReason, unsigned short nSequence,
-      const unsigned long nMsgID[], bool bDirect);
-  void ProtoChatRequestAccept(const char *szId, unsigned long nPPID,
-      unsigned short nPort, const char* szClients, unsigned long nSequeunce,
-      const unsigned long nMsgID[], bool bDirect);
-  void ProtoChatRequestCancel(const char *szId, unsigned long nPPID,
-     unsigned short nSequence);
+  LICQ_DEPRECATED // Use requestUserAutoResponse() instead
+  unsigned long ProtoFetchAutoResponseServer(const char *szId, unsigned long nPPID)
+  { return szId == NULL ? 0 : requestUserAutoResponse(LicqUser::makeUserId(szId, nPPID)); }
 
+  /**
+   * Initiate a file transfer to a user
+   *
+   * @param userId User to send file to
+   * @param filename Name of file to send
+   * @param message Message or description of file(s)
+   * @param files List of files to send
+   * @param flags Any special flags (ICQ only)
+   * @param viaServer True to send via server or false to use direct connection (ICQ only)
+   * @return Event id
+   */
+  unsigned long fileTransferPropose(const UserId& userId, const std::string& filename,
+      const std::string& message, ConstFileList& files, unsigned short flags,
+      bool viaServer);
+
+  LICQ_DEPRECATED // Use fileTransferPropose() instead
   unsigned long ProtoFileTransfer(const char *szId, unsigned long nPPID,
      const char *szFilename, const char *szDescription, ConstFileList &lFileList,
-     unsigned short nLevel, bool bServer);
+     unsigned short nLevel, bool bServer)
+  { return szId == NULL ? 0 : fileTransferPropose(LicqUser::makeUserId(szId, nPPID),
+      szFilename, szDescription, lFileList, nLevel, bServer); }
+
+  /**
+   * Refuse a proposed file transfer
+   *
+   * @param userId User to send refusal to
+   * @param message Message with reason for refusal
+   * @param eventId Event id of a pending transfer
+   * @param flag1 ?
+   * @param flag2 ?
+   * @param viaServer True to send via server or false to use direct connection
+   */
+  void fileTransferRefuse(const UserId& userId, const std::string& message,
+      unsigned long eventId, unsigned long flag1, unsigned long flag2,
+      bool viaServer = true);
+
+  LICQ_DEPRECATED // Use fileTransferRefuse() instead
   void ProtoFileTransferRefuse(const char *szId, unsigned long nPPID,
      const char *szReason, unsigned long nSequence, unsigned long nFlag1,
-     unsigned long nFlag2, bool bDirect = false);
+     unsigned long nFlag2, bool bDirect = false)
+  { if (szId != NULL) fileTransferRefuse(LicqUser::makeUserId(szId, nPPID),
+      szReason, nSequence, nFlag1, nFlag2, !bDirect); }
+
+  /**
+   * Cancel a file transfer
+   *
+   * @param userId User to cancel transfer for
+   * @param eventId Event id of transfer to cancel
+   */
+  void fileTransferCancel(const UserId& userId, unsigned long eventId);
+
+  LICQ_DEPRECATED // Use fileTransferCancel() instead
   void ProtoFileTransferCancel(const char *szId, unsigned long nPPID,
-     unsigned long nSequence);
+     unsigned long nSequence)
+  { if (szId != NULL) fileTransferCancel(LicqUser::makeUserId(szId, nPPID), nSequence); }
+
+  /**
+   * Accept a proposed file transfer
+   *
+   * @param userId User to accept file transfer from
+   * @param port Local tcp port to use
+   * @param eventId Event id of transfer to accept
+   * @param flag1 ?
+   * @param flag2 ?
+   * @param message Description text from file transfer event (ICQ only)
+   * @param filename Filename from file transfer event (ICQ only)
+   * @param filesize File size from file transfer event (ICQ only)
+   * @param viaServer True to send via server or false to use direct connection
+   */
+  void fileTransferAccept(const UserId& userId, unsigned short port,
+      unsigned long eventId = 0, unsigned long flag1 = 0, unsigned long flag2 = 0,
+      const std::string& message = "", const std::string filename = "",
+      unsigned long filesize = 0, bool viaServer = true);
+
+  LICQ_DEPRECATED // Use fileTransferAccept() instead
   void ProtoFileTransferAccept(const char *szId, unsigned long nPPID,
      unsigned short nPort, unsigned long nSequence = 0, unsigned long nFlag1 = 0,
      unsigned long nFlag2 = 0, const char *szDesc = 0, const char *szFile = 0,
-     unsigned long nFileSize = 0,bool bDirect = false);
+     unsigned long nFileSize = 0,bool bDirect = false)
+  { if (szId != NULL) fileTransferAccept(LicqUser::makeUserId(szId, nPPID), nPort,
+      nSequence, nFlag1, nFlag2, szDesc ? szDesc : "", szFile ? szFile : "",
+      nFileSize, !bDirect); }
 
+  /**
+   * Grant authorization for a user to add us
+   *
+   * @param userId User to send grant to
+   * @param message Message to send with grant
+   * @return Event id
+   */
+  unsigned long authorizeGrant(const UserId& userId, const std::string& message);
+
+  LICQ_DEPRECATED // Use authorizeGrant() instead
   unsigned long ProtoAuthorizeGrant(const char *szId, unsigned long nPPID,
-     const char *szMessage);
+     const char *szMessage)
+  { return szId == NULL ? 0 : authorizeGrant(LicqUser::makeUserId(szId, nPPID), szMessage); }
 
+  /**
+   * Refuse authorization for a user to add us
+   *
+   * @param userId User to send grant to
+   * @param message Message to send with grant
+   * @return Event id
+   */
+  unsigned long authorizeRefuse(const UserId& userId, const std::string& message);
+
+  LICQ_DEPRECATED // Use authorizeRefuse() instead
   unsigned long ProtoAuthorizeRefuse(const char *szId, unsigned long nPPID,
-     const char *szMessage);
+     const char *szMessage)
+  { return szId == NULL ? 0 : authorizeRefuse(LicqUser::makeUserId(szId, nPPID), szMessage); }
 
-  unsigned long ProtoRequestInfo(const char *szId, unsigned long nPPID);
+  /**
+   * Request user information from server
+   *
+   * @param userId User to get information for
+   * @return id of event for ICQ users, zero for other protocols
+   */
+  unsigned long requestUserInfo(const UserId& userId);
+
+  LICQ_DEPRECATED // Use requestUserInfo() instead
+  unsigned long ProtoRequestInfo(const char *szId, unsigned long nPPID)
+  { return szId == NULL ? 0 : requestUserInfo(LicqUser::makeUserId(szId, nPPID)); }
 
   unsigned long ProtoSetGeneralInfo(unsigned long nPPID, const char *szAlias,
     const char *szFirstName, const char *szLastName, const char *szEmailPrimary,
@@ -331,22 +485,64 @@ public:
     const char *szFaxNumber, const char *szAddress, const char *szCellularNumber,
     const char *szZipCode, unsigned short nCountryCode, bool bHideEmail);
 
-  unsigned long ProtoRequestPicture(const char *szId, unsigned long nPPID);
+  /**
+   * Request user picture from server
+   *
+   * @param userId User to get picture for
+   * @return id of event for ICQ users, zero for other protocols
+   */
+  unsigned long requestUserPicture(const UserId& userId);
 
-  unsigned long ProtoOpenSecureChannel(const char *szId, unsigned long nPPID);
-  unsigned long ProtoCloseSecureChannel(const char *szId, unsigned long nPPID);
+  LICQ_DEPRECATED // Use requestUserPicture() instead
+  unsigned long ProtoRequestPicture(const char *szId, unsigned long nPPID)
+  { return szId == NULL ? 0 : requestUserPicture(LicqUser::makeUserId(szId, nPPID)); }
+
+  /**
+   * Enable encrypted communication towards a user
+   *
+   * @param userId User to enable encryption for
+   * @return Event id
+   */
+  unsigned long secureChannelOpen(const UserId& userId);
+
+  LICQ_DEPRECATED // Use secureChannelOpen instead
+  unsigned long ProtoOpenSecureChannel(const char *szId, unsigned long nPPID)
+  { return szId == NULL ? 0 : secureChannelOpen(LicqUser::makeUserId(szId, nPPID)); }
+
+  /**
+   * Disable encrypted communication towards a user
+   *
+   * @param userId User to disable encryption for
+   * @return Event id
+   */
+  unsigned long secureChannelClose(const UserId& userId);
+
+  LICQ_DEPRECATED // Use secureChannelClose instead
+  unsigned long ProtoCloseSecureChannel(const char *szId, unsigned long nPPID)
+  { return szId == NULL ? 0 : secureChannelClose(LicqUser::makeUserId(szId, nPPID)); }
+
+  /**
+   * Cancel encrypted communication about to be enabled
+   *
+   * @param userId User to cancel encryption for
+   * @param eventId Event of open request to cancel
+   */
+  void secureChannelCancelOpen(const UserId& userId, unsigned long eventId);
+
+  LICQ_DEPRECATED // Use secureChannelCancelOpen instead
   void ProtoOpenSecureChannelCancel(const char *szId, unsigned long nPPID,
-    unsigned long nSequence);
+    unsigned long nSequence)
+  { if (szId == NULL) return; secureChannelCancelOpen(LicqUser::makeUserId(szId, nPPID), nSequence); }
 
   // TCP (user) functions
   // Message
-  unsigned long icqSendMessage(const char *szId, const char *szMessage,
-     bool bOnline, unsigned short nLevel, bool bMultipleRecipients = false,
+  unsigned long icqSendMessage(const UserId& userId, const std::string& message,
+      bool viaServer, unsigned short nLevel, bool bMultipleRecipients = false,
      CICQColor *pColor = NULL);
 
   // Url
-  unsigned long icqSendUrl(const char *szId, const char *szUrl,
-     const char *szDescription, bool bOnline, unsigned short nLevel,
+  unsigned long icqSendUrl(const UserId& userId, const std::string& url,
+      const std::string& message, bool viaServer, unsigned short nLevel,
      bool bMultipleRecipients = false, CICQColor *pColor = NULL);
   // Contact List
   unsigned long icqSendContactList(const char *szId, const StringList& users,
@@ -368,18 +564,18 @@ public:
       const unsigned long nMsgID[], bool bDirect);
   void icqChatRequestCancel(const char* id, unsigned short nSequence);
   // File Transfer
-  unsigned long icqFileTransfer(const char *szId, const char *szFilename,
-     const char *szDescription, ConstFileList &lFileList,
+  unsigned long icqFileTransfer(const UserId& userId, const std::string& filename,
+      const std::string& message, ConstFileList &lFileList,
      unsigned short nLevel, bool bServer);
-  void icqFileTransferRefuse(const char *szId, const char *szReason,
-      unsigned short nSequence, const unsigned long nMsgID[], bool bDirect);
-  void icqFileTransferCancel(const char *szId, unsigned short nSequence);
-  void icqFileTransferAccept(const char *szId, unsigned short nPort,
-     unsigned short nSequence, const unsigned long nMsgID[], bool bDirect,
-     const char *szDesc, const char *szFile, unsigned long nFileSize);  
-  unsigned long icqOpenSecureChannel(const char *szId);
-  unsigned long icqCloseSecureChannel(const char *szId);
-  void icqOpenSecureChannelCancel(const char *szId, unsigned short nSequence);
+  void icqFileTransferRefuse(const UserId& userId, const std::string& message,
+      unsigned short nSequence, const unsigned long nMsgID[], bool viaServer);
+  void icqFileTransferCancel(const UserId& userId, unsigned short nSequence);
+  void icqFileTransferAccept(const UserId& userId, unsigned short nPort,
+      unsigned short nSequence, const unsigned long nMsgID[], bool viaServer,
+      const std::string& message, const std::string& filename, unsigned long nFileSize);
+  unsigned long icqOpenSecureChannel(const UserId& userId);
+  unsigned long icqCloseSecureChannel(const UserId& userId);
+  void icqOpenSecureChannelCancel(const UserId& userId, unsigned short nSequence);
 
   // Plugins
   unsigned long icqRequestInfoPluginList(const char *szId,
@@ -430,9 +626,9 @@ public:
                            char nBirthDay, char nLanguage1,
                            char nLanguage2, char nLanguage3);
   unsigned long icqSetSecurityInfo(bool bAuthorize, bool bHideIp, bool bWebAware);
-  unsigned long icqSetInterestsInfo(const ICQUserCategory *interests);
-  unsigned long icqSetOrgBackInfo(const ICQUserCategory *orgs,
-                                  const ICQUserCategory *background);
+  unsigned long icqSetInterestsInfo(const UserCategoryMap& interests);
+  unsigned long icqSetOrgBackInfo(const UserCategoryMap& orgs,
+      const UserCategoryMap& background);
   unsigned long icqSetHomepageInfo(bool bCatetory, unsigned short nCategory,
                                 const char *szHomepageDesc, bool bICQHomepage);
   unsigned long icqSetAbout(const char *szAbout);
@@ -454,10 +650,10 @@ public:
   void icqLogoff();
   void postLogoff(int nSD, ICQEvent *cancelledEvent);
   void icqRelogon();
-  unsigned long icqAuthorizeGrant(const char *szId, const char *szMessage);
-  unsigned long icqAuthorizeRefuse(const char *szId, const char *szMessage);
+  unsigned long icqAuthorizeGrant(const UserId& userId, const std::string& message);
+  unsigned long icqAuthorizeRefuse(const UserId& userId, const std::string& message);
   void icqRequestAuth(const char* id, const char *_szMessage);
-  void icqAlertUser(const char* id, unsigned long ppid);
+  void icqAlertUser(const UserId& userId);
   void icqAddUser(const char *_szId, bool _bAuthReq = false, unsigned short groupId = 0);
   void icqAddUserServer(const char *_szId, bool _bAuthReq, unsigned short groupId = 0);
   void icqAddGroup(const char *);
@@ -467,8 +663,8 @@ public:
                       unsigned short _nNewGroup, unsigned short _nOldGSID,
                       unsigned short _nNewType, unsigned short _nOldType);
   void icqRenameGroup(const char *_szNewName, unsigned short _nGSID);
-  void icqRenameUser(const char *_szId);
-  void icqExportUsers(const StringList& users, unsigned short);
+  void icqRenameUser(const std::string& accountId, const std::string& newAlias);
+  void icqExportUsers(const std::list<UserId>& users, unsigned short);
   void icqExportGroups(const GroupNameMap& groups);
   void icqUpdateServerGroups();
   void icqUpdatePhoneBookTimestamp();
@@ -483,39 +679,52 @@ public:
   /**
    * Set visible list status for a contact
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User to change visible status for
    * @param visible True to add user to visible list or false to remove
    */
-  void ProtoSetInVisibleList(const char* id, unsigned long ppid, bool visible);
+  void visibleListSet(const UserId& userId, bool visible);
+
+  LICQ_DEPRECATED // Use visibleListSet instead
+  void ProtoSetInVisibleList(const char* id, unsigned long ppid, bool visible)
+  { if (id != NULL) visibleListSet(LicqUser::makeUserId(id, ppid), visible); }
 
   /**
    * Set invisible list status for a contact
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User to change invisible status for
    * @param invisible True to add user to invisible list or false to remove
    */
-  void ProtoSetInInvisibleList(const char* id, unsigned long ppid, bool invisible);
+  void invisibleListSet(const UserId& userId, bool invisible);
+
+  LICQ_DEPRECATED // Use invisibleListSet instead
+  void ProtoSetInInvisibleList(const char* id, unsigned long ppid, bool invisible)
+  { if (id != NULL) invisibleListSet(LicqUser::makeUserId(id, ppid), invisible); }
 
   /**
    * Set ignore list status for a contact
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User to set ignore status for
    * @param ignore True to add user to ignore list or false to remove
    */
-  void ProtoSetInIgnoreList(const char* id, unsigned long ppid, bool ignore);
+  void ignoreListSet(const UserId& userId, bool ignore);
 
+  LICQ_DEPRECATED // Use ignoreListSet instead
+  void ProtoSetInIgnoreList(const char* id, unsigned long ppid, bool ignore)
+  { if (id != NULL) ignoreListSet(LicqUser::makeUserId(id, ppid), ignore); }
+
+  LICQ_DEPRECATED // Use gUserManager.setUserInGroup() instead
   void ProtoToggleInvisibleList(const char *_szId, unsigned long _nPPID);
+  LICQ_DEPRECATED // Use gUserManager.setUserInGroup() instead
   void ProtoToggleVisibleList(const char *_szId, unsigned long _nPPID);
 
-  void icqAddToVisibleList(const char *_szId, unsigned long _nPPID);
-  void icqRemoveFromVisibleList(const char *_szId, unsigned long _nPPID);
-  void icqAddToInvisibleList(const char *_szId, unsigned long _nPPID);
-  void icqRemoveFromInvisibleList(const char *_szId, unsigned long _nPPID);
-  void icqAddToIgnoreList(const char *_szId, unsigned long _nPPID);
-  void icqRemoveFromIgnoreList(const char *_szId, unsigned long _nPPID);
+  void icqAddToVisibleList(const UserId& userId);
+  void icqRemoveFromVisibleList(const UserId& userId);
+  void icqAddToInvisibleList(const UserId& userId);
+  void icqRemoveFromInvisibleList(const UserId& userId);
+  void icqAddToIgnoreList(const UserId& userId);
+  void icqRemoveFromIgnoreList(const UserId& userId);
+
+  LICQ_DEPRECATED // Use gUserManager.setUserInGroup() instead
   void icqToggleIgnoreList(const char *_szId, unsigned long _nPPID);
 
   void icqClearServerList();
@@ -537,12 +746,11 @@ public:
 
   EDaemonStatus Status() const                  { return m_eStatus; }
 
-  void PluginUIViewEvent(const char *szId, unsigned long nPPID ) {
-    PushPluginSignal(new CICQSignal(SIGNAL_UI_VIEWEVENT, 0, szId, nPPID, 0));
-  }
-  void PluginUIMessage(const char *szId, unsigned long nPPID) {
-    PushPluginSignal(new CICQSignal(SIGNAL_UI_MESSAGE, 0, szId, nPPID, 0));
-  }
+  void pluginUIViewEvent(const UserId& userId)
+  { pushPluginSignal(new LicqSignal(SIGNAL_UI_VIEWEVENT, 0, userId)); }
+
+  void pluginUIMessage(const UserId& userId)
+  { pushPluginSignal(new LicqSignal(SIGNAL_UI_MESSAGE, 0, userId)); }
 
   void UpdateAllUsers();
   void UpdateAllUsersInGroup(GroupType, unsigned short);
@@ -555,10 +763,28 @@ public:
      bool bSendIntIp);
   int StartTCPServer(TCPSocket *);
 
-  bool AddUserToList(const char *szId, unsigned long PPID, bool bNotify = true,
-                     bool bTempUser = false, unsigned short groupId = 0);
-  void AddUserToList(ICQUser *);
-  void RemoveUserFromList(const char *szId, unsigned long nPPID);
+  /**
+   * Add a user to the contact list
+   *
+   * @param accountId User account id
+   * @param ppid Protocol instance id
+   * @param permanent True if user should be added permanently to list and saved to disk
+   * @param addToServer True if server should be notified (ignored for temporary users)
+   * @param groupId Initial group to place user in or zero for no group
+   * @return zero if account id is invalid or user is already in list, otherwise id of added user
+   */
+  LICQ_DEPRECATED // Use gUserManager.addUser() instead
+  int addUserToList(const std::string& accountId, unsigned long ppid,
+      bool permanent = true, bool addToServer = true, unsigned short groupId = 0)
+  { return gUserManager.addUser(LicqUser::makeUserId(accountId, ppid), permanent, addToServer, groupId); }
+
+  LICQ_DEPRECATED int AddUserToList(const std::string& accountId, unsigned long ppid,
+      bool notify = true, bool temporary = false, unsigned short groupId = 0)
+  { return gUserManager.addUser(LicqUser::makeUserId(accountId, ppid), !temporary, notify, groupId); }
+
+  LICQ_DEPRECATED // Use gUserManager.removeUser() instead
+  void RemoveUserFromList(const char *szId, unsigned long nPPID)
+  { if (szId != NULL) gUserManager.removeUser(LicqUser::makeUserId(szId, nPPID)); }
 
   // SMS
   unsigned long icqSendSms(const char* id, unsigned long ppid,
@@ -625,7 +851,14 @@ public:
   // NOT MT SAFE
   bool AlwaysOnlineNotify() const               { return m_bAlwaysOnlineNotify; }
   void SetAlwaysOnlineNotify(bool);
-  CICQSignal *PopPluginSignal();
+
+  /**
+   * Get the next queued signal for a plugin
+   * Checks calling thread to determine which plugin queue to pop
+   *
+   * @return The next queued signal or NULL if the queue is empty
+   */
+  LicqSignal* popPluginSignal();
   ICQEvent *PopPluginEvent();
   CSignal *PopProtoSignal();
 
@@ -664,77 +897,16 @@ public:
   bool RemoveConversation(unsigned long nCID);
 
   // Common message handler
-  void ProcessMessage(ICQUser *user, CBuffer &packet, char *message,
+  void ProcessMessage(LicqUser* user, CBuffer& packet, char* message,
      unsigned short nMsgType, unsigned long nMask,
       const unsigned long nMsgID[], unsigned short nSequence,
      bool bIsAck, bool &bNewUser);
 
-  bool ProcessPluginMessage(CBuffer &packet, ICQUser *u, unsigned char nChannel,
+  bool ProcessPluginMessage(CBuffer& packet, LicqUser* user, unsigned char nChannel,
      bool bIsAck, unsigned long nMsgID1,
      unsigned long nMsgID2, unsigned short nSequence,
      TCPSocket *pSock);
   bool WaitForReverseConnection(unsigned short id, const char* userId);
-
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED unsigned long icqSendMessage(unsigned long nUin, const char *szMessage,
-     bool bOnline, unsigned short nLevel, bool bMultipleRecipients = false,
-     CICQColor *pColor = NULL);
-  LICQ_DEPRECATED unsigned long icqSendContactList(unsigned long nUin, UinList &uins,
-     bool bOnline, unsigned short nLevel, bool bMultipleRecipients = false,
-     CICQColor *pColor = NULL);
-  LICQ_DEPRECATED unsigned long icqFetchAutoResponse(unsigned long nUin, bool bServer = false);
-  LICQ_DEPRECATED unsigned long icqChatRequest(unsigned long nUin, const char *szReason,
-     unsigned short nLevel, bool bServer);
-  LICQ_DEPRECATED unsigned long icqMultiPartyChatRequest(unsigned long nUin,
-     const char *szReason, const char *szChatUsers, unsigned short nPort,
-     unsigned short nLevel, bool bServer);
-  LICQ_DEPRECATED void icqChatRequestRefuse(unsigned long nUin, const char *szReason,
-      unsigned short nSequence, const unsigned long nMsgID[], bool bDirect);
-  LICQ_DEPRECATED void icqChatRequestAccept(unsigned long nUin, unsigned short nPort,
-      const char* szClients, unsigned short nSequence,
-      const unsigned long nMsgID[], bool bDirect);
-  LICQ_DEPRECATED void icqChatRequestCancel(unsigned long nUin, unsigned short nSequence);
-  LICQ_DEPRECATED unsigned long icqFileTransfer(unsigned long nUin, const char *szFilename,
-     const char *szDescription, ConstFileList &lFileList,
-     unsigned short nLevel, bool bServer);
-  LICQ_DEPRECATED void icqFileTransferRefuse(unsigned long nUin, const char *szReason,
-      unsigned short nSequence, const unsigned long nMsgID[], bool bDirect);
-  LICQ_DEPRECATED void icqFileTransferCancel(unsigned long nUin, unsigned short nSequence);
-  LICQ_DEPRECATED void icqFileTransferAccept(unsigned long nUin, unsigned short nPort,
-     unsigned short nSequence, const unsigned long nMsgID[], bool bDirect,
-     const char *szDesc, const char *szFile, unsigned long nFileSize);
-  LICQ_DEPRECATED unsigned long icqOpenSecureChannel(unsigned long nUin);
-  LICQ_DEPRECATED unsigned long icqCloseSecureChannel(unsigned long nUin);
-  LICQ_DEPRECATED void icqOpenSecureChannelCancel(unsigned long nUin, unsigned short nSequence);
-  LICQ_DEPRECATED unsigned long icqFetchAutoResponseServer(unsigned long);
-  LICQ_DEPRECATED unsigned long icqUserBasicInfo(unsigned long);
-  LICQ_DEPRECATED unsigned long icqUserExtendedInfo(unsigned long);
-  LICQ_DEPRECATED unsigned long icqRequestMetaInfo(unsigned long);
-  LICQ_DEPRECATED unsigned long icqAuthorizeGrant(unsigned long nUin, const char *szMessage);
-  LICQ_DEPRECATED unsigned long icqAuthorizeRefuse(unsigned long nUin, const char *szMessage);
-  LICQ_DEPRECATED void icqRequestAuth(unsigned long _nUin, const char *_szMessage);
-  LICQ_DEPRECATED void icqAlertUser(unsigned long _nUin);
-  LICQ_DEPRECATED void icqAddUser(unsigned long _nUin, bool _bAuthReq = false, unsigned short groupId = 0);
-  LICQ_DEPRECATED void icqAddUserServer(unsigned long _nUin, bool _bAuthReq, unsigned short groupId = 0);
-  LICQ_DEPRECATED void icqRemoveUser(unsigned long _nUin);
-  LICQ_DEPRECATED void icqChangeGroup(unsigned long _nUin, unsigned short _nNewGroup,
-                      unsigned short _nOldGSID, unsigned short _nNewType,
-                      unsigned short _nOldType);
-  LICQ_DEPRECATED void icqRenameUser(unsigned long _nUin);
-  LICQ_DEPRECATED bool AddUserToList(unsigned long _nUin, bool bNotify = true,
-                     bool bTempUser = false, unsigned short groupId = 0);
-  LICQ_DEPRECATED void RemoveUserFromList(unsigned long _nUin);
-  LICQ_DEPRECATED unsigned long icqSendSms(const char *szNumber, const char *szMessage,
-                           unsigned long nUin);
-  LICQ_DEPRECATED void icqAddToVisibleList(unsigned long nUin);
-  LICQ_DEPRECATED void icqRemoveFromVisibleList(unsigned long nUin);
-  LICQ_DEPRECATED void icqToggleVisibleList(unsigned long nUin);
-  LICQ_DEPRECATED void icqAddToInvisibleList(unsigned long nUin);
-  LICQ_DEPRECATED void icqRemoveFromInvisibleList(unsigned long nUin);
-  LICQ_DEPRECATED void icqToggleInvisibleList(unsigned long nUin);
-  LICQ_DEPRECATED void icqAddToIgnoreList(unsigned long nUin);
-  LICQ_DEPRECATED void icqRemoveFromIgnoreList(unsigned long nUin);
-  LICQ_DEPRECATED void icqToggleIgnoreList(unsigned long nUin);
 
 protected:
   CLicq *licq;
@@ -830,10 +1002,10 @@ protected:
   pthread_mutex_t mutex_serverack;
   unsigned short m_nServerAck;
 
-  void ChangeUserStatus(ICQUser *u, unsigned long s);
-  bool AddUserEvent(ICQUser *, CUserEvent *);
-  void RejectEvent(const char* id, CUserEvent* e);
-  ICQUser *FindUserForInfoUpdate(const char *szId, ICQEvent *e, const char *);
+  void ChangeUserStatus(LicqUser* u, unsigned long s);
+  bool AddUserEvent(LicqUser* user, CUserEvent* e);
+  void RejectEvent(const UserId& userId, CUserEvent* e);
+  LicqUser* FindUserForInfoUpdate(const UserId& userId, LicqEvent* e, const char*);
   std::string FindUserByCellular(const char* cellular);
 
   void icqRegisterFinish();
@@ -842,9 +1014,8 @@ protected:
   void icqSendInvisibleList();
   void icqCreatePDINFO();
   void icqRequestSystemMsg();
-  ICQEvent *icqSendThroughServer(const char *szId, unsigned char format, char *_sMessage,
+  ICQEvent *icqSendThroughServer(const char *szId, unsigned char format, const char* _sMessage,
     CUserEvent *, unsigned short = 0, size_t = 0);
-  void SaveUserList();
 
   void FailEvents(int sd, int err);
   ICQEvent *DoneServerEvent(unsigned long, EventResult);
@@ -858,19 +1029,26 @@ protected:
   void ProcessDoneEvent(ICQEvent *);
   void PushEvent(ICQEvent *);
   void PushExtendedEvent(ICQEvent *);
-  void PushPluginSignal(CICQSignal *);
+
+  /**
+   * Add a signal to the signal queues of all plugins.
+   *
+   * @param signal Signal to send
+   */
+  void pushPluginSignal(LicqSignal* signal);
+
   void PushPluginEvent(ICQEvent *);
   void PushProtoSignal(CSignal *, unsigned long);
 
   bool SendEvent(int nSD, CPacket &, bool);
   bool SendEvent(INetSocket *, CPacket &, bool);
   void SendEvent_Server(CPacket *packet);
-  ICQEvent *SendExpectEvent_Server(const char *, unsigned long, CPacket *, CUserEvent *, bool = false);
+  LicqEvent* SendExpectEvent_Server(const UserId& userId, CPacket *, CUserEvent *, bool = false);
 
   ICQEvent* SendExpectEvent_Server(CPacket* packet, CUserEvent* ue, bool extendedEvent = false)
-  { return SendExpectEvent_Server("0", LICQ_PPID, packet, ue, extendedEvent); }
+  { return SendExpectEvent_Server(USERID_NONE, packet, ue, extendedEvent); }
 
-  ICQEvent* SendExpectEvent_Client(const ICQUser* u, CPacket* packet, CUserEvent* ue);
+  ICQEvent* SendExpectEvent_Client(const LicqUser* user, CPacket* packet, CUserEvent* ue);
   ICQEvent *SendExpectEvent(ICQEvent *, void *(*fcn)(void *));
   void AckTCP(CPacketTcp &, int);
   void AckTCP(CPacketTcp &, TCPSocket *);
@@ -914,22 +1092,14 @@ protected:
                                unsigned short, unsigned short);
 
   // Protected plugin related stuff
-  unsigned long icqRequestInfoPlugin(ICQUser *, bool, const char *);
-  unsigned long icqRequestStatusPlugin(ICQUser *, bool, const char *);
+  unsigned long icqRequestInfoPlugin(LicqUser* user, bool, const char *);
+  unsigned long icqRequestStatusPlugin(LicqUser* user, bool, const char *);
   void icqUpdateInfoTimestamp(const char *);
 
   void StupidChatLinkageFix();
 
   // Helpers
   void addToModifyUsers(unsigned long unique_id, const std::string data);
-
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED void RejectEvent(unsigned long nUin, CUserEvent* e);
-  LICQ_DEPRECATED unsigned long FindUinByCellular(const char *_szCellular);
-  LICQ_DEPRECATED ICQEvent* icqSendThroughServer(unsigned long nUin,
-      unsigned char format, char *_sMessage, CUserEvent *, unsigned short = 0);
-  LICQ_DEPRECATED ICQEvent *SendExpectEvent_Server(unsigned long nUin,
-      CPacket *, CUserEvent *, bool = false);
 
   // Declare all our thread functions as friends
   friend void *Ping_tep(void *p);
@@ -941,7 +1111,7 @@ protected:
   friend void *OscarServiceSendQueue_tep(void *p);
   friend void *Shutdown_tep(void *p);
   friend void *ConnectToServer_tep(void *s);
-  friend class ICQUser;
+  friend class LicqUser;
   friend class CSocketManager;
   friend class COscarService;
   friend class CChatManager;

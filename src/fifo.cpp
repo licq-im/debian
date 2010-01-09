@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -154,7 +154,7 @@ static int process_tok(const command_t *table,const char *tok);
 unsigned long StringToStatus(const char* _szStatus)
 {
   const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  unsigned long nStatus = o->AddStatusFlags(0);
+  unsigned long nStatus = 0;
   int i =0;
   static struct 
   {
@@ -336,7 +336,6 @@ static int fifo_status( int argc, const char *const *argv, void *data)
 {
   CICQDaemon *d= (CICQDaemon *) data;
   const char *szStatus = argv[1];
-  bool bOffline;
   unsigned long nStatus;
 
   if( argc == 1 )
@@ -346,9 +345,6 @@ static int fifo_status( int argc, const char *const *argv, void *data)
   }
 
   // Determine the status to go to
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  bOffline = o->StatusOffline();
-  gUserManager.DropOwner(o);
   nStatus = StringToStatus(const_cast<char *>(szStatus));
 
   if (nStatus == INT_MAX)
@@ -357,18 +353,9 @@ static int fifo_status( int argc, const char *const *argv, void *data)
               L_WARNxSTR,L_FIFOxSTR,argv[0],szStatus);
     return -1;
   }
-  else if (nStatus == ICQ_STATUS_OFFLINE)
-  {
-    if (!bOffline) 
-      d->icqLogoff();
-  }
-  else
-  {
-    if (bOffline)
-      d->icqLogon(nStatus);
-    else
-      d->icqSetStatus(nStatus);
-  }
+
+  d->protoSetStatus(gUserManager.ownerUserId(LICQ_PPID), nStatus);
+
   // Now set the auto response
   if( argc > 2 )
   {
@@ -411,7 +398,7 @@ static int fifo_message ( int argc, const char *const *argv, void *data)
   }
 
   if( atoid(argv[1], false, &szId, &nPPID, d) )
-    d->ProtoSendMessage(szId, nPPID, argv[2], false, 0);
+    d->sendMessage(LicqUser::makeUserId(szId, nPPID), argv[2], true, 0);
 
   else
     ReportBadBuddy(argv[0], argv[1]);
@@ -438,7 +425,7 @@ static int fifo_url ( int argc, const char *const *argv, void *data)
   if( atoid(argv[1], false, &szId, &nPPID, d) )
   {
     szDescr = (argc > 3) ? argv[3] : "" ;
-    d->ProtoSendUrl(szId, nPPID, argv[2], szDescr, false, false);
+    d->sendUrl(LicqUser::makeUserId(szId, nPPID), argv[2], szDescr, true, false);
   }
   else
     ReportBadBuddy(argv[0],argv[1]);
@@ -468,7 +455,7 @@ static int fifo_sms(int argc, const char *const *argv, void *data)
       const ICQUser* u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
       if (u != NULL)
       {
-        string number = u->GetCellularNumber();
+        string number = u->getCellularNumber();
         gUserManager.DropUser(u);
         if (!number.empty())
           d->icqSendSms(szId, nPPID, number.c_str(), argv[2]);
@@ -552,7 +539,10 @@ static int fifo_adduser ( int argc, const char *const *argv, void *data)
   }
 
   if( atoid(argv[1], false, &szId, &nPPID, d) )
-    d->AddUserToList(szId, nPPID);
+  {
+    UserId userId = LicqUser::makeUserId(szId, nPPID);
+    gUserManager.addUser(userId);
+  }
   else
     ReportBadBuddy(argv[0],argv[1]);
   free(szId);
@@ -582,8 +572,9 @@ static int fifo_userinfo ( int argc, const char *const *argv, void *data)
                 "info.\n"), L_WARNxSTR, argv[0], szId);
     else
     {
+      UserId userId = u->id();
       gUserManager.DropUser(u);
-      d->icqRequestMetaInfo(szId);
+      d->requestUserInfo(userId);
       ret = 0;
     }
   }
@@ -621,7 +612,7 @@ static int fifo_ui_viewevent ( int argc, const char *const *argv, void *data)
     return 0;
   }
   
-  d->PluginUIViewEvent(szId, nPPID);
+  d->pluginUIViewEvent(LicqUser::makeUserId(szId, nPPID));
 
   if (szId != NULL)
     free(szId);
@@ -643,7 +634,7 @@ static int fifo_ui_message ( int argc, const char *const *argv, void *data)
     nRet = -1;
   }
   else if( atoid(argv[1], true, &szId, &nPPID, d) )
-    d->PluginUIMessage(szId, nPPID);
+    d->pluginUIMessage(LicqUser::makeUserId(szId, nPPID));
   else
   {
     ReportBadBuddy(argv[0],argv[1]);

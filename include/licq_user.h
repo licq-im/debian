@@ -3,16 +3,16 @@
 
 #include <list>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
-
-#include "pthread_rdwr.h"
+#include <boost/any.hpp>
 
 #include "licq_buffer.h"
 #include "licq_history.h"
 #include "licq_file.h"
 #include "licq_icq.h"
+#include "licq_mutex.h"
+#include "licq_types.h"
 
 // Added for plugin convenience
 #include "licq_constants.h"
@@ -42,7 +42,7 @@ extern char* PPIDSTRING(unsigned long ppid);
  *-------------------------------------------------------------------------*/
 #define FOR_EACH_USER_START(x)                           \
   {                                                      \
-    ICQUser *pUser;                                      \
+    LicqUser* pUser;                                     \
     const UserMap* _ul_ = gUserManager.LockUserList(LOCK_R); \
     for (UserMap::const_iterator _i_ = _ul_->begin();    \
          _i_ != _ul_->end(); _i_++)                      \
@@ -53,25 +53,24 @@ extern char* PPIDSTRING(unsigned long ppid);
 
 #define FOR_EACH_PROTO_USER_START(x, y)                  \
   {                                                      \
-    ICQUser *pUser;                                      \
+    LicqUser* pUser;                                     \
     const UserMap* _ul_ = gUserManager.LockUserList(LOCK_R); \
     for (UserMap::const_iterator _i_ = _ul_->begin();    \
          _i_ != _ul_->end(); _i_++)                      \
     {                                                    \
-      if (_i_->first.second != x)                        \
-        continue;                                        \
       pUser = _i_->second;                               \
+      if (pUser->ppid() != x)                            \
+        continue;                                        \
       pUser->Lock(y);                                    \
       {
 
 #define FOR_EACH_OWNER_START(x)                           \
   {                                                       \
-    ICQOwner *pOwner;                                     \
-    OwnerList *_ol_ = gUserManager.LockOwnerList(LOCK_R); \
-    for (OwnerList::iterator _i_ = _ol_->begin();         \
+    OwnerMap* _ol_ = gUserManager.LockOwnerList(LOCK_R);  \
+    for (OwnerMap::const_iterator _i_ = _ol_->begin();    \
          _i_ != _ol_->end(); _i_++)                       \
     {                                                     \
-      pOwner = *_i_;                                      \
+      LicqOwner* pOwner = _i_->second;                    \
       pOwner->Lock(x);                                    \
       {
 
@@ -171,23 +170,6 @@ extern char* PPIDSTRING(unsigned long ppid);
 
 
 
-/*---------------------------------------------------------------------------
- * FOR_EACH_UIN
- *
- * Macros to iterate through the entire list of uins.  "nUin" will be the
- * current uin.  Useful for situations when just the uin is necessary and
- * each user does not need to be locked.  Note the corresponding user can be
- * fetched and locked inside the loop.
- *-------------------------------------------------------------------------*/
-#define FOR_EACH_UIN_START                               \
-  {                                                      \
-    unsigned long nUin;                                  \
-    const UserMap* _ul_ = gUserManager.LockUserList(LOCK_R); \
-    for (UserMap::const_iterator _i_ = _ul_->begin();    \
-         _i_ != _ul_->end(); _i_++)                      \
-    {                                                    \
-      nUin = _i_->second->Uin();                         \
-      {
 
 #define FOR_EACH_PROTO_ID_START(x)                       \
   {                                                      \
@@ -201,27 +183,9 @@ extern char* PPIDSTRING(unsigned long ppid);
       szId = (*_i_)->IdString();                         \
       {
 
-#define FOR_EACH_UIN_END                 \
-      }                                  \
-    }                                    \
-    gUserManager.UnlockUserList();       \
-  }
-
-#define FOR_EACH_PROTO_ID_END FOR_EACH_UIN_END
-
-#define FOR_EACH_UIN_BREAK               \
-        {                                \
-          break;                         \
-        }
-
 #define FOR_EACH_PROTO_ID_BREAK          \
         {                                \
           break;                         \
-        }
-
-#define FOR_EACH_UIN_CONTINUE            \
-        {                                \
-          continue;                      \
         }
 
 #define FOR_EACH_PROTO_ID_CONTINUE       \
@@ -229,18 +193,8 @@ extern char* PPIDSTRING(unsigned long ppid);
           continue;                      \
         }
 
-class ICQUser;
-class ICQOwner;
-class LicqGroup;
-
-typedef std::pair<std::string, unsigned long> UserMapKey;
-typedef std::map<UserMapKey, class ICQUser*> UserMap;
-typedef std::list<class ICQOwner *> OwnerList;
-typedef std::set<unsigned short> UserGroupList;
-typedef std::map<unsigned short, LicqGroup*> GroupMap;
-typedef std::map<unsigned short, std::string> GroupNameMap;
-typedef std::list<unsigned long> UinList;
 typedef std::vector <class CUserEvent *> UserEventList;
+typedef std::map<std::string, boost::any> PropertyMap;
 
 // Cheap hack as I'm too lazy to move the relevant functions to user.cpp
 extern "C" void SetString(char **, const char *);
@@ -263,26 +217,12 @@ typedef enum SecureChannelSupport_et_ {
   SECURE_CHANNEL_SUPPORTED = 2
 } SecureChannelSupport_et;
 
-enum GroupType { GROUPS_SYSTEM, GROUPS_USER };
-
-const unsigned long GROUP_ALL_USERS       = 0;
-const unsigned long GROUP_ONLINE_NOTIFY   = 1;
-const unsigned long GROUP_VISIBLE_LIST    = 2;
-const unsigned long GROUP_INVISIBLE_LIST  = 3;
-const unsigned long GROUP_IGNORE_LIST     = 4;
-const unsigned long GROUP_NEW_USERS       = 5;
-
-/**
- * The amount of registered system groups
- */
-const unsigned long NUM_GROUPS_SYSTEM_ALL = 6;
-
 /**
  * The amount of registered system groups, excluding the 'All Users' group.
  *
  * @deprecated Scheduled for removal, use NUM_GROUPS_SYSTEM_ALL instead.
  */
-const unsigned long NUM_GROUPS_SYSTEM     = NUM_GROUPS_SYSTEM_ALL - 1;
+const int NUM_GROUPS_SYSTEM     = NUM_GROUPS_SYSTEM_ALL - 1;
 
 extern const char *GroupsSystemNames[NUM_GROUPS_SYSTEM_ALL];
 
@@ -309,6 +249,7 @@ const unsigned short LAST_SENT_EVENT    = 2;
 const unsigned short LAST_CHECKED_AR    = 3;
 
 const unsigned short MAX_CATEGORY_SIZE  = 60;
+const unsigned int MAX_CATEGORIES = 4;
 
 typedef enum
 {
@@ -319,37 +260,6 @@ typedef enum
 } UserCat;
 
 //+++++OBJECTS++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-//====ICQUserCategory===========================================================
-class ICQUserCategory
-{
-public:
-  ICQUserCategory(UserCat uc);
-  ~ICQUserCategory();
-  bool AddCategory (unsigned short cat, const char *descr);
-  void Clean();
-
-  bool Get(unsigned d,unsigned short *id, char const ** descr) const;
-  UserCat GetCategory() const                   { return m_uc; }
-
-  static const unsigned MAX_CATEGORIES = 4;
-
-private:
-  bool SaveToDisk(CIniFile &m_fConf,const char *const szN,
-                  const char *const szCat,const char *const szDescr);
-  bool LoadFromDisk(CIniFile &m_fConf, const char *const szN,
-                    const char *const szCat,const char *const szDescr);
-
-  unsigned short used;
-
-  struct cat
-  {       unsigned short id;
-          char *descr;
-  };
-  struct cat data[MAX_CATEGORIES];
-  UserCat m_uc;
-  friend class ICQUser;
-};
 
 struct PhoneBookEntry
 {
@@ -416,153 +326,161 @@ private:
 
   std::vector<struct PhoneBookEntry> PhoneBookVector;
 
-  friend class ICQUser;
+  friend class LicqUser;
 };
 
-//=====ICQUser==================================================================
-/*! \brief Details about an ICQ user and operations to perform on them.
 
-    This class contains all the information about an ICQ user.  It can be
-    retrieved with a read lock (LOCK_R) and may be set with a write lock (LOCK_W).
-    Everything about an ICQ user is in this class.
-*/
-class ICQUser
+// Temporary until all occurenses of deprecated names ICQUser ICQOwner have been removed
+typedef LicqUser ICQUser;
+typedef LicqOwner ICQOwner;
+
+
+/**
+ * A contact in the Licq user list including all information for that user
+ *
+ * Unless otherwise noted, members should only be accessed while holding a lock
+ * to avoid race conditions between threads. User objects are normally
+ * retrieved using the user manager function FetchUser() which will lock the
+ * user before returning it.
+ * Modifying a user object will not trigger any server side changes or generate
+ * events to notify plugins, that is the responsibility of the caller. For some
+ * members (such as group memberships) user manager functions exist that should
+ * be used for this purpose.
+ */
+class LicqUser : public Lockable
 {
 public:
-  ICQUser(const char *id, unsigned long ppid, char *filename);
-  ICQUser(const char *id, unsigned long ppid, bool bTempUser = false);
-  virtual ~ICQUser();
+  /**
+   * Build user id from protocol id and account id
+   * The user id is unique for each user object.
+   *
+   * @param accountId User account id string, protocol specific format
+   * @param ppid Protocol id for user
+   * @return a unique user id for referring to the user
+   */
+  static UserId makeUserId(const std::string& accountId, unsigned long ppid);
+
+  /**
+   * Get account id from user a id
+   *
+   * @param userId User id
+   * @return account id for user
+   */
+  static std::string getUserAccountId(const UserId& userId);
+
+  /**
+   * Get protocol id from user a id
+   *
+   * @param userId User id
+   * @return protocol id for user
+   */
+  static unsigned long getUserProtocolId(const UserId& userId);
+
+
+  /**
+   * Constructor to create a user object for an existing contact
+   *
+   * @param accountId User account id string, protocol specific format
+   * @param ppid Protocol id for user
+   * @param filename Filename to read user data from
+   */
+  LicqUser(const std::string& accountId, unsigned long ppid, const std::string& filename);
+
+  /**
+   * Constructor to create a user object for a new contact
+   *
+   * @param accountId User account id string, protocol specific format
+   * @param ppid Protocol id for user
+   * @param temporary False if user is added permanently to list
+   */
+  LicqUser(const std::string& accountId, unsigned long ppid, bool temporary = false);
+
+  virtual ~LicqUser();
   void RemoveFiles();
 
   void saveAll();
   virtual void SaveLicqInfo();
-  void SaveGeneralInfo();
-  void SaveMoreInfo();
-  void SaveHomepageInfo();
-  void SaveWorkInfo();
-  void SaveAboutInfo();
-  void SaveInterestsInfo();
-  void SaveBackgroundsInfo();
-  void SaveOrganizationsInfo();
+  void saveUserInfo();
   void SavePhoneBookInfo();
   void SavePictureInfo();
-  void SaveExtInfo();
   void SaveNewMessagesInfo();
+
+  /**
+   * Get id for user. This is an id used locally by Licq and is persistant for
+   * each user.
+   *
+   * @return User id
+   */
+  const UserId& id() const                      { return myId; }
+
+  /**
+   * Get account id that server protocol uses to identify user
+   * The format and usage of this string may vary between protocols
+   *
+   * @return account id
+   */
+  const std::string& accountId() const          { return myAccountId; }
+
+  /**
+   * Get protocol instance this user belongs to
+   *
+   * @return protocol instance id
+   */
+  unsigned long ppid() const                    { return myPpid; }
+
+  /**
+   * Get normalized account id that can be used when comparing ids
+   *
+   * @return normalized account id
+   */
+  const std::string& realAccountId() const      { return myRealAccountId; }
+
+  // Old deprecated functions to get account id and protocol id, do not use in new code
+  const char* IdString() const { return accountId().c_str(); }
+  unsigned long PPID() const { return ppid(); }
 
   // General Info
   //!Retrieves the user's alias.
-  const char* GetAlias() const                  { return m_szAlias; }
+  //LICQ_DEPRECATED // Use getAlias() instead
+  const char* GetAlias() const                  { return myAlias.c_str(); }
+  const std::string& getAlias() const           { return myAlias; }
   //!Retrieves the user's first name.
-  const char* GetFirstName() const              { return m_szFirstName; }
+  std::string getFirstName() const              { return getUserInfoString("FirstName"); }
   //!Retrieves the user's last name.
-  const char* GetLastName() const               { return m_szLastName; }
-  //!Retrieves the user's primary e-mail address.
-  const char* GetEmailPrimary() const           { return m_szEmailPrimary; }
-  //!Retrieves the user's secondary e-mail address.
-  const char* GetEmailSecondary() const         { return m_szEmailSecondary; }
-  //!Retrieves the user's old e-mail address.
-  const char* GetEmailOld() const               { return m_szEmailOld; }
-  //!Retrieves the user's city.
-  const char* GetCity() const                   { return m_szCity; }
-  //!Retrieves the user's state.
-  const char* GetState() const                  { return m_szState; }
-  //!Retrieves the user's phone number.
-  const char* GetPhoneNumber() const            { return m_szPhoneNumber; }
-  //!Retrieves the user's fax number.
-  const char* GetFaxNumber() const              { return m_szFaxNumber; }
-  //!Retrieves the user's street address.
-  const char* GetAddress() const                { return m_szAddress; }
-  //!Retrieves the user's cellular phone number.
-  const char* GetCellularNumber() const         { return m_szCellularNumber; }
-  //!Retrieves the user's zip code.
-  const char* GetZipCode() const                { return m_szZipCode; }
-  //!Retrieves the user's country code.  Used to lookup the country name.
-  unsigned short GetCountryCode() const         { return m_nCountryCode; }
+  std::string getLastName() const               { return getUserInfoString("LastName"); }
+
+  /**
+   * Convenience function for getting full name of user
+   *
+   * @return First name plus last name separated by a space if both are set
+   */
+  std::string getFullName() const;
+
+  /**
+   * Convenience function for getting email address for user
+   *
+   * @return Email address for user if available, empty string otherwise
+   */
+  std::string getEmail() const;
+
   //!Retrieves the user's time code.
   char GetTimezone() const                      { return m_nTimezone; }
   //!Returns true if the user requires you to be authorized to add
   //!them to anyone's ICQ list.
   bool GetAuthorization() const                 { return m_bAuthorization; }
-  //!Retrieves the users's web status
-  unsigned char GetWebAwareStatus() const       { return m_nWebAwareStatus; }
-  //!Returns true if the user has attempted to hide the e-mail addresses
-  //!provided in their information.
-  bool GetHideEmail() const                     { return m_bHideEmail; }
-
-  // More Info
-  //!Retrieves the user's age.
-  unsigned short GetAge() const                 { return m_nAge; }
-  //!Retrieves the user's gender.
-  char GetGender() const                        {  return m_nGender; }
-  //!Retrieves the user's homepage URL.
-  const char* GetHomepage() const               {  return m_szHomepage; }
-  //!Retrieves the user's year they were born ih.
-  unsigned short GetBirthYear() const           {  return m_nBirthYear; }
-  //!Retrieves the user's month they were born in.
-  char GetBirthMonth() const                    {  return m_nBirthMonth; }
-  //!Retrieves the user's day they were born in.
-  char GetBirthDay() const                      {  return m_nBirthDay; }
-  //!Retrieves the user's first language.
-  char GetLanguage1() const                     {  return m_nLanguage[0]; }
-  //!Retrieves the user's second language.
-  char GetLanguage2() const                     {  return m_nLanguage[1]; }
-  //!Retrieves the user's third language.
-  char GetLanguage3() const                     {  return m_nLanguage[2]; }
-  //!Retrieves the user's language as specified by the parameter.
-  //!Useful when retrieving their languages in a loop.
-  char GetLanguage(unsigned char l) const       {  return m_nLanguage[l]; }
-
-  // Homepage Info
-  //!Returns true if the user has entered a homepage category
-  bool GetHomepageCatPresent() const            {  return m_bHomepageCatPresent; }
-  //!Retrieves the user's homepage category code
-  unsigned short GetHomepageCatCode() const     {  return m_nHomepageCatCode; }
-  //!Retrivies the users homepage description
-  const char* GetHomepageDesc() const           {  return m_szHomepageDesc; }
-  //!Returns true if the user has an ICQ homepage (http://<uin>.home.icq.com/)
-  bool GetICQHomepagePresent() const            {  return m_bICQHomepagePresent; }
-
-  // Work Info
-  //!Retrieves the city of the company the user is employed by.
-  const char* GetCompanyCity() const            {  return m_szCompanyCity; }
-  //!Retrieves the state of the company the user is employed by.
-  const char* GetCompanyState() const           {  return m_szCompanyState; }
-  //!Retrieves the phone number of the company's phone number the user is employed by.
-  const char* GetCompanyPhoneNumber() const     {  return m_szCompanyPhoneNumber; }
-  //!Retrieves the fax bynber of the company the user is employed by.
-  const char* GetCompanyFaxNumber() const       {  return m_szCompanyFaxNumber; }
-  //!Retrieves the street address of the company the user is employed by.
-  const char* GetCompanyAddress() const         {  return m_szCompanyAddress; }
-  //!Retrieves the zip code of the company the user is employed by.
-  const char* GetCompanyZip() const             { return m_szCompanyZip; }
-  //!Retrieves the country code of the company the user is employed by.
-  //!Used to look up the country name.
-  unsigned short GetCompanyCountry() const      {  return m_nCompanyCountry; }
-  //!Retrieves the name of the company the user is employed by.
-  const char* GetCompanyName() const            {  return m_szCompanyName; }
-  //!Retrieves the department the user is in.
-  const char* GetCompanyDepartment() const      {  return m_szCompanyDepartment; }
-  //!Retrieves the user's job title.
-  const char* GetCompanyPosition() const        {  return m_szCompanyPosition; }
-  //!Retrieves the users's occupation code
-  unsigned short GetCompanyOccupation() const   {  return m_nCompanyOccupation; }
-  //!Retrieves the URL of the company the user is employed by.
-  const char* GetCompanyHomepage() const        {  return m_szCompanyHomepage; }
-
-  // About Info
-  //!Retrieves the self description of the user.
-  const char* GetAbout() const                  { return m_szAbout; }
+  //!Retrieves the user's cellular phone number.
+  std::string getCellularNumber() const         { return getUserInfoString("CellularNumber"); }
 
   // More2 Info
   //!Retrieves the user's interests
-  ICQUserCategory *GetInterests()       { return m_Interests; }
-  const ICQUserCategory* GetInterests() const   { return m_Interests; }
+  UserCategoryMap& getInterests()               { return myInterests; }
+  const UserCategoryMap& getInterests() const   { return myInterests; }
   //!Retrieves the user's backgrounds
-  ICQUserCategory *GetBackgrounds()     { return m_Backgrounds; }
-  const ICQUserCategory* GetBackgrounds() const { return m_Backgrounds; }
+  UserCategoryMap& getBackgrounds()             { return myBackgrounds; }
+  const UserCategoryMap& getBackgrounds() const { return myBackgrounds; }
   //!Retrieves the user's organizations
-  ICQUserCategory *GetOrganizations()   { return m_Organizations; }
-  const ICQUserCategory* GetOrganizations() const { return m_Organizations; }
+  UserCategoryMap& getOrganizations()           { return myOrganizations; }
+  const UserCategoryMap& getOrganizations() const { return myOrganizations; }
 
   // Phone Book Info
   //!Retrives the user's phone book
@@ -629,66 +547,66 @@ public:
   unsigned short StatusToUser() const           { return m_nStatusToUser; }
   bool KeepAliasOnUpdate() const                { return m_bKeepAliasOnUpdate; }
   char *CustomAutoResponse() const              { return m_szCustomAutoResponse; }
-  unsigned long PPID() const                    { return m_nPPID; }
-  const char* IdString() const                  { return m_szId; }
   bool NotInList() const                        { return m_bNotInList; }
 
   char* usprintf(const char* szFormat, unsigned long nFlags = 0) const;
 
   // General Info
-  void SetAlias (const char *n);// {  SetString(&m_szAlias, n);  SaveGeneralInfo();  }
-  void SetFirstName (const char *n)          {  SetString(&m_szFirstName, n);  SaveGeneralInfo();  }
-  void SetLastName (const char *n)           {  SetString(&m_szLastName, n);  SaveGeneralInfo();  }
-  void SetEmailPrimary (const char *n)       {  SetString(&m_szEmailPrimary, n);  SaveGeneralInfo();  }
-  void SetEmailSecondary (const char *n)     {  SetString(&m_szEmailSecondary, n);  SaveGeneralInfo();  }
-  void SetEmailOld(const char *n)            {  SetString(&m_szEmailOld, n);  SaveGeneralInfo();  }
-  void SetCity (const char *n)               {  SetString(&m_szCity, n);  SaveGeneralInfo();  }
-  void SetState (const char *n)              {  SetString(&m_szState, n);  SaveGeneralInfo();  }
-  void SetPhoneNumber (const char *n)        {  SetString(&m_szPhoneNumber, n);  SaveGeneralInfo();  }
-  void SetFaxNumber (const char *n)          {  SetString(&m_szFaxNumber, n);  SaveGeneralInfo();  }
-  void SetAddress (const char *n)            {  SetString(&m_szAddress, n);  SaveGeneralInfo();  }
-  void SetCellularNumber (const char *n)     {  SetString(&m_szCellularNumber, n);  SaveGeneralInfo();  }
-  void SetZipCode (const char *n)            {  SetString(&m_szZipCode, n);  SaveGeneralInfo();  }
-  void SetCountryCode (unsigned short n)     {  m_nCountryCode = n;  SaveGeneralInfo();  }
-  void SetTimezone (const char n)            {  m_nTimezone = n;  SaveGeneralInfo();  }
-  void SetAuthorization (bool n)             {  m_bAuthorization = n;  SaveGeneralInfo();  }
-  virtual void SetWebAwareStatus (char n)    {  m_nWebAwareStatus = n;  }
-  void SetHideEmail (bool n)                 {  m_bHideEmail = n;  SaveGeneralInfo();  }
+  LICQ_DEPRECATED // User setAlias() instead
+  void SetAlias (const char *n)
+  { setAlias(n); }
 
-  // More Info
-  void SetAge (unsigned short n)             {  m_nAge = n;  SaveMoreInfo();  }
-  void SetGender (const char n)              {  m_nGender = n;  SaveMoreInfo();  }
-  void SetHomepage (const char *n)           {  SetString(&m_szHomepage, n);  SaveMoreInfo();  }
-  void SetBirthYear (unsigned short n)       {  m_nBirthYear = n;  SaveMoreInfo();  }
-  void SetBirthMonth (const char n)          {  m_nBirthMonth = n;  SaveMoreInfo();  }
-  void SetBirthDay (const char n)            {  m_nBirthDay = n;  SaveMoreInfo();  }
-  void SetLanguage1 (const char n)           {  m_nLanguage[0] = n;  SaveMoreInfo();  }
-  void SetLanguage2 (const char n)           {  m_nLanguage[1] = n;  SaveMoreInfo();  }
-  void SetLanguage3 (const char n)           {  m_nLanguage[2] = n;  SaveMoreInfo();  }
-  void SetLanguage (unsigned char l, char n) {  m_nLanguage[l] = n;  SaveMoreInfo();  }
+  void setAlias(const std::string& alias);
+  void SetTimezone (const char n)            {  m_nTimezone = n; saveUserInfo();  }
+  void SetAuthorization (bool n)             {  m_bAuthorization = n; saveUserInfo();  }
 
-  // Homepage Info
-  void SetHomepageCatPresent(bool n)         {  m_bHomepageCatPresent = n; SaveHomepageInfo(); }
-  void SetHomepageCatCode(unsigned short n)  {  m_nHomepageCatCode = n; SaveHomepageInfo(); }
-  void SetHomepageDesc(const char *n)        {  SetString(&m_szHomepageDesc, n); SaveHomepageInfo(); }
-  void SetICQHomepagePresent(bool n)         {  m_bICQHomepagePresent = n; SaveHomepageInfo(); }
+  /**
+   * Get string user info
+   *
+   * @param key Name of property to get
+   * @return Property value if string, otherwise empty
+   */
+  std::string getUserInfoString(const std::string& key) const;
 
-  // Work Info
-  void SetCompanyCity (const char *n)        {  SetString(&m_szCompanyCity, n);  SaveWorkInfo();  }
-  void SetCompanyState (const char *n)       {  SetString(&m_szCompanyState, n);  SaveWorkInfo();  }
-  void SetCompanyPhoneNumber (const char *n) {  SetString(&m_szCompanyPhoneNumber, n);  SaveWorkInfo();  }
-  void SetCompanyFaxNumber (const char *n)   {  SetString(&m_szCompanyFaxNumber, n);  SaveWorkInfo();  }
-  void SetCompanyAddress (const char *n)     {  SetString(&m_szCompanyAddress, n);  SaveWorkInfo();  }
-  void SetCompanyZip (const char *n)            { SetString(&m_szCompanyZip, n); SaveWorkInfo(); }
-  void SetCompanyCountry (unsigned short n)  {  m_nCompanyCountry = n;  SaveWorkInfo();  }
-  void SetCompanyName (const char *n)        {  SetString(&m_szCompanyName, n);  SaveWorkInfo();  }
-  void SetCompanyDepartment (const char *n)  {  SetString(&m_szCompanyDepartment, n);  SaveWorkInfo();  }
-  void SetCompanyPosition (const char *n)    {  SetString(&m_szCompanyPosition, n);  SaveWorkInfo();  }
-  void SetCompanyOccupation (unsigned short n) {  m_nCompanyOccupation = n;  SaveWorkInfo();  }
-  void SetCompanyHomepage (const char *n)    {  SetString(&m_szCompanyHomepage, n);  SaveWorkInfo();  }
+  /**
+   * Get numeric user info
+   *
+   * @param key Name of property to get
+   * @return Property value if unsigned int, otherwise 0
+   */
+  unsigned int getUserInfoUint(const std::string& key) const;
 
-  // About Info
-  void SetAbout(const char *n)        {  SetString(&m_szAbout, n);  SaveAboutInfo();  }
+  /**
+   * Get boolean user info
+   *
+   * @param key Name of property to get
+   * @return Property value if bool, otherwise false
+   */
+  bool getUserInfoBool(const std::string& key) const;
+
+  /**
+   * Set string user info
+   *
+   * @param key Name of property to set, must already exist
+   * @param value New value for property
+   */
+  void setUserInfoString(const std::string& key, const std::string& value);
+
+  /**
+   * Set numeric user info
+   *
+   * @param key Name of property to set, must already exist
+   * @param value New value for property
+   */
+  void setUserInfoUint(const std::string& key, unsigned int value);
+
+  /**
+   * Set bool user info
+   *
+   * @param key Name of property to set, must already exist
+   * @param value New value for property
+   */
+  void setUserInfoBool(const std::string& key, bool value);
 
   // Picture info
   void SetPicturePresent(bool b)      { m_bPicturePresent = b; SavePictureInfo(); }
@@ -736,8 +654,6 @@ public:
   void SetCustomAutoResponse(const char *s) { SetString(&m_szCustomAutoResponse, s); SaveLicqInfo(); }
   void ClearCustomAutoResponse()            { SetCustomAutoResponse(""); }
   void SetTyping(unsigned short nTyping)    { m_nTyping = nTyping; }
-  void SetPPID(unsigned long n)       { m_nPPID = n; }
-  void SetId(const char *s)            { SetString(&m_szId, s); SaveLicqInfo(); }
   void SetClientInfo(const char *s)
   {
     free(m_szClientInfo);
@@ -769,14 +685,23 @@ public:
   bool Away() const;
   static const char* StatusToStatusStr(unsigned short n, bool b);
   static const char* StatusToStatusStrShort(unsigned short n, bool b);
-  static char *MakeRealId(const char *, unsigned long, char *&);
+  static LICQ_DEPRECATED char* MakeRealId(const std::string& accountId, unsigned long ppid, char *&);
+
+  /**
+   * Normalize an account id
+   *
+   * @param accountId Account id
+   * @param ppid Protocol instance id
+   * @return Normalized account id
+   */
+  static std::string normalizeId(const std::string& accountId, unsigned long ppid);
+
   int Birthday(unsigned short nDayRange = 0) const;
 
   // Message/History functions
   unsigned short NewMessages() const            { return(m_vcMessages.size()); }
-  CUserEvent *EventPeek(unsigned short);
+  void CancelEvent(unsigned short index);
   const CUserEvent* EventPeek(unsigned short index) const;
-  CUserEvent *EventPeekId(int);
   const CUserEvent* EventPeekId(int id) const;
   const CUserEvent* EventPeekFirst() const;
   const CUserEvent* EventPeekLast() const;
@@ -827,7 +752,7 @@ public:
    * @param groupId Id of group to check
    * @return True if group exists and user is member
    */
-  bool GetInGroup(GroupType gtype, unsigned short groupId) const;
+  bool GetInGroup(GroupType gtype, int groupId) const;
 
   /**
    * Convenience function to set membership of user for a group
@@ -836,7 +761,7 @@ public:
    * @param groupId Id of group
    * @param member True to add user to group, false to remove user from group
    */
-  void SetInGroup(GroupType gtype, unsigned short groupId, bool member);
+  void SetInGroup(GroupType gtype, int groupId, bool member);
 
   /**
    * Add user to a group
@@ -844,7 +769,7 @@ public:
    * @param gtype Group type (GROUPS_SYSTEM or GROUPS_USER)
    * @param groupId Id of group to add
    */
-  void AddToGroup(GroupType gtype, unsigned short groupId);
+  void AddToGroup(GroupType gtype, int groupId);
 
   /**
    * Remove user from a group
@@ -853,7 +778,7 @@ public:
    * @pram groupId Id of group to leave
    * @return True if group was valid and user was a member
    */
-  bool RemoveFromGroup(GroupType gtype, unsigned short groupId);
+  bool RemoveFromGroup(GroupType gtype, int groupId);
 
   // Short cuts to above functions
   bool InvisibleList() const    { return GetInGroup(GROUPS_SYSTEM, GROUP_INVISIBLE_LIST); }
@@ -866,6 +791,21 @@ public:
   void SetOnlineNotify(bool s)   { SetInGroup(GROUPS_SYSTEM, GROUP_ONLINE_NOTIFY, s); }
   void SetIgnoreList(bool s)     { SetInGroup(GROUPS_SYSTEM, GROUP_IGNORE_LIST, s); }
   void SetNewUser(bool s)        { SetInGroup(GROUPS_SYSTEM, GROUP_NEW_USERS, s); }
+
+  /**
+   * Enable/disable on event blocking for this user
+   * This function can be used by UI plugins to block sounds when a user window has focus
+   *
+   * @param block True to block on events, false to enable
+   */
+  void setOnEventsBlocked(bool block) { myOnEventsBlocked = block; }
+
+  /**
+   * Check if on events should be blocked for this user
+   *
+   * @return True if on event should be blocked
+   */
+  bool onEventsBlocked() const { return myOnEventsBlocked; }
 
   // Time
   time_t LocalTime() const;
@@ -925,29 +865,38 @@ public:
   bool Secure() const                           { return m_bSecure; }
 
   virtual bool User() const                     { return true; }
-  void Lock(unsigned short lockType) const;
-  void Unlock() const;
-
-  // Deprecated functions, to be removed
-  ICQUser(unsigned long id, char *filename) LICQ_DEPRECATED;
-  ICQUser(unsigned long id) LICQ_DEPRECATED;
-  LICQ_DEPRECATED unsigned long Uin() const;
-  LICQ_DEPRECATED const char* UinString() const { return m_szId; }
 
 protected:
-  ICQUser() { /* ICQOwner inherited constructor - does nothing */ }
-  void LoadGeneralInfo();
-  void LoadMoreInfo();
-  void LoadHomepageInfo();
-  void LoadWorkInfo();
-  void LoadAboutInfo();
-  void LoadInterestsInfo();
-  void LoadBackgroundsInfo();
-  void LoadOrganizationsInfo();
+  void loadUserInfo();
+
+  /**
+   * Save a category list
+   *
+   * @param category The category map to save
+   * @param file User file, must already be open
+   * @param key Base name of key in file for entries
+   */
+  void saveCategory(const UserCategoryMap& category, CIniFile& file,
+      const std::string& key);
+
+  /**
+   * Load a category list
+   *
+   * @param category The category map to save
+   * @param file User file, must already be open
+   * @param key Base name of key in file for entries
+   */
+  void loadCategory(UserCategoryMap& category, CIniFile& file,
+      const std::string& key);
+
   void LoadPhoneBookInfo();
   void LoadPictureInfo();
   void LoadLicqInfo();
-  void Init(const char *, unsigned long);
+
+  /**
+   * Initialize all user object. Contains common code for all constructors
+   */
+  void Init();
   bool LoadInfo();
   void SetDefaults();
   void AddToContactList();
@@ -966,8 +915,10 @@ protected:
   void SetIdleSince(time_t t)       { m_nIdleSince = t; }
   void SetRegisteredTime(time_t t)  { m_nRegisteredTime = t; }
 
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED void Init(unsigned long nUin);
+  const UserId myId;
+  const std::string myAccountId;
+  const unsigned long myPpid;
+  std::string myRealAccountId;
 
   CIniFile m_fConf;
   CUserHistory m_fHistory;
@@ -996,7 +947,6 @@ protected:
   char *m_szEncoding;
   bool m_bSupportsUTF8;
   char *m_szCustomAutoResponse;
-  char *m_szId;
   bool m_bOnlineNotify,
        m_bSendIntIp,
        m_bSendServer,
@@ -1009,65 +959,24 @@ protected:
   unsigned short m_nStatusToUser, m_nSendLevel;
   bool m_bKeepAliasOnUpdate;
   unsigned short m_nAutoAccept;
+  bool myOnEventsBlocked;
 
   // GPG data
   bool m_bUseGPG;
   char *m_szGPGKey;
 
   // General Info
-  char *m_szAlias;
-  char *m_szFirstName;
-  char *m_szLastName;
-  char *m_szEmailPrimary;
-  char *m_szEmailSecondary;
-  char *m_szEmailOld;
-  char *m_szCity;
-  char *m_szState;
-  char *m_szPhoneNumber;
-  char *m_szFaxNumber;
-  char *m_szAddress;
-  char *m_szCellularNumber;
-  char *m_szZipCode;
-  unsigned short m_nCountryCode;
+  std::string myAlias;
   char m_nTimezone;
   bool m_bAuthorization;
-  bool m_bHideEmail;
-  unsigned char m_nWebAwareStatus;
 
-  // More Info
-  unsigned short m_nAge;
-  char m_nGender;
-  char *m_szHomepage;
-  bool m_bHomepageCatPresent;
-  unsigned short m_nHomepageCatCode;
-  char *m_szHomepageDesc;
-  bool m_bICQHomepagePresent;
-  unsigned short m_nBirthYear;
-  char m_nBirthMonth;
-  char m_nBirthDay;
-  char m_nLanguage[3];
-
-  // Work Info
-  char *m_szCompanyCity;
-  char *m_szCompanyState;
-  char *m_szCompanyPhoneNumber;
-  char *m_szCompanyFaxNumber;
-  char *m_szCompanyAddress;
-  char *m_szCompanyZip;
-  unsigned short m_nCompanyCountry;
-  char *m_szCompanyName;
-  char *m_szCompanyDepartment;
-  char *m_szCompanyPosition;
-  unsigned short m_nCompanyOccupation;
-  char *m_szCompanyHomepage;
-
-  // About Info
-  char *m_szAbout;
+  // myUserInfo holds user information like email, address, homepage etc...
+  PropertyMap myUserInfo;
 
   // More2 Info
-  ICQUserCategory *m_Interests;
-  ICQUserCategory *m_Backgrounds;
-  ICQUserCategory *m_Organizations;
+  UserCategoryMap myInterests;
+  UserCategoryMap myBackgrounds;
+  UserCategoryMap myOrganizations;
 
   // Phone Book Info
   ICQUserPhoneBook *m_PhoneBook;
@@ -1080,9 +989,6 @@ protected:
 
   // Dynamic info fields for protocol plugins
   std::map<std::string, std::string> m_mPPFields;
-
-  // Protocol ID
-  unsigned long m_nPPID;
 
   // Server Side ID, Group SID
   bool m_bAwaitingAuth;
@@ -1099,8 +1005,6 @@ protected:
 
   static unsigned short s_nNumUserEvents;
 
-  mutable pthread_rdwr_t myMutex;
-  mutable unsigned short myLockType;
   static pthread_mutex_t mutex_nNumUserEvents;
 
   friend class CUserManager;
@@ -1111,12 +1015,23 @@ protected:
 };
 
 
-//=====ICQOwner=================================================================
-class ICQOwner : public ICQUser
+/**
+ * A protocol account including all user information for that account
+ *
+ * Inherits LicqUser to hold all user information associated with the account.
+ */
+class LicqOwner : public LicqUser
 {
 public:
-  ICQOwner(const char *, unsigned long);
-  virtual ~ICQOwner();
+  /**
+   * Constructor
+   *
+   * @param accountId User account id
+   * @param ppid Protocol instance id
+   */
+  LicqOwner(const std::string& accountId, unsigned long ppid);
+
+  virtual ~LicqOwner();
   bool Exception() const                        { return m_bException; }
 
   // Owner specific functions
@@ -1126,16 +1041,12 @@ public:
   virtual void SetWebAwareStatus(char c) { SetWebAware(c); }
   void SetHideIp(bool b)       {  m_bHideIp = b; SaveLicqInfo(); }
   void SetSavePassword(bool b) {  m_bSavePassword = b; SaveLicqInfo(); }
-  void SetId(const char *s)    { SetString(&m_szId, s); SaveLicqInfo(); }
   void SetRandomChatGroup(unsigned long n)  { m_nRandomChatGroup = n; SaveLicqInfo(); }
   bool WebAware() const                         { return m_bWebAware; }
   bool HideIp() const                           { return m_bHideIp; }
   bool SavePassword() const                     { return m_bSavePassword; }
   unsigned long RandomChatGroup() const         { return m_nRandomChatGroup; }
   unsigned long AddStatusFlags(unsigned long nStatus) const;
-
-  // Deprecated functions, to be removed
-  LICQ_DEPRECATED void SetUin(unsigned long n);
 
   // Server Side List functions
   time_t GetSSTime() const                      { return m_nSSTime; }
@@ -1166,13 +1077,13 @@ protected:
 
 /**
  * Class holding data for a user group in the contact list.
- * System groups only exists as a bitmask in ICQUser.
+ * System groups only exists as a bitmask in LicqUser.
  *
  * Note: LicqGroup objects should only be created, deleted or modified from the
  * user manager. If set functions are called directly, plugins will not receive
  * any signal notifying them of the change.
  */
-class LicqGroup
+class LicqGroup : public Lockable
 {
 public:
   /**
@@ -1181,7 +1092,7 @@ public:
    * @param id Group id, must be unique
    * @param name Group name
    */
-  LicqGroup(unsigned short id, const std::string& name);
+  LicqGroup(int id, const std::string& name);
 
   /**
    * Destructor
@@ -1194,7 +1105,7 @@ public:
    *
    * @return Group id
    */
-  unsigned short id() const { return myId; }
+  int id() const { return myId; }
 
   /**
    * Get name of group as should be displayed in the user interface
@@ -1210,7 +1121,7 @@ public:
    *
    * @return Sorting index for this group
    */
-  unsigned short sortIndex() const { return mySortIndex; }
+  int sortIndex() const { return mySortIndex; }
 
   /**
    * Group id for this group in the ICQ server side list
@@ -1231,7 +1142,7 @@ public:
    *
    * @param sortIndex Group sorting index
    */
-  void setSortIndex(unsigned short sortIndex) { mySortIndex = sortIndex; }
+  void setSortIndex(int sortIndex) { mySortIndex = sortIndex; }
 
   /**
    * Set group id in ICQ server side list
@@ -1240,26 +1151,11 @@ public:
    */
   void setIcqGroupId(unsigned short icqGroupId) { myIcqGroupId = icqGroupId; }
 
-  /**
-   * Lock group for access
-   *
-   * @param lockType Type of lock (LOCK_R or LOCK_W)
-   */
-  void Lock(unsigned short lockType) const;
-
-  /**
-   * Release current lock for group
-   */
-  void Unlock() const;
-
 private:
-  unsigned short myId;
+  int myId;
   std::string myName;
-  unsigned short mySortIndex;
+  int mySortIndex;
   unsigned short myIcqGroupId;
-
-  mutable pthread_rdwr_t myMutex;
-  mutable unsigned short myLockType;
 };
 
 /**
@@ -1278,21 +1174,44 @@ public:
   ~CUserManager();
   bool Load();
 
+  /**
+   * Find and lock an user object
+   *
+   * @param userId User id
+   * @param lockType Type of lock (LOCK_R or LOCK_W)
+   * @param addUser True if user should be added (as temporary) if not found
+   * @param retWasAdded If not null, will be set to true if user was added
+   * @return The locked user object if user exist or was created, otherwise NULL
+   */
+  LicqUser* fetchUser(const UserId& userId, unsigned short lockType = LOCK_R,
+      bool addUser = false, bool* retWasAdded = NULL);
+
   // For protocol plugins
   void AddOwner(const char *, unsigned long);
-  void AddUser(ICQUser *, const char *, unsigned long);
-  void RemoveUser(const char *, unsigned long);
   void RemoveOwner(unsigned long);
-  ICQUser *FetchUser(const char *, unsigned long, unsigned short);
-  ICQOwner *FetchOwner(unsigned long, unsigned short);
+
+  LicqUser* FetchUser(const char* idstring, unsigned long ppid, unsigned short lockType)
+  { return idstring == NULL ? NULL : fetchUser(LicqUser::makeUserId(idstring, ppid), lockType); }
+
+  LicqOwner* FetchOwner(unsigned long ppid, unsigned short lockType);
 
   /**
    * Release owner lock
    */
-  void DropOwner(const ICQOwner* owner);
+  void DropOwner(const LicqOwner* owner);
 
-  bool IsOnList(const char *, unsigned long);
-  ICQOwner *FindOwner(const char *, unsigned long);
+  /**
+   * Check if a user id is in the list
+   *
+   * @param id User id to check
+   * @return True if user id is in list, otherwise false
+   */
+  bool userExists(const UserId& userId);
+
+  bool IsOnList(const char* accountId, unsigned long ppid)
+  { return accountId == NULL ? false: userExists(LicqUser::makeUserId(accountId, ppid)); }
+
+  LICQ_DEPRECATED LicqOwner* FindOwner(const char* idstring, unsigned long ppid);
 
   /**
    * Get user id for an owner
@@ -1300,23 +1219,25 @@ public:
    * @param ppid Protocol id
    * @return User id of owner or empty string if no such owner exists
    */
+  UserId ownerUserId(unsigned long ppid);
+
+  // Get account id for an owner
   std::string OwnerId(unsigned long ppid);
 
+  /**
+   * Check if user is an owner
+   *
+   * @param userId Id of user to check
+   * @return True if user id is valid and user is an owner
+   */
+  bool isOwner(const UserId& userId);
+
+  LICQ_DEPRECATED // Use LicqUser::makeUserId instead
+  UserId getUserFromAccount(const char* accountId, unsigned long ppid)
+  { return accountId == NULL ? USERID_NONE : LicqUser::makeUserId(accountId, ppid); }
+
   // ICQ Protocol only (from original Licq)
-  void AddUser(ICQUser *);
-  void DropUser(const ICQUser* user);
-
-  // Deprecated user functions, to be removed
-  LICQ_DEPRECATED ICQUser *FetchUser(unsigned long, unsigned short);
-  LICQ_DEPRECATED void RemoveUser(unsigned long);
-  LICQ_DEPRECATED bool IsOnList(unsigned long nUin);
-
-  // Deprecated owner functions, to be removed
-  LICQ_DEPRECATED void SetOwnerUin(unsigned long _nUin);
-  LICQ_DEPRECATED unsigned long OwnerUin() { return icqOwnerUin(); }
-  LICQ_DEPRECATED ICQOwner *FetchOwner(unsigned short);
-  LICQ_DEPRECATED void DropOwner();
-  LICQ_DEPRECATED void DropOwner(unsigned long);
+  void DropUser(const LicqUser* user);
 
   /**
    * Convenience function to get icq owner as an unsigned long
@@ -1327,18 +1248,47 @@ public:
   unsigned long icqOwnerUin();
 
   /**
+   * Add a user to the contact list
+   *
+   * @param userId User to add
+   * @param permanent True if user should be added permanently to list and saved to disk
+   * @param addToServer True if server should be notified (ignored for temporary users)
+   * @param groupId Initial group to place user in or zero for no group
+   * @return false if user id is invalid or user is already in list, otherwise true
+   */
+  bool addUser(const UserId& userId, bool permanent = true,
+      bool addToServer = true, unsigned short groupId = 0);
+
+  /**
+   * Remove a user from the list
+   *
+   * @param userId Id of user to remove
+   */
+  void removeUser(const UserId& userId);
+
+  LICQ_DEPRECATED // use removeUser() instead
+  void RemoveUser(const char* accountId, unsigned long ppid)
+  { if (accountId != NULL) removeUser(LicqUser::makeUserId(accountId, ppid)); }
+
+  /**
    * Lock user list for access
    * call UnlockUserList when lock is no longer needed
    *
    * @param lockType Type of lock (LOCK_R or LOCK_W)
-   * @return Map of all users indexed by UserMapKey
+   * @return Map of all users indexed by user id
    */
-  UserMap* LockUserList(unsigned short lockType);
+  UserMap* LockUserList(unsigned short lockType = LOCK_R);
 
   /**
    * Release user list lock
    */
   void UnlockUserList();
+
+  /**
+   * Save user list to configuration file
+   * Note: This function assumes that the user list is already locked.
+   */
+  void saveUserList() const;
 
   /**
    * Lock group list for access
@@ -1347,14 +1297,25 @@ public:
    * @param lockType Type of lock (LOCK_R or LOCK_W)
    * @return Map of all user groups indexed by group ids
    */
-  GroupMap* LockGroupList(unsigned short lockType);
+  GroupMap* LockGroupList(unsigned short lockType = LOCK_R);
 
   /**
    * Release group list lock
    */
   void UnlockGroupList();
 
-  OwnerList *LockOwnerList(unsigned short);
+  /**
+   * Lock owner list for access
+   * Call UnlockOwnerList when lock is no longer needed
+   *
+   * @param lockType Type of lock (LOCK_R or LOCK_W)
+   * @param Map of all owners indexed by protocol instance id
+   */
+  OwnerMap* LockOwnerList(unsigned short lockType = LOCK_R);
+
+  /**
+   * Release owner list lock
+   */
   void UnlockOwnerList();
 
   /**
@@ -1365,7 +1326,7 @@ public:
    * @param lockType Type of lock to get
    * @return The group if found no NULL if groupId was invalid
    */
-  LicqGroup* FetchGroup(unsigned short groupId, unsigned short lockType);
+  LicqGroup* FetchGroup(int groupId, unsigned short lockType = LOCK_R);
 
   /**
    * Release the lock for a group preivously returned by FetchGroup()
@@ -1381,7 +1342,7 @@ public:
    * @param groupId Id of group to check for
    * @return True if the group exists
    */
-  bool groupExists(GroupType gtype, unsigned short groupId);
+  bool groupExists(GroupType gtype, int groupId);
 
   /**
    * Add a user group
@@ -1390,14 +1351,14 @@ public:
    * @param icqGroupId ICQ server group id
    * @return Id of new group or zero if group could not be created
    */
-  unsigned short AddGroup(const std::string& name, unsigned short icqGroupId = 0);
+  int AddGroup(const std::string& name, unsigned short icqGroupId = 0);
 
   /**
    * Remove a user group
    *
    * @param groupId Id of group to remove
    */
-  void RemoveGroup(unsigned short groupId);
+  void RemoveGroup(int groupId);
 
   /**
    * Rename a user group
@@ -1407,14 +1368,14 @@ public:
    * @param sendUpdate True if server group should be updated
    * @return True if group was successfully renamed
    */
-  bool RenameGroup(unsigned short groupId, const std::string& name, bool sendUpdate = true);
+  bool RenameGroup(int groupId, const std::string& name, bool sendUpdate = true);
 
   /**
    * Get number of user groups
    *
    * @return Number of user groups
    */
-  unsigned short NumGroups();
+  unsigned int NumGroups();
 
   /**
    * Save user group list to configuration file
@@ -1430,7 +1391,7 @@ public:
    * @param groupId Id of group to move
    * @param newIndex New sorting index where 0 is the top position
    */
-  void ModifyGroupSorting(unsigned short groupId, unsigned short newIndex);
+  void ModifyGroupSorting(int groupId, int newIndex);
 
   /**
    * Change ICQ server group id for a user group
@@ -1446,7 +1407,7 @@ public:
    * @param groupId Id of group to change
    * @param icqGroupId ICQ server group id to set
    */
-  void ModifyGroupID(unsigned short groupId, unsigned short icqGroupId);
+  void ModifyGroupID(int groupId, unsigned short icqGroupId);
 
   /**
    * Get ICQ group id from group name
@@ -1462,7 +1423,7 @@ public:
    * @param groupId Group
    * @return Id for iCQ server group or 0 if groupId was invalid
    */
-  unsigned short GetIDFromGroup(unsigned short groupId);
+  unsigned short GetIDFromGroup(int groupId);
 
   /**
    * Get group id from ICQ server group id
@@ -1470,7 +1431,7 @@ public:
    * @param icqGroupId ICQ server group id
    * @return Id for group or 0 if not found
    */
-  unsigned short GetGroupFromID(unsigned short icqGroupId);
+  int GetGroupFromID(unsigned short icqGroupId);
 
   /**
    * Find id for group with a given name
@@ -1478,45 +1439,48 @@ public:
    * @param name Name of the group
    * @return Id for the group or 0 if there is no group with that name
    */
-  unsigned short GetGroupFromName(const std::string& name);
+  int GetGroupFromName(const std::string& name);
 
   unsigned short GenerateSID();
 
   /**
    * Set user group membership and (optionally) update server
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    * @param groupType Group type
    * @param groupId Group id
    * @param inGroup True to add user to group or false to remove
    * @param updateServer True if server list should be updated
    */
-  void SetUserInGroup(const char* id, unsigned long ppid, GroupType groupType,
-      unsigned short groupId, bool inGroup, bool updateServer = true);
+  void setUserInGroup(const UserId& userId, GroupType groupType,
+      int groupId, bool inGroup, bool updateServer = true);
 
-  // Deprecated group manipulation functions
-  LICQ_DEPRECATED void AddUserToGroup(unsigned long _nUin, unsigned short _nGroup);
-  LICQ_DEPRECATED void RemoveUserFromGroup(unsigned long _nUin, unsigned short _nGroup);
+  void SetUserInGroup(const char* id, unsigned long ppid, GroupType groupType,
+      int groupId, bool inGroup, bool updateServer = true)
+  { if (id != NULL) setUserInGroup(LicqUser::makeUserId(id, ppid), groupType, groupId, inGroup, updateServer); }
 
   /**
    * Add user to a group and update server group
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    * @param groupId Group id
    */
-  void AddUserToGroup(const char* id, unsigned long ppid, unsigned short groupId)
+  void addUserToGroup(const UserId& userId, int groupId)
+  { setUserInGroup(userId, GROUPS_USER, groupId, true, true); }
+
+  void AddUserToGroup(const char* id, unsigned long ppid, int groupId)
   { SetUserInGroup(id, ppid, GROUPS_USER, groupId, true, true); }
 
   /**
    * Remove user from a group
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    * @param groupId Group id
    */
-  void RemoveUserFromGroup(const char* id, unsigned long ppid, unsigned short groupId)
+  void removeUserFromGroup(const UserId& userId, int groupId)
+  { setUserInGroup(userId, GROUPS_USER, groupId, false); }
+
+  void RemoveUserFromGroup(const char* id, unsigned long ppid, int groupId)
   { SetUserInGroup(id, ppid, GROUPS_USER, groupId, false); }
 
   void SaveAllUsers();
@@ -1530,12 +1494,13 @@ public:
   unsigned short NumOwners();
 
 protected:
-  pthread_rdwr_t mutex_grouplist, mutex_userlist, mutex_ownerlist;
+  ReadWriteMutex myGroupListMutex;
+  ReadWriteMutex myUserListMutex;
+  ReadWriteMutex myOwnerListMutex;
 
   GroupMap myGroups;
   UserMap myUsers;
-  OwnerList m_vpcOwners;
-  ICQOwner *m_xOwner;
+  OwnerMap myOwners;
   unsigned short m_nUserListLockType;
   unsigned short myGroupListLockType;
   unsigned short m_nOwnerListLockType;
@@ -1547,5 +1512,110 @@ protected:
 
 
 extern class CUserManager gUserManager;
+
+
+/**
+ * Read mutex guard for LicqUser
+ */
+class LicqUserReadGuard : public ReadMutexGuard<LicqUser>
+{
+public:
+  /**
+   * Constructor, will fetch and lock a user based on user id
+   * Note: Always check that the user was actually fetched before using
+   *
+   * @param userId Id of user to fetch
+   * @param addUser True if user should be added (as temporary) if not found
+   * @param retWasAdded If not null, will be set to true if user was added
+   */
+  LicqUserReadGuard(const UserId& userId, bool addUser = false, bool* retWasAdded = NULL)
+    : ReadMutexGuard<LicqUser>(gUserManager.fetchUser(userId, LOCK_R, addUser, retWasAdded))
+  { }
+
+  // Derived constructors
+  LicqUserReadGuard(LicqUser* user, bool locked = true)
+    : ReadMutexGuard<LicqUser>(user, locked)
+  { }
+  LicqUserReadGuard(ReadMutexGuard<LicqUser>* guard)
+    : ReadMutexGuard<LicqUser>(guard)
+  { }
+};
+
+/**
+ * Write mutex guard for LicqUser
+ */
+class LicqUserWriteGuard : public WriteMutexGuard<LicqUser>
+{
+public:
+  /**
+   * Constructor, will fetch and lock a user based on user id
+   * Note: Always check that the user was actually fetched before using
+   *
+   * @param userId Id of user to fetch
+   * @param addUser True if user should be added (as temporary) if not found
+   * @param retWasAdded If not null, will be set to true if user was added
+   */
+  LicqUserWriteGuard(const UserId& userId, bool addUser = false, bool* retWasAdded = NULL)
+    : WriteMutexGuard<LicqUser>(gUserManager.fetchUser(userId, LOCK_W, addUser, retWasAdded))
+  { }
+
+  // Derived constructors
+  LicqUserWriteGuard(LicqUser* user, bool locked = true)
+    : WriteMutexGuard<LicqUser>(user, locked)
+  { }
+  LicqUserWriteGuard(WriteMutexGuard<LicqUser>* guard)
+    : WriteMutexGuard<LicqUser>(guard)
+  { }
+};
+
+/**
+ * Read mutex guard for LicqGroup
+ */
+class LicqGroupReadGuard : public ReadMutexGuard<LicqGroup>
+{
+public:
+  /**
+   * Constructor, will fetch and lock a group based on group id
+   * Note: Always check that the group was actually fetched before using
+   *
+   * @param groupId Id of group to fetch
+   */
+  LicqGroupReadGuard(int groupId)
+    : ReadMutexGuard<LicqGroup>(gUserManager.FetchGroup(groupId, LOCK_R))
+  { }
+
+  // Derived constructors
+  LicqGroupReadGuard(LicqGroup* group, bool locked = true)
+    : ReadMutexGuard<LicqGroup>(group, locked)
+  { }
+  LicqGroupReadGuard(ReadMutexGuard<LicqGroup>* guard)
+    : ReadMutexGuard<LicqGroup>(guard)
+  { }
+};
+
+/**
+ * Write mutex guard for LicqGroup
+ */
+class LicqGroupWriteGuard : public WriteMutexGuard<LicqGroup>
+{
+public:
+  /**
+   * Constructor, will fetch and lock a group based on group id
+   * Note: Always check that the group was actually fetched before using
+   *
+   * @param groupId Id of group to fetch
+   */
+  LicqGroupWriteGuard(int groupId)
+    : WriteMutexGuard<LicqGroup>(gUserManager.FetchGroup(groupId, LOCK_W))
+  { }
+
+  // Derived constructors
+  LicqGroupWriteGuard(LicqGroup* group, bool locked = true)
+    : WriteMutexGuard<LicqGroup>(group, locked)
+  { }
+  LicqGroupWriteGuard(WriteMutexGuard<LicqGroup>* guard)
+    : WriteMutexGuard<LicqGroup>(guard)
+  { }
+};
 
 #endif

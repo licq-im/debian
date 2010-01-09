@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,10 +39,9 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::AuthUserDlg */
 
-AuthUserDlg::AuthUserDlg(QString id, unsigned long ppid, bool grant, QWidget* parent)
+AuthUserDlg::AuthUserDlg(const UserId& userId, bool grant, QWidget* parent)
   : QDialog(parent),
-    myId(id),
-    myPpid(ppid),
+    myUserId(userId),
     myGrant(grant)
 {
   Support::setWidgetProps(this, "AuthUserDialog");
@@ -54,7 +53,7 @@ AuthUserDlg::AuthUserDlg(QString id, unsigned long ppid, bool grant, QWidget* pa
 
   QLabel* lblUin = new QLabel();
   lblUin->setAlignment(Qt::AlignCenter);
-  if (myId.isEmpty())
+  if (!USERID_ISVALID(myUserId))
   {
     lblUin->setText(tr("User Id:"));
     myUin = new QLineEdit();
@@ -68,11 +67,11 @@ AuthUserDlg::AuthUserDlg(QString id, unsigned long ppid, bool grant, QWidget* pa
   {
     myUin = NULL;
     toplay->addWidget(lblUin);
-    QString userName = myId;
-    const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
+    QString userName = LicqUser::getUserAccountId(myUserId).c_str();
+    const LicqUser* u = gUserManager.fetchUser(myUserId);
     if (u != NULL)
     {
-       userName = QString("%1 (%2)").arg(QString::fromUtf8(u->GetAlias())).arg(myId);
+       userName = QString("%1 (%2)").arg(QString::fromUtf8(u->GetAlias())).arg(u->accountId().c_str());
        gUserManager.DropUser(u);
     }
 
@@ -99,7 +98,7 @@ AuthUserDlg::AuthUserDlg(QString id, unsigned long ppid, bool grant, QWidget* pa
 
   toplay->addWidget(buttons);
 
-  if (myId.isEmpty())
+  if (!USERID_ISVALID(myUserId))
     myUin->setFocus();
   else
     myResponse->setFocus();
@@ -112,18 +111,16 @@ void AuthUserDlg::ok()
   if (myUin != NULL && myUin->text().trimmed().isEmpty())
     return;
 
-  if (myId.isEmpty())
-    myId = myUin->text().trimmed();
+  if (!USERID_ISVALID(myUserId))
+    myUserId = LicqUser::makeUserId(myUin->text().trimmed().toLatin1().data(), LICQ_PPID);
 
-  if (!myId.isEmpty())
+  if (USERID_ISVALID(myUserId))
   {
-    QTextCodec* codec = UserCodec::codecForProtoUser(myId, myPpid);
+    const QTextCodec* codec = UserCodec::codecForUserId(myUserId);
     if (myGrant)
-      gLicqDaemon->ProtoAuthorizeGrant(
-          myId.toLatin1(), myPpid, codec->fromUnicode(myResponse->toPlainText()));
+      gLicqDaemon->authorizeGrant(myUserId, codec->fromUnicode(myResponse->toPlainText()).data());
     else
-      gLicqDaemon->ProtoAuthorizeRefuse(
-          myId.toLatin1(), myPpid, codec->fromUnicode(myResponse->toPlainText()));
+      gLicqDaemon->authorizeRefuse(myUserId, codec->fromUnicode(myResponse->toPlainText()).data());
     close();
   }
 }

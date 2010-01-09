@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,21 +23,45 @@
 #include "config/contactlist.h"
 
 #include "contactlist.h"
+#include "mode2contactlistproxy.h"
 
 using namespace LicqQtGui;
 
 MainContactListProxy::MainContactListProxy(ContactListModel* contactList, QObject* parent)
   : SortedContactListProxy(contactList, parent),
-    myThreadedView(false)
+    myContactList(contactList),
+    myThreadedView(false),
+    myMode2View(false),
+    myProxy(NULL)
 {
   // Update filter when list configuration changes
   connect(Config::ContactList::instance(), SIGNAL(currentListChanged()), SLOT(configUpdated()));
 }
 
-void MainContactListProxy::setThreadedView(bool enable)
+void MainContactListProxy::setThreadedView(bool enable, bool mode2)
 {
   myThreadedView = enable;
-  invalidateFilter();
+  myMode2View = (enable && mode2);
+
+  if (!myMode2View && myProxy != NULL)
+  {
+    // setSourceModel triggers reset() which will cause view to call us again
+    // make sure we set myProxy to NULl first so we won't trigger this block again
+    QAbstractProxyModel* oldProxy = myProxy;
+    myProxy = NULL;
+    setSourceModel(myContactList);
+    delete oldProxy;
+  }
+  else if (myMode2View && myProxy == NULL)
+  {
+    myProxy = new Mode2ContactListProxy(myContactList, this);
+    setSourceModel(myProxy);
+  }
+  else
+  {
+    // No proxy added/removed, just force filter to update
+    invalidateFilter();
+  }
 }
 
 void MainContactListProxy::configUpdated()
@@ -61,7 +85,7 @@ bool MainContactListProxy::filterAcceptsRow(int source_row, const QModelIndex& s
       // Filter "Other users" (id 0) when empty regardless of configuration
       if (myThreadedView &&
           (!Config::ContactList::instance()->showEmptyGroups() ||
-          item.data(ContactListModel::GroupIdRole).toUInt() == 0))
+          item.data(ContactListModel::GroupIdRole).toInt() == 0))
       {
         // Check for empty groups
         if (item.data(ContactListModel::UserCountRole).toInt() == 0)
@@ -79,7 +103,7 @@ bool MainContactListProxy::filterAcceptsRow(int source_row, const QModelIndex& s
     {
       // Filter ignored users from all groups except "Ignore List"
       if ((item.data(ContactListModel::ExtendedStatusRole).toUInt() & ContactListModel::IgnoreStatus) &&
-          item.data(ContactListModel::GroupIdRole).toUInt() != ContactListModel::SystemGroupOffset + GROUP_IGNORE_LIST)
+          item.data(ContactListModel::GroupIdRole).toInt() != ContactListModel::SystemGroupOffset + GROUP_IGNORE_LIST)
         return false;
 
       // Filter offline users unless "Show Offline Users" are enabled
@@ -91,8 +115,12 @@ bool MainContactListProxy::filterAcceptsRow(int source_row, const QModelIndex& s
     }
     case ContactListModel::BarItem:
     {
+      // In mode 2 view, if groups are always visible, bars are always needed
+      if (myMode2View && Config::ContactList::instance()->showEmptyGroups())
+        return true;
+
       // Filter all sub group headers
-      if (myThreadedView)
+      if (myThreadedView && !myMode2View)
         return false;
 
       ContactListModel::SubGroupType subGroup = static_cast<ContactListModel::SubGroupType>(item.data(ContactListModel::SubGroupRole).toInt());
@@ -109,7 +137,7 @@ bool MainContactListProxy::filterAcceptsRow(int source_row, const QModelIndex& s
       // Filter the offline header if offline users are filtered, but keep header if any user has unread events
       if (!Config::ContactList::instance()->showOffline() &&
           subGroup == ContactListModel::OfflineSubGroup &&
-          item.data(ContactListModel::UnreadEventsRole).toInt() == 0)
+          !item.data(ContactListModel::VisibilityRole).toBool())
         return false;
 
       break;

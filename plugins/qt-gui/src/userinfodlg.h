@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 #include <qwidget.h>
 
 #include "licq_history.h"
+#include <licq_types.h>
+
 #include "mainwin.h"
 #include "catdlg.h"
 #include "phonedlg.h"
@@ -39,12 +41,12 @@ class QListViewItem;
 
 class CInfoField;
 class CICQDaemon;
-class ICQEvent;
+class LicqEvent;
 class CSignalManager;
 class CMainWindow;
 class CEInfoField;
 class CEComboBox;
-class ICQUser;
+class LicqUser;
 
 class UserInfoDlg : public QWidget
 {
@@ -67,11 +69,10 @@ public:
   };
 
   UserInfoDlg(CICQDaemon *s, CSignalManager *theSigMan, CMainWindow *m,
-    const char *szId, unsigned long nPPID, QWidget *parent = 0);
+      const UserId& userId, QWidget *parent = 0);
   virtual ~UserInfoDlg();
 
-  char *Id()  { return m_szId; }
-  unsigned long PPID()  { return m_nPPID; }
+  const UserId& userId() const { return myUserId; }
   void showTab(int);
   bool isTabShown(int);
   void retrieveSettings() { slotRetrieve(); }
@@ -85,8 +86,7 @@ protected:
   } tabList[InfoTabCount];
   bool m_bOwner;
   int currentTab;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   QString m_sProgressMsg;
   QString m_sBasic;
   CICQDaemon *server;
@@ -173,17 +173,17 @@ protected:
   bool m_bHistoryReverse;
   unsigned short m_nHistoryIndex, m_nHistoryShowing;
 
-  void SetGeneralInfo(ICQUser *);
-  void SetMoreInfo(ICQUser *);
-  void SetMore2Info(ICQUser *);
-  void UpdateMore2Info(QTextCodec *, ICQUserCategory *);
-  void SetWorkInfo(ICQUser *);
-  void SetAbout(ICQUser *);
-  void SetPhoneBook(ICQUser *);
+  void SetGeneralInfo(const LicqUser* u);
+  void SetMoreInfo(const LicqUser* u);
+  void SetMore2Info(const LicqUser* u);
+  void UpdateMore2Info(QTextCodec* codec, UserCat cat, const UserCategoryMap& category);
+  void SetWorkInfo(const LicqUser*u);
+  void SetAbout(const LicqUser* u);
+  void SetPhoneBook(const LicqUser* u);
   void UpdatePhoneBook(QTextCodec *);
-  void SetPicture(ICQUser *);
-  void SetLastCountersInfo(ICQUser *);
-  void SetKABCInfo(ICQUser *);
+  void SetPicture(const LicqUser* u);
+  void SetLastCountersInfo(const LicqUser* u);
+  void SetKABCInfo(const LicqUser* u);
   void UpdateKABCInfo();
   void SaveGeneralInfo();
   void SaveMoreInfo();
@@ -203,32 +203,30 @@ protected slots:
   void HistoryReverse(bool);
   void HistoryReload();
   void updateTab(const QString&);
-  void updatedUser(CICQSignal*);
+  void updatedUser(const UserId& userId, unsigned long subSignal);
   void SaveSettings();
   void slotUpdate();
   void slotRetrieve();
-  void doneFunction(ICQEvent*);
+  void doneFunction(LicqEvent*);
   void slot_aliasChanged(const QString &);
   void resetCaption();
-  void ShowUsermenu() { gMainWindow->SetUserMenuUser(m_szId, m_nPPID); }
+  void ShowUsermenu() { gMainWindow->SetUserMenuUser(myUserId); }
   void slot_showHistoryTimer();
   void EditCategory(QListViewItem *selected);
-  void setCategory(ICQUserCategory *cat);
+  void setCategory(UserCat cat, const UserCategoryMap& category);
   void PhoneBookUpdated(struct PhoneBookEntry pbe, int nEntry);
   void EditPhoneEntry(QListViewItem *selected);
   void ChangeActivePhone(int index);
 
 signals:
-  void finished(const char *, unsigned long);
-  void finished(unsigned long);
-  void signal_updatedUser(CICQSignal *);
+  void finished(const UserId& userId);
 
 private:
   static bool chkContains(const char* text, const char* filter, int filterlen);
   QTimer *timer;
-  ICQUserCategory *m_Interests;
-  ICQUserCategory *m_Backgrounds;
-  ICQUserCategory *m_Organizations;
+  UserCategoryMap myInterests;
+  UserCategoryMap myBackgrounds;
+  UserCategoryMap myOrganizations;
   ICQUserPhoneBook *m_PhoneBook;
 };
 

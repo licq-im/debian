@@ -10,6 +10,7 @@ set(widgets_SRCS
   mledit.cpp
   mlview.cpp
   protocombobox.cpp
+  shortcutedit.cpp
   skinnablebutton.cpp
   skinnablecombobox.cpp
   skinnablelabel.cpp
@@ -17,6 +18,10 @@ set(widgets_SRCS
   timezoneedit.cpp
   treepager.cpp
 )
+
+if (HAVE_HUNSPELL)
+  list(APPEND widgets_SRCS spellchecker.cpp)
+endif (HAVE_HUNSPELL)
 
 string(REGEX REPLACE ".cpp" ".h" widgets_HDRS "${widgets_SRCS}")
 

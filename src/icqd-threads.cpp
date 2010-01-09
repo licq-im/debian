@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -14,10 +14,10 @@
 #include <cerrno>
 #include <unistd.h>
 
-#include "pthread_rdwr.h"
 #include "time-fix.h"
 
 #include "licq_log.h"
+#include "licq_mutex.h"
 #include "licq_packets.h"
 #include "licq_oscarservice.h"
 #include "licq_plugind.h"
@@ -383,12 +383,12 @@ void *ProcessRunningEvent_Client_tep(void *p)
   // Check if the socket is connected
   if (e->m_nSocketDesc == -1)
   {
-    string id = e->Id();
-    unsigned long ppid = e->PPID();
+    UserId userId = e->userId();
+    string id = LicqUser::getUserAccountId(userId);
     unsigned char nChannel = e->Channel();
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
-    const ICQUser* u = gUserManager.FetchUser(id.c_str(), ppid, LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(userId);
     if (u == NULL)
     {
       if (d->DoneEvent(e, EVENT_ERROR) != NULL)
@@ -420,7 +420,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
       if (nId != -1)
       {
         d->WaitForReverseConnection(nId, id.c_str());
-        u = gUserManager.FetchUser(id.c_str(), LICQ_PPID, LOCK_R);
+        u = gUserManager.fetchUser(userId);
         if (u == NULL)
         {
           if (d->DoneEvent(e, EVENT_ERROR) != NULL)
@@ -463,7 +463,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
         if (nId != -1)
         {
           d->WaitForReverseConnection(nId, id.c_str());
-          u = gUserManager.FetchUser(id.c_str(), LICQ_PPID, LOCK_R);
+          u = gUserManager.fetchUser(userId);
           if (u == NULL)
           {
             if (d->DoneEvent(e, EVENT_ERROR) != NULL)
@@ -669,7 +669,7 @@ void *MonitorSockets_tep(void *p)
   CICQDaemon *d = (CICQDaemon *)p;
 
   fd_set f;
-  int nSocketsAvailable, nCurrentSocket, nServiceSocket, l;
+  int nSocketsAvailable, nServiceSocket, l;
   char buf[1024];
 
   while (true)
@@ -702,12 +702,15 @@ void *MonitorSockets_tep(void *p)
     }
     else
       nServiceSocket = -1;
-                                                  
-    nCurrentSocket = 0;
-    while (nSocketsAvailable > 0 && nCurrentSocket < l)
+
+    for (int nCurrentSocket = 0; nSocketsAvailable >= 0 && nCurrentSocket < l; ++nCurrentSocket)
     {
-      if (FD_ISSET(nCurrentSocket, &f))
-      {
+      if (!FD_ISSET(nCurrentSocket, &f))
+        continue;
+
+      --nSocketsAvailable;
+
+
         // New socket event ----------------------------------------------------
         if (nCurrentSocket == d->pipe_newsocket[PIPE_READ])
         {
@@ -729,33 +732,35 @@ void *MonitorSockets_tep(void *p)
           DEBUG_THREADS("[MonitorSockets_tep] Data on FIFO.\n");
           fgets(buf, 1024, d->fifo_fs);
           d->ProcessFifo(buf);
-        }
+        continue;
+      }
 
-        else
-        {
           INetSocket *s = gSocketManager.FetchSocket(nCurrentSocket);
-          if (s != NULL && s->OwnerId() != NULL &&
-              s->OwnerId() == gUserManager.OwnerId(LICQ_PPID) &&
+      if (s != NULL && USERID_ISVALID(s->userId()) &&
+          s->userId() == gUserManager.ownerUserId(LICQ_PPID) &&
               d->m_nTCPSrvSocketDesc == -1)
           {
             /* This is the server socket and it is about to be destoryed
                so ignore this message (it's probably a disconnection anyway) */
             gSocketManager.DropSocket(s);
+            continue;
           }
 
           // Message from the server -------------------------------------------
-          else if (nCurrentSocket == d->m_nTCPSrvSocketDesc)
-          {
+      if (nCurrentSocket == d->m_nTCPSrvSocketDesc)
+      {
               DEBUG_THREADS("[MonitorSockets_tep] Data on TCP server socket.\n");
-              SrvSocket *srvTCP = static_cast<SrvSocket*>(s);
+        SrvSocket* srvTCP = dynamic_cast<SrvSocket*>(s);
               if (srvTCP == NULL)
               {
               gLog.Warn(tr("%sInvalid server socket in set.\n"), L_WARNxSTR);
               close(nCurrentSocket);
-            }
+          continue;
+        }
+
             // DAW FIXME error handling when socket is closed..
-            else if (srvTCP->Recv())
-            {
+        if (srvTCP->Recv())
+        {
               CBuffer packet(srvTCP->RecvBuffer());
               srvTCP->ClearRecvBuffer();
               gSocketManager.DropSocket(srvTCP);
@@ -782,7 +787,13 @@ void *MonitorSockets_tep(void *p)
           {
             DEBUG_THREADS("[MonitorSockets_tep] Data on BART service socket.\n");
             COscarService *svc = d->m_xBARTService;
-            SrvSocket *sock_svc = static_cast<SrvSocket*>(s);
+        SrvSocket* sock_svc = dynamic_cast<SrvSocket*>(s);
+        if (sock_svc == NULL)
+        {
+          gLog.Warn(tr("%sInvalid BART service socket in set.\n"), L_WARNxSTR);
+          close(nCurrentSocket);
+          continue;
+        }
             if (sock_svc->Recv())
             {
               CBuffer packet(sock_svc->RecvBuffer());
@@ -813,14 +824,14 @@ void *MonitorSockets_tep(void *p)
           {
             DEBUG_THREADS("[MonitorSockets_tep] Data on listening TCP socket."
                           "\n");
-            TCPSocket* tcp = static_cast<TCPSocket *>(s);
+        TCPSocket* tcp = dynamic_cast<TCPSocket *>(s);
             if (tcp == NULL)
             {
               gLog.Warn(tr("%sInvalid server TCP socket in set.\n"), L_WARNxSTR);
               close(nCurrentSocket);
-            }
-            else
-            {
+          continue;
+        }
+
               TCPSocket *newSocket = new TCPSocket();
               bool ok = tcp->RecvConnection(*newSocket);
               gSocketManager.DropSocket(tcp);
@@ -829,16 +840,14 @@ void *MonitorSockets_tep(void *p)
               if (!ok || gSocketManager.Num() > MAX_CONNECTS)
               {
                 // Too many sockets, drop this one
-                char remoteIp[32];
                 gLog.Warn(tr("%sToo many connected sockets, rejecting connection from %s.\n"),
-                    L_WARNxSTR, newSocket->RemoteIpStr(remoteIp));
+                    L_WARNxSTR, newSocket->getRemoteIpString().c_str());
                 delete newSocket;
               }
               else
               {
                 gSocketManager.AddSocket(newSocket);
                 gSocketManager.DropSocket(newSocket);
-              }
             }
           }
 
@@ -849,35 +858,36 @@ void *MonitorSockets_tep(void *p)
 
             ssl_recv:
 
-            TCPSocket *tcp = static_cast<TCPSocket *>(s);
+        TCPSocket* tcp = dynamic_cast<TCPSocket *>(s);
 
             // If tcp is NULL then the socket is no longer in the set, hence it
             // must have been closed by us and we can ignore it.
             if (tcp == NULL)
-              goto socket_done;
+          continue;
 
             if (!tcp->RecvPacket())
             {
               int err = tcp->Error();
               if (err == 0)
                 gLog.Info(tr("%sConnection to %s was closed.\n"), L_TCPxSTR,
-                    tcp->OwnerId());
+                USERID_TOSTR(tcp->userId()));
               else
               {
                 char buf[128];
                 gLog.Info(tr("%sConnection to %s lost:\n%s%s.\n"), L_TCPxSTR,
-                    tcp->OwnerId(), L_BLANKxSTR, tcp->ErrorStr(buf, 128));
+                USERID_TOSTR(tcp->userId()), L_BLANKxSTR, tcp->ErrorStr(buf, 128));
               }
-              ICQUser *u = gUserManager.FetchUser(tcp->OwnerId(),
-                tcp->OwnerPPID(), LOCK_W);
-              if (u && u->Secure())
-              {
-                u->ClearSocketDesc(ICQ_CHNxNONE);
-                u->SetSecure(false);
-                d->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-                  USER_SECURITY, u->IdString(), u->PPID(), 0));
+          if (USERID_ISVALID(tcp->userId()))
+          {
+            LicqUser* u = gUserManager.fetchUser(tcp->userId(), LOCK_W);
+                if (u && u->Secure())
+                {
+                  u->ClearSocketDesc(ICQ_CHNxNONE);
+                  u->SetSecure(false);
+                  d->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_SECURITY, u->id(), 0));
+                }
+                gUserManager.DropUser(u);
               }
-              gUserManager.DropUser(u);
               gSocketManager.DropSocket(tcp);
               gSocketManager.CloseSocket(nCurrentSocket);
               d->FailEvents(nCurrentSocket, err);
@@ -892,7 +902,7 @@ void *MonitorSockets_tep(void *p)
             // Process the packet if the buffer is full
             if (tcp->RecvBufferFull())
             {
-              if (tcp->OwnerPPID() != LICQ_PPID)
+          if (LicqUser::getUserProtocolId(tcp->userId()) != LICQ_PPID)
                 r = d->ProcessTcpHandshake(tcp);
               else
                 r = d->ProcessTcpPacket(tcp);
@@ -903,7 +913,7 @@ void *MonitorSockets_tep(void *p)
             if (!r)
             {
               gLog.Info(tr("%sClosing connection to %s.\n"), L_TCPxSTR,
-                  tcp->OwnerId());
+              USERID_TOSTR(tcp->userId()));
               gSocketManager.DropSocket(tcp);
               gSocketManager.CloseSocket(nCurrentSocket);
               d->FailEvents(nCurrentSocket, 0);
@@ -916,14 +926,7 @@ void *MonitorSockets_tep(void *p)
 
             // If there is more data pending then go again
             if (bPending) goto ssl_recv;
-          }
-        }
-
-        socket_done:
-
-        nSocketsAvailable--;
       }
-      nCurrentSocket++;
     }
   }
   return NULL;
@@ -1012,7 +1015,7 @@ void *UpdateUsers_tep(void *p)
             strlen(pUser->BuddyIconHash()) > 0 &&
             strcmp(pUser->BuddyIconHash(), pUser->OurBuddyIconHash()) != 0)
         {
-          d->m_xBARTService->SendEvent(pUser->IdString(), ICQ_SNACxBART_DOWNLOADxREQUEST, true);
+          d->m_xBARTService->SendEvent(pUser->id(), ICQ_SNACxBART_DOWNLOADxREQUEST, true);
           bSent = true;
           bBART = true;
         }

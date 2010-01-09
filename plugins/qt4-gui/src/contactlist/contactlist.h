@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,11 +24,14 @@
 #include <QAbstractItemModel>
 #include <QList>
 
-#include <licq_user.h>
+#include <licq_icq.h>
+#include <licq_types.h>
 
-class CICQSignal;
-class ICQUser;
+class LicqUser;
 
+// Allow UserId to be used in QVariant and QSet
+Q_DECLARE_METATYPE(UserId)
+uint qHash(const UserId& userId);
 
 namespace LicqQtGui
 {
@@ -81,6 +84,7 @@ public:
     SubGroupRole,                       // Sub group type (one of enum SubGroupType) (UserItems and BarItems only)
     UserCountRole,                      // Number of users in this group (GroupItems and BarItems only)
     UserIdRole,                         // Id for user (UserItems only)
+    AccountIdRole,                      // Account id for user (UserItems only)
     PpidRole,                           // Protocol id for user (UserItems only)
     StatusRole,                         // Contact status (UserItems only)
     FullStatusRole,                     // Contact full status (UserItems only)
@@ -89,7 +93,7 @@ public:
     CarAnimationRole,                   // Auto response read animation counter (UserItems only)
     OnlineAnimationRole,                // Online animation counter (UserItems only)
     EventAnimationRole,                 // Unread event animation counter (UserItems only)
-    VisibilityRole,                     // Item should always be visible (UserItems and GroupItems only)
+    VisibilityRole,                     // Item should always be visible
   };
 
   /**
@@ -180,7 +184,7 @@ public:
   /**
    * Offset on group id for system groups
    */
-  static const unsigned short SystemGroupOffset = 1000;
+  static const int SystemGroupOffset = 1000;
 
   /**
    * Constructor
@@ -199,30 +203,23 @@ public:
    * Refresh data and group membership for a user
    * As the daemon does not signal some things the main window must use this function to notify us.
    *
-   * @param id Licq user id
-   * @param ppid Licq protocol id
+   * @param userId Licq user id
    */
-  void updateUser(QString id, unsigned long ppid);
+  void updateUser(const UserId& userId);
 
   /**
    * Add a user to the contact list
    *
    * @param licqUser The user to add
    */
-  void addUser(const ICQUser* licqUser);
+  void addUser(const LicqUser* licqUser);
 
   /**
    * Remove a user from the contact list
    *
-   * @param id Licq user id
-   * @param ppid Licq protocol id
+   * @param userId Licq user id
    */
-  void removeUser(QString id, unsigned long ppid);
-
-  /**
-   * Removes (and delete) all users and groups from the list
-   */
-  void clear();
+  void removeUser(const UserId& userId);
 
   /**
    * Get a model index for a group or user that other components can use.
@@ -297,12 +294,11 @@ public:
   /**
    * Get index for a specific user
    *
-   * @param id Licq user id
-   * @param ppid Licq protocol id
+   * @param userId Licq user id
    * @param column The column to return an index for
    * @return An index for the given user and column from the "All Users" group
    */
-  QModelIndex userIndex(QString id, unsigned long ppid, int column) const;
+  QModelIndex userIndex(const UserId& userId, int column) const;
 
   /**
    * Get index for a group to use as root item for a view
@@ -312,7 +308,7 @@ public:
    * @param id Id of the group or 0 to get special group
    * @return An index for the group or an invalid index if the group does not exist
    */
-  QModelIndex groupIndex(GroupType type, unsigned long id) const;
+  QModelIndex groupIndex(GroupType type, int id) const;
 
   /**
    * Get index for a group. This function uses model id for groups
@@ -321,22 +317,26 @@ public:
    * @param id Id of the group or 0 to get other users group
    * @return An index for the group or an invalid index if the group does not exist
    */
-  QModelIndex groupIndex(unsigned long id) const;
+  QModelIndex groupIndex(int id) const;
 
 public slots:
   /**
    * The daemon list has changed
    *
-   * @param sig Signal data from the daemon with information on what has changed
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
+   * @param userId Id for affected user, if applicable
    */
-  void listUpdated(CICQSignal* sig);
+  void listUpdated(unsigned long subSignal, int argument, const UserId& userId);
 
   /**
    * The data for a user has changed in the daemon
    *
-   * @param sig Signal data from the daemon with information on what has changed
+   * @param userId Id for affected user
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
    */
-  void userUpdated(CICQSignal* sig);
+  void userUpdated(const UserId& userId, unsigned long subSignal, int argument);
 
   /**
    * Reload the entire contact list from the daemon
@@ -411,7 +411,7 @@ private slots:
    * @param user The model user to update groups for
    * @param licqUser The daemon user to get group membership from
    */
-  void updateUserGroups(ContactUserData* user, const ICQUser* licqUser);
+  void updateUserGroups(ContactUserData* user, const LicqUser* licqUser);
 
 private:
   /**
@@ -424,11 +424,10 @@ private:
   /**
    * Get the user object that represents an licq contact
    *
-   * @param id Licq user id
-   * @param ppid Licq protocol id
-   * @return The user object or 0 if it was not found
+   * @param userId Licq user id
+   * @return The user object or NULL if it was not found
    */
-  ContactUserData* findUser(QString id, unsigned long ppid) const;
+  ContactUserData* findUser(const UserId& userId) const;
 
   /**
    * Check if a user is member of a group and add/remove the user to/from the group if needed

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 
 #include <QWidget>
 
-class ICQUser;
+class LicqUser;
 
 namespace LicqQtGui
 {
@@ -46,9 +46,9 @@ public:
   bool tabIsSelected(QWidget* tab);
   bool tabExists(QWidget* tab);
   void updateConvoLabel(UserEventCommon* tab);
-  void updateTabLabel(const ICQUser* u);
-  void updateTabLabel(UserEventCommon* tab, const ICQUser* u = NULL);
-  void setTyping(const ICQUser* u, int convoId);
+  void updateTabLabel(const LicqUser* u);
+  void updateTabLabel(UserEventCommon* tab, const LicqUser* u = NULL);
+  void setTyping(const LicqUser* u, int convoId);
 
 #ifdef USE_KDE
   virtual void setIcon(const QPixmap& icon);
@@ -58,14 +58,37 @@ signals:
   void signal_done();
 
 public slots:
+  /**
+   * Switch to tab index in action data
+   *
+   * @param action Action to get tab index from
+   */
+  void switchTab(QAction* action);
+
   void currentChanged(int index);
   void moveLeft();
   void moveRight();
   void removeTab(QWidget* tab);
   void setMsgWinSticky(bool sticky = true);
 
+private slots:
+  /**
+   * Update keyboard shortcuts from configuration
+   */
+  void updateShortcuts();
+
 private:
   TabWidget* myTabs;
+  QAction* myTabSwitch01Action;
+  QAction* myTabSwitch02Action;
+  QAction* myTabSwitch03Action;
+  QAction* myTabSwitch04Action;
+  QAction* myTabSwitch05Action;
+  QAction* myTabSwitch06Action;
+  QAction* myTabSwitch07Action;
+  QAction* myTabSwitch08Action;
+  QAction* myTabSwitch09Action;
+  QAction* myTabSwitch10Action;
 
   void updateTitle(QWidget* tab);
   void clearEvents(QWidget* tab);

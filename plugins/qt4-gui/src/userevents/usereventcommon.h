@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,14 +26,15 @@
 #include <list>
 #include <string>
 
+#include <licq_types.h>
+
 class QActionGroup;
 class QHBoxLayout;
 class QMenu;
 class QToolBar;
 class QVBoxLayout;
 
-class CICQSignal;
-class ICQUser;
+class LicqUser;
 
 
 namespace LicqQtGui
@@ -45,28 +46,53 @@ class UserEventCommon : public QWidget
   Q_OBJECT
 
 public:
-  UserEventCommon(QString id, unsigned long ppid, QWidget* parent = 0, const char* name = 0);
+  /**
+   * Constructor
+   *
+   * @param userId User to open event dialog for
+   * @param parent Parent widget
+   * @param name Object name to set for widget
+   */
+  UserEventCommon(const UserId& userId, QWidget* parent = 0, const char* name = 0);
   virtual ~UserEventCommon();
 
-  QString id() { return QString::fromAscii(myUsers.front().c_str()); }
-  unsigned long ppid() { return myPpid; }
+  /**
+   * Get user for this dialog
+   *
+   * @return (First) user associated with with dialog
+   */
+  const UserId& userId() const { return myUsers.front(); }
+  const QString& id() const { return myId; }
+  unsigned long ppid() const { return myPpid; }
   unsigned long convoId() { return myConvoId; }
-  std::list<std::string>& convoUsers() { return myUsers; }
+  const std::list<UserId>& convoUsers() const { return myUsers; }
   void setConvoId(unsigned long n) { myConvoId = n; }
-  void addEventTag(unsigned long n) { if (n) myEventTag.push_back(n); }
 
-  bool isUserInConvo(QString id);
+  /**
+   * Check if a user is part of this conversation
+   *
+   * @param userId Id of user to check
+   * @return True if user is in conversation
+   */
+  bool isUserInConvo(const UserId& userId) const;
   void setTyping(unsigned short type);
 
-protected:
-  std::list<unsigned long> myEventTag;
+public slots:
+  /**
+   * This window got or lost focus
+   * Called from tab dialog when tab is switched
+   *
+   * @param gotFocus True if this window/tab got focus
+   */
+  void focusChanged(bool gotFocus);
 
+protected:
   bool myIsOwner;
   bool myDeleteUser;
   unsigned long myPpid;
   unsigned long myConvoId;
   time_t myRemoteTimeOffset;
-  std::list<std::string> myUsers;
+  std::list<UserId> myUsers;
   unsigned long mySendFuncs;
 
   // ID of the higest event we've processed. Helps determine
@@ -92,21 +118,40 @@ protected:
   QAction* myForeColor;
   QAction* myBackColor;
   InfoField* myTimezone;
-  QTextCodec* myCodec;
+  const QTextCodec* myCodec;
   QTimer* myTimeTimer;
   QTimer* myTypingTimer;
 
   void flashTaskbar();
-  void updateWidgetInfo(const ICQUser* u);
-  void pushToolTip(QAction* action, QString tooltip);
+  void updateWidgetInfo(const LicqUser* u);
+  void pushToolTip(QAction* action, const QString& tooltip);
 
-  virtual void userUpdated(CICQSignal* sig, QString id = QString::null, unsigned long ppid = 0) = 0;
+  /**
+   * A user has been update, this virtual function allows subclasses to add additional handling
+   * This function will only be called if user is in this conversation
+   *
+   * @param userId Updated user
+   * @param subSignal Type of update
+   * @param argument Signal specific argument
+   * @param cid Conversation id
+   */
+  virtual void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid) = 0;
+
+  /**
+   * Overloaded to get events when this window/tab looses and gains focus
+   */
+  virtual bool event(QEvent* event);
 
 protected slots:
   /**
    * Update iconset in menus and on buttons
    */
   virtual void updateIcons();
+
+  /**
+   * Update keyboard shortcuts
+   */
+  virtual void updateShortcuts();
 
   void connectSignal();
   void setEncoding(QAction* action);
@@ -118,10 +163,15 @@ protected slots:
   void updateTyping();
   void showUserMenu();
   void showEncodingsMenu();
-  void updatedUser(CICQSignal* sig);
+  void updatedUser(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
 signals:
-  void finished(QString id, unsigned long ppid);
+  /**
+   * Dialog has finished
+   *
+   * @param userId User for this dialog
+   */
+  void finished(const UserId& userId);
   void encodingChanged();
 };
 

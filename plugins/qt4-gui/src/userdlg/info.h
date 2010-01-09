@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,10 +39,9 @@ class QTreeWidget;
 class QTreeWidgetItem;
 class QVBoxLayout;
 
-class CICQSignal;
 class ICQUserPhoneBook;
 class ICQUserCategory;
-class ICQUser;
+class LicqUser;
 
 
 namespace LicqQtGui
@@ -79,31 +78,30 @@ public:
    *
    * @param user User to get data from
    */
-  void load(const ICQUser* user);
+  void load(const LicqUser* user);
 
   /**
    * Save user data for pages
    *
    * @param user User to write data to
    */
-  void apply(ICQUser* user);
+  void apply(LicqUser* user);
 
   /**
    * Save user data for pages
    * Call this function without user locked
    *
-   * @param id User id
-   * @param ppid User protocol id
+   * @param userId User id
    */
-  void apply2(const QString& id, unsigned long ppid);
+  void apply2(const UserId& userId);
 
   /**
    * User was updated
    *
-   * @param sig Signal from daemon
    * @param user User locked for read access
+   * @param subSignal Sub signal telling what the change was
    */
-  void userUpdated(const CICQSignal* sig, const ICQUser* user);
+  void userUpdated(const LicqUser* user, unsigned long subSignal);
 
   /**
    * Retrieve info from server
@@ -139,8 +137,9 @@ private slots:
    * Set interest, organization or background after editing dialog has finished
    *
    * @param cat Category to update
+   * @param category New category map
    */
-  void setCategory(ICQUserCategory* cat);
+  void setCategory(UserCat cat, const UserCategoryMap& category);
 
   /**
    * Add/update phone book entry after editing dialog has finished
@@ -205,14 +204,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageGeneral(const ICQUser* user);
+  void loadPageGeneral(const LicqUser* user);
 
   /**
    * Save user data for general page
    *
    * @param user User to write data to
    */
-  void savePageGeneral(ICQUser* user);
+  void savePageGeneral(LicqUser* user);
 
   /**
    * Setup the more page
@@ -227,14 +226,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageMore(const ICQUser* user);
+  void loadPageMore(const LicqUser* user);
 
   /**
    * Save user data for more page
    *
    * @param user User to write data to
    */
-  void savePageMore(ICQUser* user);
+  void savePageMore(LicqUser* user);
 
   /**
    * Setup the more2 page
@@ -249,14 +248,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageMore2(const ICQUser* user);
+  void loadPageMore2(const LicqUser* user);
 
   /**
    * Save user data for more2 page
    *
    * @param user User to write data to
    */
-  void savePageMore2(ICQUser* user);
+  void savePageMore2(LicqUser* user);
 
   /**
    * Split interest, organization or background string for presentation
@@ -271,8 +270,9 @@ private:
    * Present interest, organization or background data
    *
    * @param cat Category to update
+   * @param category New category map
    */
-  void updateMore2Info(const ICQUserCategory* cat);
+  void updateMore2Info(UserCat cat, const UserCategoryMap& category);
 
   /**
    * Setup the work page.
@@ -287,14 +287,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageWork(const ICQUser* user);
+  void loadPageWork(const LicqUser* user);
 
   /**
    * Save user data for work page
    *
    * @param user User to write data to
    */
-  void savePageWork(ICQUser* user);
+  void savePageWork(LicqUser* user);
 
   /**
    * Setup the about page.
@@ -309,14 +309,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageAbout(const ICQUser* user);
+  void loadPageAbout(const LicqUser* user);
 
   /**
    * Save user data for about page
    *
    * @param user User to write data to
    */
-  void savePageAbout(ICQUser* user);
+  void savePageAbout(LicqUser* user);
 
   /**
    * Setup the phone book page.
@@ -331,14 +331,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPagePhoneBook(const ICQUser* user);
+  void loadPagePhoneBook(const LicqUser* user);
 
   /**
    * Save user data for phone book
    *
    * @param user User to write data to
    */
-  void savePagePhoneBook(ICQUser* user);
+  void savePagePhoneBook(LicqUser* user);
 
   /**
    * Update data in phone book widget
@@ -358,14 +358,14 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPagePicture(const ICQUser* user);
+  void loadPagePicture(const LicqUser* user);
 
   /**
    * Save user data for picture page
    *
    * @param user User to write data to
    */
-  void savePagePicture(ICQUser* user);
+  void savePagePicture(LicqUser* user);
 
   /**
    * Setup the counters page.
@@ -380,7 +380,7 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageCounters(const ICQUser* user);
+  void loadPageCounters(const LicqUser* user);
 
 #ifdef USE_KABC
   /**
@@ -396,7 +396,7 @@ private:
    *
    * @param user User to get data from
    */
-  void loadPageKabc(const ICQUser* user);
+  void loadPageKabc(const LicqUser* user);
 
   /**
    * Save user data for KDE adressbook page
@@ -404,10 +404,11 @@ private:
   void savePageKabc();
 #endif
 
+  UserId myUserId;
   QString myId;
   unsigned long myPpid;
   bool m_bOwner;
-  QTextCodec* codec;
+  const QTextCodec* codec;
 
   // General info
   QVBoxLayout* myPageGeneralLayout;
@@ -457,9 +458,9 @@ private:
   QGroupBox* myMore2Box;
   QTreeWidget* lsvMore2;
   QTreeWidgetItem* lviMore2Top[3];
-  ICQUserCategory* m_Interests;
-  ICQUserCategory* m_Backgrounds;
-  ICQUserCategory* m_Organizations;
+  UserCategoryMap myInterests;
+  UserCategoryMap myBackgrounds;
+  UserCategoryMap myOrganizations;
 
   // Work info
   QVBoxLayout* myPageWorkLayout;

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,6 +40,8 @@
 #include <QResizeEvent>
 #include <QWidget>
 
+#include <licq_types.h>
+
 class QAction;
 class QMenu;
 class QPixmap;
@@ -47,8 +49,7 @@ class QPushButton;
 class QStyle;
 class QTextEdit;
 
-class CICQSignal;
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -94,8 +95,15 @@ public:
 
 public slots:
   void slot_shutdown();
-  void slot_updatedList(CICQSignal*);
-  void slot_updatedUser(CICQSignal*);
+
+  /**
+   * Contact list has changed
+   *
+   * @param subSignal Sub signal telling what the change was
+   */
+  void slot_updatedList(unsigned long subSignal);
+
+  void slot_updatedUser(const UserId& userId, unsigned long subSignal, int argument);
   void slot_pluginUnloaded(unsigned long ppid);
   void updateGroups(bool initial = false);
 
@@ -116,6 +124,14 @@ private:
 
   SystemMenu* mySystemMenu;
 
+  QAction* myViewEventAction;
+  QAction* mySendMessageAction;
+  QAction* mySendUrlAction;
+  QAction* mySendFileAction;
+  QAction* mySendChatRequestAction;
+  QAction* myCheckUserArAction;
+  QAction* myViewHistoryAction;
+
   // Widgets
   UserView* myUserView;
 #ifdef USE_KDE
@@ -134,7 +150,18 @@ private slots:
   void updateConfig();
   void updateSkin();
   void updateEvents();
-  void updateStatus(CICQSignal* = NULL);
+
+  /**
+   * Our status has changed
+   *
+   * @param ppid Protocl intstance id of owner that got status change
+   */
+  void updateStatus(unsigned long ppid = 0);
+
+  /**
+   * Update shortcuts
+   */
+  void updateShortcuts();
 
   /**
    * Groups combo box was changed to show a new group
@@ -143,14 +170,28 @@ private slots:
    */
   void setCurrentGroup(int index);
 
-  //TODO
-  //void callUserFunction(QString id, unsigned long ppid);
+  /**
+   * Switch to next group in group list
+   */
+  void nextGroup();
+
+  /**
+   * Switch to previous group in group list
+   */
+  void prevGroup();
+
   void slot_logon();
   void slot_protocolPlugin(unsigned long);
-  void slot_doneOwnerFcn(ICQEvent*);
+  void slot_doneOwnerFcn(const LicqEvent* event);
   void slot_updateContactList();
 
-  void addUser(QString id, unsigned long ppid);
+  /**
+   * Open add user dialog
+   *
+   * @param userId User to add
+   */
+  void addUser(const UserId& userId);
+
   void setMiniMode(bool miniMode);
   void setMainwinSticky(bool sticky = true);
   void trayIconClicked();
@@ -158,6 +199,11 @@ private slots:
   void removeUserFromGroup();
   void callUserFunction(QAction* action);
   void checkUserAutoResponse();
+
+  /**
+   * Show history dialog for selected user
+   */
+  void showUserHistory();
 };
 
 // -----------------------------------------------------------------------------

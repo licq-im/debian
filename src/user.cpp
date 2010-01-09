@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -12,6 +12,7 @@
 
 #include "licq_user.h"
 
+#include <arpa/inet.h>
 #include <cassert>
 #include <cctype>
 #include <cerrno>
@@ -26,9 +27,7 @@
 #include <vector>
 #include <unistd.h>
 
-#ifdef HAVE_INET_ATON
-#include <arpa/inet.h>
-#endif
+#include <boost/algorithm/string.hpp>
 
 // Localization
 #include "gettext.h"
@@ -38,156 +37,17 @@
 #include "licq_occupationcodes.h"
 #include "licq_languagecodes.h"
 #include "licq_log.h"
+#include "licq_mutex.h"
 #include "licq_packets.h"
 #include "licq_icqd.h"
 #include "licq_socket.h"
 #include "support.h"
-#include "pthread_rdwr.h"
 
 using namespace std;
+using boost::any;
+using boost::any_cast;
+using boost::bad_any_cast;
 
-ICQUserCategory::ICQUserCategory(UserCat uc)
-{
-  used = 0;
-  m_uc = uc;
-}
-
-ICQUserCategory::~ICQUserCategory()
-{
-  Clean();
-}
-
-void ICQUserCategory::Clean()
-{      
-  unsigned short i;
-
-  for(i = 0; i < used; i++)
-    free((void *)data[i].descr);
-    
-  used = 0;
-}
-
-bool ICQUserCategory::SaveToDisk(CIniFile &m_fConf,const char *const szN,
-                             const char *const szCat,const char *const szDescr)
-{      
-  char buff[255];
-  unsigned short i;
-
-  if (!m_fConf.ReloadFile())
-  {
-    gLog.Error("%sError opening '%s' for reading.\n"
-               "%sSee log for details.\n", L_ERRORxSTR, m_fConf.FileName(),
-               L_BLANKxSTR);
-      return false;
-  }
-
-  m_fConf.SetSection("user");
-  m_fConf.WriteNum(szN, used);
-
-  for(i = 0; i < used; i ++)
-  {
-    snprintf(buff, sizeof(buff), szCat, i);
-    m_fConf.WriteNum(buff, data[i].id);
-    snprintf(buff, sizeof(buff), szDescr, i);
-    m_fConf.WriteStr(buff, data[i].descr);
-  }
-
-  if (!m_fConf.FlushFile())
-  {
-    gLog.Error("%sError opening '%s' for writing.\n"
-               "%sSee log for details.\n", L_ERRORxSTR,
-               m_fConf.FileName(), L_BLANKxSTR);
-    return false;
-  }
-
-  m_fConf.CloseFile();
-  return true;
-}
-
-bool ICQUserCategory::LoadFromDisk(CIniFile &m_fConf, const char *const szN,
-       const char *const szCat, const char *const szDescr)
-{
-  unsigned short i, j, ret, n;
-  char buff[255];
-  char szTemp[MAX_LINE_LEN];
-
-  Clean();
-  m_fConf.SetSection("user");
-  ret = m_fConf.ReadNum(szN, used, 0);
-
-  if (used > MAX_CATEGORIES)
-  {
-    gLog.Warn("%sTrying to load more categories than the max limit."
-              "Truncating.\n",L_WARNxSTR);
-    used = MAX_CATEGORIES;
-  }
-
-  for(i = j = 0, n = used; i < n; i++)
-  {
-    snprintf(buff, sizeof(buff), szCat, i);
-    ret = m_fConf.ReadNum(buff, data[j].id, 0);
-
-    snprintf(buff, sizeof(buff), szDescr, i);
-    if (ret)
-    {
-      ret = m_fConf.ReadStr(buff, szTemp);
-      if (ret)
-      {
-        data[j].descr = strdup(szTemp);
-        if (data[j].descr == NULL)
-          ret = 0;
-      }
-      
-    }
-
-    /* this one failed loading. we ignore and keep trying */
-    if (!ret)
-      used--;
-    else
-      j++;
-  }
-   
-  return true;
-}
-
-bool ICQUserCategory::AddCategory(unsigned short cat_, const char *descr_)
-{
-  bool nRet = true;
-
-  if (used == MAX_CATEGORIES || descr_ == NULL)
-    nRet =  false;
-  else if (cat_ != 0)
-  {
-    data[used].id = cat_;
-    data[used].descr = strdup(descr_);
-
-    if (data[used].descr == NULL)
-      nRet = false;
-    else
-      used++;
-  }
-   
-  return nRet;
-}
-
-bool ICQUserCategory::Get(unsigned d,short unsigned *id, char const*  * descr) 
-                                                                         const
-{
-  bool nRet = false;
-
-  //assert(id && descr);
-
-  if (d < used)
-  {
-    nRet = true;
-    *id = data[d].id;
-    *descr = (const char *)data[d].descr;
-  }
-  
-  return nRet;
-}
-
-//===========================================================================
 
 ICQUserPhoneBook::ICQUserPhoneBook()
 {
@@ -444,67 +304,18 @@ char *PPIDSTRING(unsigned long id)
   return p;
 }
 
-/*---------------------------------------------------------------------------
- * ICQUser::Lock
- *-------------------------------------------------------------------------*/
-void ICQUser::Lock(unsigned short lockType) const
-{
-  switch (lockType)
-  {
-    case LOCK_R:
-      pthread_rdwr_rlock_np(&myMutex);
-      break;
-    case LOCK_W:
-      pthread_rdwr_wlock_np(&myMutex);
-      break;
-    default:
-      assert(false);
-      return;
-  }
-  myLockType = lockType;
-}
-
-
-/*---------------------------------------------------------------------------
- * ICQUser::Unlock
- *-------------------------------------------------------------------------*/
-void ICQUser::Unlock() const
-{
-  unsigned short lockType = myLockType;
-  myLockType = LOCK_R;
-  switch (lockType)
-  {
-    case LOCK_R:
-      pthread_rdwr_runlock_np(&myMutex);
-      break;
-    case LOCK_W:
-      pthread_rdwr_wunlock_np(&myMutex);
-      break;
-    default:
-      assert(false);
-      break;
-  }
-}
-
 //=====CUserManager=============================================================
 CUserManager::CUserManager()
   : m_szDefaultEncoding(NULL)
 {
   // Set up the basic all users and new users group
-  pthread_rdwr_init_np(&mutex_grouplist, NULL);
-  pthread_rdwr_set_name(&mutex_grouplist, "grouplist");
-
-  pthread_rdwr_init_np(&mutex_userlist, NULL);
-  pthread_rdwr_set_name(&mutex_userlist, "userlist");
-
-  pthread_rdwr_init_np(&mutex_ownerlist, NULL);
-  pthread_rdwr_set_name(&mutex_ownerlist, "ownerlist");
+  myGroupListMutex.setName("grouplist");
+  myUserListMutex.setName("userlist");
+  myOwnerListMutex.setName("ownerlist");
 
   m_nOwnerListLockType = LOCK_N;
   m_nUserListLockType = LOCK_N;
   myGroupListLockType = LOCK_N;
-
-  m_xOwner = NULL;
 }
 
 
@@ -518,23 +329,12 @@ CUserManager::~CUserManager()
   for (g_iter = myGroups.begin(); g_iter != myGroups.end(); ++g_iter)
     delete g_iter->second;
 
-  OwnerList::iterator o_iter;
-  for (o_iter = m_vpcOwners.begin(); o_iter != m_vpcOwners.end(); ++o_iter)
-    delete *o_iter;
-
-  pthread_rdwr_destroy_np(&mutex_ownerlist);
-  pthread_rdwr_destroy_np(&mutex_userlist);
-  pthread_rdwr_destroy_np(&mutex_grouplist);
+  OwnerMap::iterator o_iter;
+  for (o_iter = myOwners.begin(); o_iter != myOwners.end(); ++o_iter)
+    delete o_iter->second;
 
   if (m_szDefaultEncoding != NULL)
     free(m_szDefaultEncoding);
-}
-
-void CUserManager::SetOwnerUin(unsigned long _nUin)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", _nUin);
-  AddOwner(szUin, LICQ_PPID);
 }
 
 void CUserManager::AddOwner(const char *_szId, unsigned long _nPPID)
@@ -542,7 +342,7 @@ void CUserManager::AddOwner(const char *_szId, unsigned long _nPPID)
   ICQOwner *o = new ICQOwner(_szId, _nPPID);
 
   LockOwnerList(LOCK_W);
-  m_vpcOwners.push_back(o);
+  myOwners[_nPPID] = o;
   UnlockOwnerList();
 }
 
@@ -582,15 +382,16 @@ bool CUserManager::Load()
     AddOwner(sOwnerID, nPPID);
   }
 
-  unsigned short nGroups;
+  unsigned int nGroups;
   licqConf.SetSection("groups");
   licqConf.ReadNum("NumOfGroups", nGroups);
 
   GroupMap* groups = LockGroupList(LOCK_W);
   m_bAllowSave = false;
   char key[MAX_KEYxNAME_LEN], groupName[MAX_LINE_LEN];
-  unsigned short icqGroupId, groupId, sortIndex;
-  for (unsigned short i = 1; i <= nGroups; i++)
+  int groupId, sortIndex;
+  unsigned short icqGroupId;
+  for (unsigned int i = 1; i <= nGroups; i++)
   {
     sprintf(key, "Group%d.name", i);
     licqConf.ReadStr(key, groupName);
@@ -673,22 +474,76 @@ bool CUserManager::Load()
     strncpy(szId, szFile, sz - szFile);
     szId[sz - szFile] = '\0';
     nPPID = (*(sz+1)) << 24 | (*(sz+2)) << 16 | (*(sz+3)) << 8 | (*(sz+4));
-    u = new ICQUser(szId, nPPID, filename);
+
+    u = new LicqUser(szId, nPPID, string(filename));
     u->AddToContactList();
-    myUsers[UserMapKey(szId, nPPID)] = u;
+    myUsers[u->id()] = u;
   }
   UnlockUserList();
 
   return true;
 }
 
-void CUserManager::AddUser(ICQUser *pUser, const char *_szId, unsigned long _nPPID)
+void CUserManager::saveUserList() const
 {
+  string filename = string(BASE_DIR) + "/users.conf";
+
+  CIniFile usersConf(INI_FxERROR | INI_FxFATAL | INI_FxALLOWxCREATE);
+  usersConf.LoadFile(filename.c_str());
+  usersConf.SetSection("users");
+
+  char key[MAX_KEYxNAME_LEN];
+  int count = 0;
+  for (UserMap::const_iterator i = myUsers.begin(); i != myUsers.end(); ++i)
+  {
+    i->second->Lock(LOCK_R);
+    bool temporary = i->second->NotInList();
+    string accountId = i->second->accountId();
+    unsigned long ppid = i->second->ppid();
+    i->second->Unlock();
+
+    // Only save users that's been permanently added
+    if (temporary)
+      continue;
+    ++count;
+
+    sprintf(key, "User%i", count);
+
+    char* ps = PPIDSTRING(ppid);
+    usersConf.writeString(key, accountId + "." + ps);
+    delete [] ps;
+  }
+  usersConf.WriteNum("NumOfUsers", count);
+  usersConf.FlushFile();
+  usersConf.CloseFile();
+}
+
+bool CUserManager::addUser(const UserId& uid,
+    bool permanent, bool addToServer, unsigned short groupId)
+{
+  if (!USERID_ISVALID(uid))
+    return false;
+
+  if (isOwner(uid))
+    return false;
+
   LockUserList(LOCK_W);
 
+  // Make sure user isn't already in the list
+  UserMap::const_iterator iter = myUsers.find(uid);
+  if (iter != myUsers.end())
+  {
+    UnlockUserList();
+    return false;
+  }
+
+  string accountId = LicqUser::getUserAccountId(uid);
+  unsigned long ppid = LicqUser::getUserProtocolId(uid);
+
+  LicqUser* pUser = new LicqUser(accountId, ppid, !permanent);
   pUser->Lock(LOCK_W);
 
-  if (!pUser->NotInList())
+  if (permanent)
   {
     // Set this user to be on the contact list
     pUser->AddToContactList();
@@ -697,128 +552,214 @@ void CUserManager::AddUser(ICQUser *pUser, const char *_szId, unsigned long _nPP
   }
 
   // Store the user in the lookup map
-  myUsers[UserMapKey(_szId, _nPPID)] = pUser;
+  myUsers[uid] = pUser;
+
+  pUser->Unlock();
+
+  if (permanent)
+    saveUserList();
 
   UnlockUserList();
+
+  // Notify plugins that user was added
+  // Send this before adding user to server side as protocol code may generate updated signals
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_ADD, uid, groupId));
+
+  // Add user to server side list
+  if (permanent && addToServer)
+    gLicqDaemon->protoAddUser(accountId.c_str(), ppid, groupId);
+
+  // Set initial group membership, also sets server group for user
+  if (groupId != 0)
+    setUserInGroup(uid, GROUPS_USER, groupId, true, permanent && addToServer);
+
+  return true;
 }
 
-void CUserManager::RemoveUser(const char *_szId, unsigned long _nPPID)
+void CUserManager::removeUser(const UserId& userId)
 {
-  ICQUser *u = FetchUser(_szId, _nPPID, LOCK_W);
-  if (u == NULL) return;
-  if (!u->NotInList())
-    u->RemoveFiles();
+  // Remove the user from the server side list first
+  gLicqDaemon->protoRemoveUser(userId);
+
+  // List should only be locked when not holding any user lock to avoid
+  // deadlock, so we cannot call FetchUser here.
   LockUserList(LOCK_W);
-  myUsers.erase(UserMapKey(_szId, _nPPID));
+  UserMap::iterator iter = myUsers.find(userId);
+  if (iter == myUsers.end())
+  {
+    UnlockUserList();
+    return;
+  }
+
+  LicqUser* u = iter->second;
+  u->Lock(LOCK_W);
+  myUsers.erase(iter);
+  if (!u->NotInList())
+  {
+    u->RemoveFiles();
+    saveUserList();
+  }
   UnlockUserList();
-  DropUser(u);
+  u->Unlock();
   delete u;
+
+  // Notify plugins about the removed user
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_REMOVE, userId));
 }
 
 // Need to call CICQDaemon::SaveConf() after this
-void CUserManager::RemoveOwner(unsigned long _nPPID)
+void CUserManager::RemoveOwner(unsigned long ppid)
 {
-  ICQOwner *o = FetchOwner(_nPPID, LOCK_W);
-  if (o == NULL) return;
-  o->RemoveFiles();
+  // List should only be locked when not holding any user lock to avoid
+  // deadlock, so we cannot call FetchOwner here.
   LockOwnerList(LOCK_W);
-  OwnerList::iterator iter = m_vpcOwners.begin();
-  while (iter != m_vpcOwners.end() && o != (*iter)) ++iter;
-  if (iter == m_vpcOwners.end())
-    gLog.Warn("%sInternal Error: CUserManager::RemoveOwner():\n"
-              "%sOwner not found in vector.\n",
-              L_WARNxSTR, L_BLANKxSTR);
-  else
-    m_vpcOwners.erase(iter);
+  OwnerMap::iterator iter = myOwners.find(ppid);
+  if (iter == myOwners.end())
+  {
+    UnlockOwnerList();
+    return;
+  }
+
+  LicqOwner* o = iter->second;
+  o->Lock(LOCK_W);
+  myOwners.erase(iter);
+  o->RemoveFiles();
   UnlockOwnerList();
   o->Unlock();
   delete o;
 }
 
-ICQUser *CUserManager::FetchUser(const char *_szId, unsigned long _nPPID,
-                                 unsigned short _nLockType)
+LicqUser* CUserManager::fetchUser(const UserId& userId,
+    unsigned short lockType, bool addUser, bool* retWasAdded)
 {
-  ICQUser *u = NULL;
+  if (retWasAdded != NULL)
+    *retWasAdded = false;
 
-  if (_szId == 0 || _nPPID == 0) return u;
+  LicqUser* user = NULL;
+
+  if (!USERID_ISVALID(userId))
+    return NULL;
 
   // Check for an owner first
-  u = FindOwner(_szId, _nPPID);
-
-  if (u == NULL)
+  LockOwnerList(LOCK_R);
+  OwnerMap::iterator iter_o = myOwners.find(LicqUser::getUserProtocolId(userId));
+  if (iter_o != myOwners.end())
   {
-    LockUserList(LOCK_R);
-    UserMap::iterator iter = myUsers.find(UserMapKey(_szId, _nPPID));
-    if (iter != myUsers.end())
-      u = iter->second;
+    if (iter_o->second->id() == userId)
+    {
+      user = iter_o->second;
+      user->Lock(lockType);
+    }
+  }
+  UnlockOwnerList();
+
+  if (user != NULL)
+    return user;
+
+  LockUserList(LOCK_R);
+  UserMap::const_iterator iter = myUsers.find(userId);
+  if (iter != myUsers.end())
+    user = iter->second;
+
+    // If allowed by caller, add user if it wasn't found in list
+    if (user == NULL && addUser)
+    {
+      // Relock user list for writing
+      UnlockUserList();
+      LockUserList(LOCK_W);
+
+      // Create a temporary user
+      user = new LicqUser(LicqUser::getUserAccountId(userId), LicqUser::getUserProtocolId(userId), true);
+
+      // Store the user in the lookup map
+      myUsers[userId] = user;
+
+      // Notify plugins that we added user to list
+      gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_ADD, userId));
+
+      if (retWasAdded != NULL)
+        *retWasAdded = true;
+    }
+
+    // Lock the user and release the lock on the list
+    if (user != NULL)
+      user->Lock(lockType);
     UnlockUserList();
-  }
 
-  if (u != NULL)
-  {
-    u->Lock(_nLockType);
-    char *szId, *szIdString;
-    ICQUser::MakeRealId(_szId, _nPPID, szId);
-    ICQUser::MakeRealId(u->IdString(), u->PPID(), szIdString);
-    if (strcmp(szId, szIdString))
-      gLog.Error("%sInternal error: CUserManager::FetchUser(): Looked for %s, found %s.\n",
-                 L_ERRORxSTR, szId, szIdString);
-    delete [] szId;
-    delete [] szIdString;
-  }
-
-  return u;
+  return user;
 }
 
-bool CUserManager::IsOnList(const char *_szId, unsigned long _nPPID)
+bool CUserManager::userExists(const UserId& userId)
 {
-  if (FindOwner(_szId, _nPPID))
+  bool exists = false;
+
+  LockOwnerList(LOCK_R);
+  OwnerMap::iterator iter_o = myOwners.find(LicqUser::getUserProtocolId(userId));
+  if (iter_o != myOwners.end())
+  {
+    if (iter_o->second->id() == userId)
+      exists = true;
+  }
+  UnlockOwnerList();
+  if (exists)
     return true;
 
   LockUserList(LOCK_R);
-  UserMap::iterator iter = myUsers.find(UserMapKey(_szId, _nPPID));
-  bool found = (iter != myUsers.end());
+  UserMap::const_iterator iter = myUsers.find(userId);
+  if (iter != myUsers.end())
+    exists = true;
   UnlockUserList();
-
-  return found;
+  return exists;
 }
 
 // This differs by FetchOwner by requiring an Id.  This isn't used to
 // fetch an owner, but for interal use only to see if the given id and ppid
 // is an owner.  (It can be used to fetch an owner by calling FetchUser with
 // an owner's id and ppid.
-ICQOwner *CUserManager::FindOwner(const char *_szId, unsigned long _nPPID)
+LicqOwner* CUserManager::FindOwner(const char* accountId, unsigned long ppid)
 {
 /*
   // Strip spaces if ICQ protocol
-  char *szId = new char[strlen(_szId)];
-  if (_nPPID == LICQ_PPID)
+  char *szId = new char[strlen(accountId)];
+  if (ppid == LICQ_PPID)
   {
-    for (int i = 0; i < strlen(_szId); i++)
-      if (_szId[i] != ' ')
-        *szId++ = _szId[i];
+    for (int i = 0; i < strlen(accountId); i++)
+      if (accountId[i] != ' ')
+        *szId++ = accountId[i];
   }
   else
-    strcpy(szId, _szId);
+    strcpy(szId, accountId);
 */
+
   ICQOwner *o = NULL;
+  bool found = false;
 
   LockOwnerList(LOCK_R);
-  OwnerList::iterator iter;
-  for (iter = m_vpcOwners.begin(); iter != m_vpcOwners.end(); ++iter)
+  OwnerMap::iterator iter = myOwners.find(ppid);
+  if (iter != myOwners.end())
   {
-    if (_nPPID == (*iter)->PPID() && 
-        strcmp(_szId, (*iter)->IdString()) == 0/* || strcmp(szId, (*iter)->IdString()) == 0)*/)
-    {
-      o = *iter;
-      break;
-    }
+    o = iter->second;
+    o->Lock(LOCK_R);
+    if (o->accountId() == accountId /* || o->accountId() == szId */)
+      found = true;
+    o->Unlock();
   }
   UnlockOwnerList();
 
   //delete [] szId;
 
-  return o;
+  return (found ? o : NULL);
+}
+
+UserId CUserManager::ownerUserId(unsigned long ppid)
+{
+  const ICQOwner* owner = FetchOwner(ppid, LOCK_R);
+  if (owner == NULL)
+    return "";
+
+  UserId ret = owner->id();
+  DropOwner(owner);
+  return ret;
 }
 
 string CUserManager::OwnerId(unsigned long ppid)
@@ -827,9 +768,25 @@ string CUserManager::OwnerId(unsigned long ppid)
   if (owner == NULL)
     return "";
 
-  string ret = owner->IdString();
+  string ret = owner->accountId();
   DropOwner(owner);
   return ret;
+}
+
+bool CUserManager::isOwner(const UserId& userId)
+{
+  bool exists = false;
+
+  LockOwnerList(LOCK_R);
+  OwnerMap::iterator iter_o = myOwners.find(LicqUser::getUserProtocolId(userId));
+  if (iter_o != myOwners.end())
+  {
+    if (iter_o->second->id() == userId)
+      exists = true;
+  }
+  UnlockOwnerList();
+
+  return exists;
 }
 
 unsigned long CUserManager::icqOwnerUin()
@@ -837,28 +794,7 @@ unsigned long CUserManager::icqOwnerUin()
   return strtoul(OwnerId(LICQ_PPID).c_str(), (char**)NULL, 10);
 }
 
-/*---------------------------------------------------------------------------
- * CUserManager::AddUser
- *
- * The user is write locked upon return of this function
- *-------------------------------------------------------------------------*/
-void CUserManager::AddUser(ICQUser *pUser)
-{
-  AddUser(pUser, pUser->IdString(), pUser->PPID());
-}
-
-
-/*---------------------------------------------------------------------------
- * CUserManager::RemoveUser
- *-------------------------------------------------------------------------*/
-void CUserManager::RemoveUser(unsigned long _nUin)
-{
-  char szId[16];
-  snprintf(szId, 16, "%lu", _nUin);
-  RemoveUser(szId, LICQ_PPID);
-}
-
-LicqGroup* CUserManager::FetchGroup(unsigned short group, unsigned short lockType)
+LicqGroup* CUserManager::FetchGroup(int group, unsigned short lockType)
 {
   GroupMap* groups = LockGroupList(LOCK_R);
   GroupMap::const_iterator iter = groups->find(group);
@@ -878,7 +814,7 @@ void CUserManager::DropGroup(const LicqGroup* group)
     group->Unlock();
 }
 
-bool CUserManager::groupExists(GroupType gtype, unsigned short groupId)
+bool CUserManager::groupExists(GroupType gtype, int groupId)
 {
   // Is it a valid system group?
   if (gtype == GROUPS_SYSTEM)
@@ -899,7 +835,7 @@ bool CUserManager::groupExists(GroupType gtype, unsigned short groupId)
 /*---------------------------------------------------------------------------
  * CUserManager::AddGroup
  *-------------------------------------------------------------------------*/
-unsigned short CUserManager::AddGroup(const string& name, unsigned short icqGroupId)
+int CUserManager::AddGroup(const string& name, unsigned short icqGroupId)
 {
   if (name.empty())
     return 0;
@@ -914,7 +850,7 @@ unsigned short CUserManager::AddGroup(const string& name, unsigned short icqGrou
   GroupMap* groups = LockGroupList(LOCK_W);
 
   // Find first free group id
-  unsigned short gid;
+  int gid;
   for (gid = 1; groups->count(gid) != 0 ; ++gid)
     ;
 
@@ -935,7 +871,7 @@ unsigned short CUserManager::AddGroup(const string& name, unsigned short icqGrou
           L_SRVxSTR, name.c_str(), icqGroupId);
 
     // Send signal to let plugins know of the new group
-    gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_GROUP_ADDED, NULL, 0, gid, 0));
+    gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_GROUP_ADDED, USERID_NONE, gid));
   }
 
   return gid;
@@ -944,14 +880,14 @@ unsigned short CUserManager::AddGroup(const string& name, unsigned short icqGrou
 /*---------------------------------------------------------------------------
  * CUserManager::RemoveGroup
  *-------------------------------------------------------------------------*/
-void CUserManager::RemoveGroup(unsigned short groupId)
+void CUserManager::RemoveGroup(int groupId)
 {
   LicqGroup* group = FetchGroup(groupId, LOCK_R);
   if (group == NULL)
     return;
 
   string name = group->name();
-  unsigned short sortIndex = group->sortIndex();
+  int sortIndex = group->sortIndex();
   DropGroup(group);
 
   // Must be called when there are no locks on GroupID and Group lists
@@ -972,7 +908,7 @@ void CUserManager::RemoveGroup(unsigned short groupId)
   for (iter = g->begin(); iter != g->end(); ++iter)
   {
     iter->second->Lock(LOCK_W);
-    unsigned short si = iter->second->sortIndex();
+    int si = iter->second->sortIndex();
     if (si > sortIndex)
       iter->second->setSortIndex(si - 1);
     iter->second->Unlock();
@@ -982,8 +918,8 @@ void CUserManager::RemoveGroup(unsigned short groupId)
   FOR_EACH_USER_START(LOCK_W)
   {
     if (pUser->RemoveFromGroup(GROUPS_USER, groupId))
-      gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL,
-          pUser->IdString(), pUser->PPID()));
+      gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL,
+          pUser->id()));
   }
   FOR_EACH_USER_END;
 
@@ -991,22 +927,24 @@ void CUserManager::RemoveGroup(unsigned short groupId)
   UnlockGroupList();
 
   // Send signal to let plugins know of the removed group
-  gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_GROUP_REMOVED, NULL, 0, groupId, 0));
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_GROUP_REMOVED, USERID_NONE, groupId));
 
   // Send signal to let plugins know that sorting indexes may have changed
-  gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_GROUP_REORDERED, NULL, 0, 0, 0));
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_GROUP_REORDERED));
 }
 
-void CUserManager::ModifyGroupSorting(unsigned short groupId, unsigned short newIndex)
+void CUserManager::ModifyGroupSorting(int groupId, int newIndex)
 {
   LicqGroup* group = FetchGroup(groupId, LOCK_R);
   if (group == NULL)
     return;
 
-  if (newIndex >= NumGroups())
+  if (newIndex < 0)
+    newIndex = 0;
+  if (static_cast<unsigned int>(newIndex) >= NumGroups())
     newIndex = NumGroups() - 1;
 
-  unsigned short oldIndex = group->sortIndex();
+  int oldIndex = group->sortIndex();
   DropGroup(group);
 
   GroupMap* g = LockGroupList(LOCK_R);
@@ -1015,7 +953,7 @@ void CUserManager::ModifyGroupSorting(unsigned short groupId, unsigned short new
   for (GroupMap::iterator i = g->begin(); i != g->end(); ++i)
   {
     i->second->Lock(LOCK_W);
-    unsigned short si = i->second->sortIndex();
+    int si = i->second->sortIndex();
     if (newIndex < oldIndex && si >= newIndex && si < oldIndex)
       i->second->setSortIndex(si + 1);
     else if (newIndex > oldIndex && si > oldIndex && si <= newIndex)
@@ -1032,15 +970,15 @@ void CUserManager::ModifyGroupSorting(unsigned short groupId, unsigned short new
 
   // Send signal to let plugins know that sorting indexes have changed
   if (gLicqDaemon != NULL)
-    gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_GROUP_REORDERED, NULL, 0, 0, 0));
+    gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_GROUP_REORDERED));
 }
 
 /*---------------------------------------------------------------------------
  * CUserManager::RenameGroup
  *-------------------------------------------------------------------------*/
-bool CUserManager::RenameGroup(unsigned short groupId, const string& name, bool sendUpdate)
+bool CUserManager::RenameGroup(int groupId, const string& name, bool sendUpdate)
 {
-  unsigned short foundGroupId = GetGroupFromName(name);
+  int foundGroupId = GetGroupFromName(name);
 
   if (foundGroupId == groupId)
     // Name isn't changed so nothing to do here
@@ -1075,7 +1013,7 @@ bool CUserManager::RenameGroup(unsigned short groupId, const string& name, bool 
       gLicqDaemon->icqRenameGroup(name.c_str(), icqGroupId);
 
     // Send signal to let plugins know the group has changed
-    gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExLIST, LIST_GROUP_CHANGED, NULL, 0, groupId, 0));
+    gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExLIST, LIST_GROUP_CHANGED, USERID_NONE, groupId));
   }
 
   return true;
@@ -1099,7 +1037,7 @@ void CUserManager::SaveGroups()
 
   licqConf.SetSection("groups");
   GroupMap::size_type count = myGroups.size();
-  licqConf.WriteNum("NumOfGroups", static_cast<unsigned short>(count));
+  licqConf.WriteNum("NumOfGroups", static_cast<unsigned int>(count));
 
   char key[MAX_KEYxNAME_LEN];
   int i = 1;
@@ -1132,14 +1070,14 @@ void CUserManager::SaveGroups()
  *-------------------------------------------------------------------------*/
 unsigned short CUserManager::GetIDFromGroup(const string& name)
 {
-  unsigned short groupId = GetGroupFromName(name);
+  int groupId = GetGroupFromName(name);
   if (groupId == 0)
     return 0;
 
   return GetIDFromGroup(groupId);
 }
 
-unsigned short CUserManager::GetIDFromGroup(unsigned short groupId)
+unsigned short CUserManager::GetIDFromGroup(int groupId)
 {
   LicqGroup* group = gUserManager.FetchGroup(groupId, LOCK_R);
   if (group == NULL)
@@ -1154,11 +1092,11 @@ unsigned short CUserManager::GetIDFromGroup(unsigned short groupId)
 /*---------------------------------------------------------------------------
  * CUserManager::GetGroupFromID
  *-------------------------------------------------------------------------*/
-unsigned short CUserManager::GetGroupFromID(unsigned short icqGroupId)
+int CUserManager::GetGroupFromID(unsigned short icqGroupId)
 {
   const GroupMap* groups = LockGroupList(LOCK_R);
   GroupMap::const_iterator iter;
-  unsigned short groupId = 0;
+  int groupId = 0;
   for (iter = groups->begin(); iter != groups->end(); ++iter)
   {
     iter->second->Lock(LOCK_R);
@@ -1171,11 +1109,11 @@ unsigned short CUserManager::GetGroupFromID(unsigned short icqGroupId)
   return groupId;
 }
 
-unsigned short CUserManager::GetGroupFromName(const string& name)
+int CUserManager::GetGroupFromName(const string& name)
 {
   const GroupMap* groups = LockGroupList(LOCK_R);
   GroupMap::const_iterator iter;
-  unsigned short id = 0;
+  int id = 0;
   for (iter = groups->begin(); iter != groups->end(); ++iter)
   {
     iter->second->Lock(LOCK_R);
@@ -1193,12 +1131,12 @@ unsigned short CUserManager::GetGroupFromName(const string& name)
  *-------------------------------------------------------------------------*/
 void CUserManager::ModifyGroupID(const string& name, unsigned short icqGroupId)
 {
-  unsigned short id = GetGroupFromName(name);
+  int id = GetGroupFromName(name);
   if (id != 0)
     ModifyGroupID(id, icqGroupId);
 }
 
-void CUserManager::ModifyGroupID(unsigned short groupId, unsigned short icqGroupId)
+void CUserManager::ModifyGroupID(int groupId, unsigned short icqGroupId)
 {
   LicqGroup* group = FetchGroup(groupId, LOCK_W);
   if (group == NULL)
@@ -1285,98 +1223,26 @@ unsigned short CUserManager::GenerateSID()
   return nSID;
 }
 
-/*---------------------------------------------------------------------------
- * CUserManager::FetchUser
- *-------------------------------------------------------------------------*/
-ICQUser *CUserManager::FetchUser(unsigned long _nUin, unsigned short _nLockType)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", _nUin);
-  ICQUser *u = FetchUser(szUin, LICQ_PPID, _nLockType);
-  return u;
-}
-
-/*---------------------------------------------------------------------------
- * CUserManager::IsOnList
- *-------------------------------------------------------------------------*/
-bool CUserManager::IsOnList(unsigned long nUin)
-{
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  return IsOnList(szUin, LICQ_PPID);
-}
-
-
-
-/*---------------------------------------------------------------------------
- * CUserManager::DropUser
- *-------------------------------------------------------------------------*/
 void CUserManager::DropUser(const ICQUser* u)
 {
   if (u == NULL) return;
   u->Unlock();
 }
 
-/*---------------------------------------------------------------------------
- * CUserManager::FetchOwner
- *-------------------------------------------------------------------------*/
-ICQOwner *CUserManager::FetchOwner(unsigned short _nLockType)
+LicqOwner* CUserManager::FetchOwner(unsigned long ppid, unsigned short lockType)
 {
-  return FetchOwner(LICQ_PPID, _nLockType);
-}
-
-ICQOwner *CUserManager::FetchOwner(unsigned long _nPPID,
-                                   unsigned short _nLockType)
-{
-  ICQOwner *o = NULL;
+  LicqOwner* o = NULL;
 
   LockOwnerList(LOCK_R);
-  OwnerList::iterator iter;
-  for (iter = m_vpcOwners.begin(); iter != m_vpcOwners.end(); ++iter)
+  OwnerMap::iterator iter = myOwners.find(ppid);
+  if (iter != myOwners.end())
   {
-    if ((*iter)->PPID() == _nPPID)
-    {
-      o = (*iter);
-      o->Lock(_nLockType);
-      break;
-    }
+    o = iter->second;
+    o->Lock(lockType);
   }
   UnlockOwnerList();
 
   return o;
-}
-
-/*---------------------------------------------------------------------------
- * CUserManager::DropOwner
- *-------------------------------------------------------------------------*/
-void CUserManager::DropOwner()
-{
-  LockOwnerList(LOCK_R);
-  OwnerList::iterator iter;
-  for (iter = m_vpcOwners.begin(); iter != m_vpcOwners.end(); ++iter)
-  {
-    if ((*iter)->PPID() == LICQ_PPID)
-    {
-      (*iter)->Unlock();
-      break;
-    }
-  }
-  UnlockOwnerList();
-}
-
-void CUserManager::DropOwner(unsigned long _nPPID)
-{
-  LockOwnerList(LOCK_R);
-  OwnerList::iterator iter;
-  for (iter = m_vpcOwners.begin(); iter != m_vpcOwners.end(); ++iter)
-  {
-    if ((*iter)->PPID() == _nPPID)
-    {
-      (*iter)->Unlock();
-      break;
-    }
-  }
-  UnlockOwnerList();
 }
 
 void CUserManager::DropOwner(const ICQOwner* owner)
@@ -1411,8 +1277,8 @@ bool CUserManager::UpdateUsersInGroups()
     unsigned short nGSID = pUser->GetGSID();
     if (nGSID)
     {
-      unsigned short nInGroup = gUserManager.GetGroupFromID(nGSID);
-      if (nInGroup != gUserManager.NumGroups())
+      int nInGroup = gUserManager.GetGroupFromID(nGSID);
+      if (nInGroup != 0)
       {
         pUser->AddToGroup(GROUPS_USER, nInGroup);
         bDid = true;
@@ -1441,17 +1307,17 @@ unsigned short CUserManager::NumUsers()
  *-------------------------------------------------------------------------*/
 unsigned short CUserManager::NumOwners()
 {
-  unsigned short n = m_vpcOwners.size();
+  unsigned short n = myOwners.size();
   return n;
 }
 
 /*---------------------------------------------------------------------------
  * CUserManager::NumGroups
  *-------------------------------------------------------------------------*/
-unsigned short CUserManager::NumGroups()
+unsigned int CUserManager::NumGroups()
 {
   //LockGroupList(LOCK_R);
-  unsigned short n = myGroups.size();
+  unsigned int n = myGroups.size();
   //UnlockGroupList();
   return n;
 }
@@ -1466,15 +1332,15 @@ UserMap* CUserManager::LockUserList(unsigned short _nLockType)
 {
   switch (_nLockType)
   {
-  case LOCK_R:
-    pthread_rdwr_rlock_np (&mutex_userlist);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wlock_np(&mutex_userlist);
-    break;
-  default:
-    assert(false);
-    return NULL;
+    case LOCK_R:
+      myUserListMutex.lockRead();
+      break;
+    case LOCK_W:
+      myUserListMutex.lockWrite();
+      break;
+    default:
+      assert(false);
+      return NULL;
   }
   m_nUserListLockType = _nLockType;
   return &myUsers;
@@ -1489,15 +1355,15 @@ void CUserManager::UnlockUserList()
   m_nUserListLockType = LOCK_R;
   switch (nLockType)
   {
-  case LOCK_R:
-    pthread_rdwr_runlock_np(&mutex_userlist);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wunlock_np(&mutex_userlist);
-    break;
-  default:
-    assert(false);
-    break;
+    case LOCK_R:
+      myUserListMutex.unlockRead();
+      break;
+    case LOCK_W:
+      myUserListMutex.unlockWrite();
+      break;
+    default:
+      assert(false);
+      break;
   }
 }
 
@@ -1510,15 +1376,15 @@ GroupMap* CUserManager::LockGroupList(unsigned short lockType)
 {
   switch (lockType)
   {
-  case LOCK_R:
-    pthread_rdwr_rlock_np (&mutex_grouplist);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wlock_np(&mutex_grouplist);
-    break;
-  default:
-    assert(false);
-    return NULL;
+    case LOCK_R:
+      myGroupListMutex.lockRead();
+      break;
+    case LOCK_W:
+      myGroupListMutex.lockWrite();
+      break;
+    default:
+      assert(false);
+      return NULL;
   }
   myGroupListLockType = lockType;
   return &myGroups;
@@ -1533,34 +1399,34 @@ void CUserManager::UnlockGroupList()
   myGroupListLockType = LOCK_R;
   switch (lockType)
   {
-  case LOCK_R:
-    pthread_rdwr_runlock_np(&mutex_grouplist);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wunlock_np(&mutex_grouplist);
-    break;
-  default:
-    assert(false);
-    break;
+    case LOCK_R:
+      myGroupListMutex.unlockRead();
+      break;
+    case LOCK_W:
+      myGroupListMutex.unlockWrite();
+      break;
+    default:
+      assert(false);
+      break;
   }
 }
 
-OwnerList *CUserManager::LockOwnerList(unsigned short _nLockType)
+OwnerMap* CUserManager::LockOwnerList(unsigned short _nLockType)
 {
   switch (_nLockType)
   {
-  case LOCK_R:
-    pthread_rdwr_rlock_np(&mutex_ownerlist);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wlock_np(&mutex_ownerlist);
-    break;
-  default:
-    assert(false);
-    return NULL;
+    case LOCK_R:
+      myOwnerListMutex.lockRead();
+      break;
+    case LOCK_W:
+      myOwnerListMutex.lockWrite();
+      break;
+    default:
+      assert(false);
+      return NULL;
   }
   m_nOwnerListLockType = _nLockType;
-  return &m_vpcOwners;
+  return &myOwners;
 }
 
 void CUserManager::UnlockOwnerList()
@@ -1569,26 +1435,26 @@ void CUserManager::UnlockOwnerList()
   m_nOwnerListLockType = LOCK_R;
   switch (nLockType)
   {
-  case LOCK_R:
-    pthread_rdwr_runlock_np(&mutex_ownerlist);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wunlock_np(&mutex_ownerlist);
-    break;
-  default:
-    assert(false);
-    break;
+    case LOCK_R:
+      myOwnerListMutex.unlockRead();
+      break;
+    case LOCK_W:
+      myOwnerListMutex.unlockWrite();
+      break;
+    default:
+      assert(false);
+      break;
   }
 }
 
-void CUserManager::SetUserInGroup(const char* id, unsigned long ppid,
-    GroupType groupType, unsigned short groupId, bool inGroup, bool updateServer)
+void CUserManager::setUserInGroup(const UserId& userId,
+    GroupType groupType, int groupId, bool inGroup, bool updateServer)
 {
   // User group 0 is invalid and system group 0 is All Users
   if (groupId == 0)
     return;
 
-  ICQUser* u = gUserManager.FetchUser(id, ppid, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
   if (u == NULL)
     return;
 
@@ -1603,6 +1469,8 @@ void CUserManager::SetUserInGroup(const char* id, unsigned long ppid,
 
   // Update user object
   u->SetInGroup(groupType, groupId, inGroup);
+  string accountId = u->accountId();
+  unsigned long ppid = u->ppid();
   gUserManager.DropUser(u);
 
   // Notify server
@@ -1611,43 +1479,27 @@ void CUserManager::SetUserInGroup(const char* id, unsigned long ppid,
     if (groupType == GROUPS_SYSTEM)
     {
       if (groupId == GROUP_VISIBLE_LIST)
-        gLicqDaemon->ProtoSetInVisibleList(id, ppid, inGroup);
+        gLicqDaemon->visibleListSet(userId, inGroup);
 
       else if (groupId == GROUP_INVISIBLE_LIST)
-        gLicqDaemon->ProtoSetInInvisibleList(id, ppid, inGroup);
+        gLicqDaemon->invisibleListSet(userId, inGroup);
 
       else if (groupId == GROUP_IGNORE_LIST)
-        gLicqDaemon->ProtoSetInIgnoreList(id, ppid, inGroup);
+        gLicqDaemon->ignoreListSet(userId, inGroup);
     }
     else
     {
       // Server group currently only supported for ICQ protocol
       // Server group can only be changed, not removed
       if (ppid == LICQ_PPID && inGroup)
-        gLicqDaemon->icqChangeGroup(id, ppid, groupId, gsid,
+        gLicqDaemon->icqChangeGroup(accountId.c_str(), ppid, groupId, gsid,
             ICQ_ROSTxNORMAL, ICQ_ROSTxNORMAL);
     }
   }
 
   // Notify plugins
   if (gLicqDaemon != NULL)
-    gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_GENERAL, id, ppid));
-}
-
-void CUserManager::AddUserToGroup(unsigned long _nUin, unsigned short _nGroup)
-{
-  char id[13];
-  snprintf(id, 12, "%lu", _nUin);
-  id[12] = '\0';
-  AddUserToGroup(id, LICQ_PPID, _nGroup);
-}
-
-void CUserManager::RemoveUserFromGroup(unsigned long _nUin, unsigned short _nGroup)
-{
-  char id[13];
-  snprintf(id, 12, "%lu", _nUin);
-  id[12] = '\0';
-  RemoveUserFromGroup(id, LICQ_PPID, _nGroup);
+    gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_GENERAL, userId));
 }
 
 void CUserManager::SetDefaultUserEncoding(const char* defaultEncoding)
@@ -1656,59 +1508,21 @@ void CUserManager::SetDefaultUserEncoding(const char* defaultEncoding)
 }
 
 
-LicqGroup::LicqGroup(unsigned short id, const string& name)
+LicqGroup::LicqGroup(int id, const string& name)
   : myId(id),
     myName(name),
     mySortIndex(0),
-    myIcqGroupId(0),
-    myLockType(LOCK_R)
+    myIcqGroupId(0)
 {
   char strId[8];
   snprintf(strId, 7, "%u", myId);
   strId[7] = '\0';
 
-  pthread_rdwr_init_np(&myMutex, NULL);
-  pthread_rdwr_set_name(&myMutex, strId);
+  myMutex.setName(strId);
 }
 
 LicqGroup::~LicqGroup()
 {
-  pthread_rdwr_destroy_np(&myMutex);
-}
-
-void LicqGroup::Lock(unsigned short lockType) const
-{
-  switch (lockType)
-  {
-    case LOCK_R:
-      pthread_rdwr_rlock_np(&myMutex);
-      break;
-    case LOCK_W:
-      pthread_rdwr_wlock_np(&myMutex);
-      break;
-    default:
-      assert(false);
-      return;
-  }
-  myLockType = lockType;
-}
-
-void LicqGroup::Unlock() const
-{
-  unsigned short lockType = myLockType;
-  myLockType = LOCK_R;
-  switch (lockType)
-  {
-    case LOCK_R:
-      pthread_rdwr_runlock_np(&myMutex);
-      break;
-    case LOCK_W:
-      pthread_rdwr_wunlock_np(&myMutex);
-      break;
-    default:
-      assert(false);
-      break;
-  }
 }
 
 bool compare_groups(const LicqGroup* first, const LicqGroup* second)
@@ -1718,74 +1532,69 @@ bool compare_groups(const LicqGroup* first, const LicqGroup* second)
 
 //=====CUser====================================================================
 
+
+UserId LicqUser::makeUserId(const string& accountId, unsigned long ppid)
+{
+  // ppid is always four ascii charaters, use them plus the normalized account id as our user ids
+  char ppidstr[5];
+  ppidstr[0] = ((ppid & 0xFF000000) >> 24);
+  ppidstr[1] = ((ppid & 0x00FF0000) >> 16);
+  ppidstr[2] = ((ppid & 0x0000FF00) >> 8);
+  ppidstr[3] = ((ppid & 0x000000FF));
+  ppidstr[4] = '\0';
+  return ppidstr + normalizeId(accountId, ppid);
+}
+
+string LicqUser::getUserAccountId(const UserId& userId)
+{
+  if (userId.size() < 4)
+    return "";
+  return userId.substr(4);
+}
+
+unsigned long LicqUser::getUserProtocolId(const UserId& userId)
+{
+  if (userId.size() < 4)
+    return 0;
+  return userId[0] << 24 | userId[1] << 16 | userId[2] << 8 | userId[3];
+}
+
+
 unsigned short ICQUser::s_nNumUserEvents = 0;
 pthread_mutex_t ICQUser::mutex_nNumUserEvents = PTHREAD_MUTEX_INITIALIZER;
 
-
-//-----ICQUser::constructor-----------------------------------------------------
-ICQUser::ICQUser(unsigned long _nUin, char *_szFilename)
-// Called when first constructing our known users
+LicqUser::LicqUser(const string& accountId, unsigned long ppid, const string& filename)
+  : myId(makeUserId(accountId, ppid)),
+    myAccountId(accountId),
+    myPpid(ppid)
 {
-  char szUin[24];
-  sprintf(szUin, "%lu", _nUin);
-  Init(szUin, LICQ_PPID);
+  Init();
   m_fConf.SetFlags(INI_FxWARN);
-  m_fConf.SetFileName(_szFilename);
+  m_fConf.SetFileName(filename.c_str());
   if (!LoadInfo())
   {
     gLog.Error("%sUnable to load user info from '%s'.\n%sUsing default values.\n",
-               L_ERRORxSTR, _szFilename, L_BLANKxSTR);
+        L_ERRORxSTR, filename.c_str(), L_BLANKxSTR);
     SetDefaults();
   }
   m_fConf.CloseFile();
   m_fConf.SetFlags(INI_FxWARN | INI_FxALLOWxCREATE);
 }
 
-
-ICQUser::ICQUser(unsigned long nUin)
+LicqUser::LicqUser(const string& accountId, unsigned long ppid, bool temporary)
+  : myId(makeUserId(accountId, ppid)),
+    myAccountId(accountId),
+    myPpid(ppid)
 {
-  char szUin[24];
-  sprintf(szUin, "%lu", nUin);
-  Init(szUin, LICQ_PPID);
-
+  Init();
   SetDefaults();
-  char szFilename[MAX_FILENAME_LEN];
-  char *p = PPIDSTRING(LICQ_PPID);
-  snprintf(szFilename, MAX_FILENAME_LEN, "%s/%s/%s.%s", BASE_DIR, USER_DIR,
-           szUin, p);
-  delete [] p;
-
-  szFilename[MAX_FILENAME_LEN - 1] = '\0';
-  m_fConf.SetFileName(szFilename);
-  m_fConf.SetFlags(INI_FxWARN | INI_FxALLOWxCREATE);
-}
-
-ICQUser::ICQUser(const char *_szId, unsigned long _nPPID, char *_szFilename)
-{
-  Init(_szId, _nPPID);
-  m_fConf.SetFlags(INI_FxWARN);
-  m_fConf.SetFileName(_szFilename);
-  if (!LoadInfo())
-  {
-    gLog.Error("%sUnable to load user info from '%s'.\n%sUsing default values.\n",
-               L_ERRORxSTR, _szFilename, L_BLANKxSTR);
-    SetDefaults();
-  }
-  m_fConf.CloseFile();
-  m_fConf.SetFlags(INI_FxWARN | INI_FxALLOWxCREATE);
-}
-
-ICQUser::ICQUser(const char *_szId, unsigned long _nPPID, bool _bTempUser)
-{
-  Init(_szId, _nPPID);
-  SetDefaults();
-  m_bNotInList = _bTempUser;
+  m_bNotInList = temporary;
   if (!m_bNotInList)
   {
     char szFilename[MAX_FILENAME_LEN];
-    char *p = PPIDSTRING(_nPPID);
+    char* p = PPIDSTRING(ppid);
     snprintf(szFilename, MAX_FILENAME_LEN, "%s/%s/%s.%s", BASE_DIR, USER_DIR,
-           _szId, p);
+        myAccountId.c_str(), p);
     delete [] p;
     szFilename[MAX_FILENAME_LEN - 1] = '\0';
     m_fConf.SetFileName(szFilename);
@@ -1802,8 +1611,8 @@ void ICQUser::AddToContactList()
   if (access(m_fHistory.FileName(), F_OK) == -1)
   {
     char szFilename[MAX_FILENAME_LEN];
-    char *p = PPIDSTRING(m_nPPID);
-    snprintf(szFilename, MAX_FILENAME_LEN, "%s/%s/%s.%s.%s", BASE_DIR, HISTORY_DIR, m_szId,
+    char* p = PPIDSTRING(myPpid);
+    snprintf(szFilename, MAX_FILENAME_LEN, "%s/%s/%s.%s.%s", BASE_DIR, HISTORY_DIR, myAccountId.c_str(),
              p, HISTORYxOLD_EXT);
     delete [] p;
 
@@ -1827,14 +1636,7 @@ bool ICQUser::LoadInfo()
   m_fConf.SetFlags(0);
   m_fConf.SetSection("user");
 
-  LoadGeneralInfo();
-  LoadMoreInfo();
-  LoadHomepageInfo();
-  LoadWorkInfo();
-  LoadAboutInfo();
-  LoadInterestsInfo();
-  LoadBackgroundsInfo();
-  LoadOrganizationsInfo();
+  loadUserInfo();
   LoadPhoneBookInfo();
   LoadPictureInfo();
   LoadLicqInfo();
@@ -1842,88 +1644,21 @@ bool ICQUser::LoadInfo()
   return true;
 }
 
-
-//-----ICQUser::LoadGeneralInfo----------------------------------------------
-void ICQUser::LoadGeneralInfo()
+void ICQUser::loadUserInfo()
 {
   // read in the fields, checking for errors each time
-  char szTemp[MAX_LINE_LEN];
-  m_fConf.ReadStr("Alias", szTemp, tr("Unknown"));  SetAlias(szTemp);
-  m_fConf.ReadStr("FirstName", szTemp, "");  SetFirstName(szTemp);
-  m_fConf.ReadStr("LastName", szTemp, "");  SetLastName(szTemp);
-  m_fConf.ReadStr("Email1", szTemp, "");  SetEmailPrimary(szTemp);
-  m_fConf.ReadStr("Email2", szTemp, "");  SetEmailSecondary(szTemp);
-  m_fConf.ReadStr("EmailO", szTemp, "");  SetEmailOld(szTemp);
-  m_fConf.ReadStr("City", szTemp, "");  SetCity(szTemp);
-  m_fConf.ReadStr("State", szTemp, "");  SetState(szTemp);
-  m_fConf.ReadStr("PhoneNumber", szTemp, "");  SetPhoneNumber(szTemp);
-  m_fConf.ReadStr("FaxNumber", szTemp, "");  SetFaxNumber(szTemp);
-  m_fConf.ReadStr("Address", szTemp, "");  SetAddress(szTemp);
-  m_fConf.ReadStr("CellularNumber", szTemp, "");  SetCellularNumber(szTemp);
-  m_fConf.ReadStr("Zipcode", szTemp, "");  SetZipCode(szTemp);
-  m_fConf.ReadNum("Country", m_nCountryCode, 0);
+  m_fConf.SetSection("user");
+  m_fConf.readString("Alias", myAlias, tr("Unknown"));
   m_fConf.ReadNum("Timezone", m_nTimezone, TIMEZONE_UNKNOWN);
   m_fConf.ReadBool("Authorization", m_bAuthorization, false);
-  m_fConf.ReadBool("HideEmail", m_bHideEmail, false);
-}
 
+  PropertyMap::iterator i;
+  for (i = myUserInfo.begin(); i != myUserInfo.end(); ++i)
+    m_fConf.readVar(i->first, i->second);
 
-//-----ICQUser::LoadMoreInfo-------------------------------------------------
-void ICQUser::LoadMoreInfo()
-{
-  // read in the fields, checking for errors each time
-  char szTemp[MAX_LINE_LEN];
-  m_fConf.ReadNum("Age", m_nAge, 0);
-  m_fConf.ReadNum("Gender", m_nGender, GENDER_UNSPECIFIED);
-  m_fConf.ReadStr("Homepage", szTemp, tr("<none>"));  SetHomepage(szTemp);
-  m_fConf.ReadNum("BirthYear", m_nBirthYear, 0);
-  m_fConf.ReadNum("BirthMonth", m_nBirthMonth, 0);
-  m_fConf.ReadNum("BirthDay", m_nBirthDay, 0);
-  m_fConf.ReadNum("Language1", m_nLanguage[0], 0);
-  m_fConf.ReadNum("Language2", m_nLanguage[1], 0);
-  m_fConf.ReadNum("Language3", m_nLanguage[2], 0);
-}
-
-
-//-----ICQUser::LoadHomepageInfo---------------------------------------------
-void ICQUser::LoadHomepageInfo()
-{
-  // read in the fields, checking for errors each time
-  char szTemp[MAX_LINE_LEN];
-  m_fConf.ReadBool("HomepageCatPresent", m_bHomepageCatPresent, false);
-  m_fConf.ReadNum("HomepageCatCode", m_nHomepageCatCode, 0);
-  m_fConf.ReadStr("HomepageDesc", szTemp, "");  SetHomepageDesc(szTemp);
-  m_fConf.ReadBool("ICQHomepagePresent", m_bICQHomepagePresent, false);
-}
-
-
-//-----ICQUser::LoadWorkInfo-------------------------------------------------
-void ICQUser::LoadWorkInfo()
-{
-  // read in the fields, checking for errors each time
-  char szTemp[MAX_LINE_LEN];
-  m_fConf.ReadStr("CompanyCity", szTemp, "");  SetCompanyCity(szTemp);
-  m_fConf.ReadStr("CompanyState", szTemp, "");  SetCompanyState(szTemp);
-  m_fConf.ReadStr("CompanyPhoneNumber", szTemp, "");  SetCompanyPhoneNumber(szTemp);
-  m_fConf.ReadStr("CompanyFaxNumber", szTemp, "");  SetCompanyFaxNumber(szTemp);
-  m_fConf.ReadStr("CompanyAddress", szTemp, "");  SetCompanyAddress(szTemp);
-  m_fConf.ReadStr("CompanyZip", szTemp, "");  SetCompanyZip(szTemp);
-  m_fConf.ReadNum("CompanyCountry", m_nCompanyCountry, 0);
-  m_fConf.ReadStr("CompanyName", szTemp, "");  SetCompanyName(szTemp);
-  m_fConf.ReadStr("CompanyDepartment", szTemp, "");  SetCompanyDepartment(szTemp);
-  m_fConf.ReadStr("CompanyPosition", szTemp, "");  SetCompanyPosition(szTemp);
-  m_fConf.ReadNum("CompanyOccupation", m_nCompanyOccupation, 0);
-  m_fConf.ReadStr("CompanyHomepage", szTemp, "");  SetCompanyHomepage(szTemp);
-}
-
-
-//-----ICQUser::LoadAboutInfo-------------------------------------------------
-void ICQUser::LoadAboutInfo()
-{
-  // read in the fields, checking for errors each time
-  char szTemp[MAX_LINE_LEN];
-  m_fConf.SetSection("user");
-  m_fConf.ReadStr("About", szTemp, ""); SetAbout(szTemp);
+  loadCategory(myInterests, m_fConf, "Interests");
+  loadCategory(myBackgrounds, m_fConf, "Backgrounds");
+  loadCategory(myOrganizations, m_fConf, "Organizations");
 }
 
 //-----ICQUser::LoadPhoneBookInfo--------------------------------------------
@@ -1958,11 +1693,13 @@ void ICQUser::LoadLicqInfo()
   m_fConf.ReadNum("Groups.System", mySystemGroups, 0);
   m_fConf.ReadStr("Ip", szTemp, "0.0.0.0");
   struct in_addr in;
-  m_nIp = inet_aton(szTemp, &in);
-  if (m_nIp != 0) m_nIp = in.s_addr;
+  m_nIp = inet_pton(AF_INET, szTemp, &in);
+  if (m_nIp > 0)
+    m_nIp = in.s_addr;
   m_fConf.ReadStr("IntIp", szTemp, "0.0.0.0");
-  m_nIntIp = inet_aton(szTemp, &in);
-  if (m_nIntIp != 0) m_nIntIp = in.s_addr;
+  m_nIntIp = inet_pton(AF_INET, szTemp, &in);
+  if (m_nIntIp > 0)
+    m_nIntIp = in.s_addr;
   m_fConf.ReadNum("Port", m_nPort, 0);
   //m_fConf.ReadBool("NewUser", m_bNewUser, false);
   m_fConf.ReadNum("NewMessages", nNewMessages, 0);
@@ -2027,13 +1764,13 @@ void ICQUser::LoadLicqInfo()
     }
   }
 
-  unsigned short userGroupCount;
+  unsigned int userGroupCount;
   if (m_fConf.ReadNum("GroupCount", userGroupCount, 0))
   {
-    for (unsigned short i = 1; i <= userGroupCount; ++i)
+    for (unsigned int i = 1; i <= userGroupCount; ++i)
     {
       sprintf(szTemp, "Group%u", i);
-      unsigned short groupId;
+      int groupId;
       m_fConf.ReadNum(szTemp, groupId, 0);
       if (groupId > 0)
         AddToGroup(GROUPS_USER, groupId);
@@ -2042,9 +1779,9 @@ void ICQUser::LoadLicqInfo()
   else
   {
     // Groupcount is missing in user config, try and read old group configuration
-    unsigned long oldGroups;
+    unsigned int oldGroups;
     m_fConf.ReadNum("Groups.User", oldGroups, 0);
-    for (unsigned short i = 0; i <= 31; ++i)
+    for (int i = 0; i <= 31; ++i)
       if (oldGroups & (1L << i))
         AddToGroup(GROUPS_USER, i+1);
   }
@@ -2081,7 +1818,7 @@ void ICQUser::LoadLicqInfo()
 
 
 //-----ICQUser::destructor------------------------------------------------------
-ICQUser::~ICQUser()
+LicqUser::~LicqUser()
 {
   unsigned long nId;
   while (m_vcMessages.size() > 0)
@@ -2092,82 +1829,25 @@ ICQUser::~ICQUser()
     decNumUserEvents();
     
     if (gLicqDaemon != NULL)
-      gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-        USER_EVENTS, m_szId, m_nPPID, nId));
+      gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER,
+          USER_EVENTS, myId, nId));
   }
 
   if ( m_szAutoResponse )
       free( m_szAutoResponse );
   if ( m_szEncoding )
       free( m_szEncoding );
-  if ( m_szAlias )
-      free( m_szAlias );
-  if ( m_szFirstName )
-      free( m_szFirstName );
-  if ( m_szLastName )
-      free( m_szLastName );
-  if ( m_szEmailPrimary )
-      free( m_szEmailPrimary );
-  if ( m_szEmailSecondary )
-      free( m_szEmailSecondary );
-  if ( m_szEmailOld )
-      free( m_szEmailOld );
-  if ( m_szCity )
-      free( m_szCity );
-  if ( m_szState )
-      free( m_szState );
-  if ( m_szPhoneNumber )
-      free( m_szPhoneNumber );
-  if ( m_szFaxNumber )
-      free( m_szFaxNumber );
-  if ( m_szAddress )
-      free( m_szAddress );
-  if ( m_szCellularNumber )
-      free( m_szCellularNumber );
-  if ( m_szZipCode )
-      free( m_szZipCode );
-  if ( m_szHomepage )
-      free( m_szHomepage );
-  if ( m_szHomepageDesc )
-      free( m_szHomepageDesc );
-  if ( m_szCompanyCity )
-      free( m_szCompanyCity );
-  if ( m_szCompanyState )
-      free( m_szCompanyState );
-  if ( m_szCompanyPhoneNumber )
-      free( m_szCompanyPhoneNumber );
-  if ( m_szCompanyFaxNumber )
-      free( m_szCompanyFaxNumber );
-  if ( m_szCompanyAddress )
-      free( m_szCompanyAddress );
-  if ( m_szCompanyZip )
-      free( m_szCompanyZip );
-  if ( m_szCompanyName )
-      free( m_szCompanyName );
-  if ( m_szCompanyDepartment )
-      free( m_szCompanyDepartment );
-  if ( m_szCompanyPosition )
-      free( m_szCompanyPosition );
-  if ( m_szCompanyHomepage )
-      free( m_szCompanyHomepage );
-  if ( m_szAbout )
-      free( m_szAbout );
   if ( m_szCustomAutoResponse )
       free( m_szCustomAutoResponse );
   if ( m_szClientInfo )
       free( m_szClientInfo );
-  if ( m_szId )
-      free( m_szId );
   if ( m_szGPGKey )
       free( m_szGPGKey );
   if (m_szBuddyIconHash)
     free(m_szBuddyIconHash);
   if (m_szOurBuddyIconHash)
     free(m_szOurBuddyIconHash);
-  
-  delete m_Interests;
-  delete m_Organizations;
-  delete m_Backgrounds;
+
   delete m_PhoneBook;
 /*
   // Destroy the mutex
@@ -2179,8 +1859,6 @@ ICQUser::~ICQUser()
     nResult = pthread_mutex_destroy(&mutex);
   } while (nResult != 0);
 */
-
-  pthread_rdwr_destroy_np(&myMutex);
 }
 
 
@@ -2194,9 +1872,9 @@ void ICQUser::RemoveFiles()
   if (stat(m_fHistory.FileName(), &buf) == 0 && buf.st_size > 0)
   {
     char szFilename[MAX_FILENAME_LEN];
-    char *p = PPIDSTRING(m_nPPID);
+    char *p = PPIDSTRING(myPpid);
     snprintf(szFilename, MAX_FILENAME_LEN, "%s/%s/%s.%s.%s", BASE_DIR, HISTORY_DIR,
-             m_szId, p, HISTORYxOLD_EXT);
+        myAccountId.c_str(), p, HISTORYxOLD_EXT);
     delete [] p;
 
     szFilename[MAX_FILENAME_LEN - 1] = '\0';
@@ -2209,82 +1887,78 @@ void ICQUser::RemoveFiles()
   }
 }
 
-
-void ICQUser::Init(unsigned long _nUin)
+void LicqUser::Init()
 {
-  char szUin[24];
-  sprintf(szUin, "%lu", _nUin);
-  Init(szUin, LICQ_PPID);
-}
+  myRealAccountId = normalizeId(myAccountId, myPpid);
 
-void ICQUser::Init(const char *_szId, unsigned long _nPPID)
-{
   //SetOnContactList(false);
   m_bOnContactList = m_bEnableSave = false;
   m_szAutoResponse = NULL;
   m_szEncoding = strdup("");
   m_bSecure = false;
 
+  // TODO: Only user data fields valid for protocol should be populated
+
   // General Info
-  m_szAlias = NULL;
-  m_szFirstName = NULL;
-  m_szLastName = NULL;
-  m_szEmailPrimary = NULL;
-  m_szEmailSecondary = NULL;
-  m_szEmailOld = NULL;
-  m_szCity = NULL;
-  m_szState = NULL;
-  m_szPhoneNumber = NULL;
-  m_szFaxNumber = NULL;
-  m_szAddress = NULL;
-  m_szCellularNumber = NULL;
-  m_szZipCode = NULL;
-  m_nCountryCode = COUNTRY_UNSPECIFIED;
+  myAlias = string();
+  myUserInfo["FirstName"] = string();
+  myUserInfo["LastName"] = string();
+  myUserInfo["Email1"] = string(); // Primary email
+  myUserInfo["Email2"] = string(); // Secondary email
+  myUserInfo["Email0"] = string(); // Old email
+  myUserInfo["City"] = string();
+  myUserInfo["State"] = string();
+  myUserInfo["PhoneNumber"] = string();
+  myUserInfo["FaxNumber"] = string();
+  myUserInfo["Address"] = string();
+  myUserInfo["CellularNumber"] = string();
+  myUserInfo["Zipcode"] = string();
+  myUserInfo["Country"] = (unsigned int)COUNTRY_UNSPECIFIED;
+  myUserInfo["HideEmail"] = false;
   m_nTimezone = TIMEZONE_UNKNOWN;
   m_bAuthorization = false;
-  m_nWebAwareStatus = 2; //Status unknown
-  m_bHideEmail = false;
   m_nTyping = ICQ_TYPING_INACTIVEx0;
   m_bNotInList = false;
-  
+  myOnEventsBlocked = false;
+
   // More Info
-  m_nAge = 0xffff;
-  m_nGender = 0;
-  m_szHomepage = NULL;
-  m_nBirthYear = 0;
-  m_nBirthMonth = 0;
-  m_nBirthDay = 0;
-  m_nLanguage[0] = 0;
-  m_nLanguage[1] = 0;
-  m_nLanguage[2] = 0;
+  myUserInfo["Age"] = (unsigned int)0xffff;
+  myUserInfo["Gender"] = (unsigned int)0;
+  myUserInfo["Homepage"] = string();
+  myUserInfo["BirthYear"] = (unsigned int)0;
+  myUserInfo["BirthMonth"] = (unsigned int)0;
+  myUserInfo["BirthDay"] = (unsigned int)0;
+  myUserInfo["Language0"] = (unsigned int)0;
+  myUserInfo["Language1"] = (unsigned int)0;
+  myUserInfo["Language2"] = (unsigned int)0;
 
   // Homepage Info
-  m_bHomepageCatPresent = false;
-  m_nHomepageCatCode = 0;
-  m_szHomepageDesc = NULL;
-  m_bICQHomepagePresent = false;
+  myUserInfo["HomepageCatPresent"] = false;
+  myUserInfo["HomepageCatCode"] = (unsigned int)0;
+  myUserInfo["HomepageDesc"] = string();
+  myUserInfo["ICQHomepagePresent"] = false;
 
   // More2
-  m_Interests    = new ICQUserCategory(CAT_INTERESTS);
-  m_Organizations = new ICQUserCategory(CAT_ORGANIZATION);
-  m_Backgrounds  = new ICQUserCategory(CAT_BACKGROUND);
+  myInterests.clear();
+  myBackgrounds.clear();
+  myOrganizations.clear();
 
   // Work Info
-  m_szCompanyCity = NULL;
-  m_szCompanyState = NULL;
-  m_szCompanyPhoneNumber = NULL;
-  m_szCompanyFaxNumber = NULL;
-  m_szCompanyAddress = NULL;
-  m_szCompanyZip = NULL;
-  m_nCompanyCountry = COUNTRY_UNSPECIFIED;
-  m_szCompanyName = NULL;
-  m_szCompanyDepartment = NULL;
-  m_szCompanyPosition = NULL;
-  m_nCompanyOccupation = OCCUPATION_UNSPECIFIED;
-  m_szCompanyHomepage = NULL;
+  myUserInfo["CompanyCity"] = string();
+  myUserInfo["CompanyState"] = string();
+  myUserInfo["CompanyPhoneNumber"] = string();
+  myUserInfo["CompanyFaxNumber"] = string();
+  myUserInfo["CompanyAddress"] = string();
+  myUserInfo["CompanyZip"] = string();
+  myUserInfo["CompanyCountry"] = (unsigned int)COUNTRY_UNSPECIFIED;
+  myUserInfo["CompanyName"] = string();
+  myUserInfo["CompanyDepartment"] = string();
+  myUserInfo["CompanyPosition"] = string();
+  myUserInfo["CompanyOccupation"] = (unsigned int)OCCUPATION_UNSPECIFIED;
+  myUserInfo["CompanyHomepage"] = string();
 
   // About
-  m_szAbout = NULL;
+  myUserInfo["About"] = string();
 
   // Phone Book
   m_PhoneBook = new ICQUserPhoneBook();
@@ -2298,12 +1972,6 @@ void ICQUser::Init(const char *_szId, unsigned long _nPPID)
 
   // GPG key
   m_szGPGKey = strdup("");
-
-  if (_szId)
-    m_szId = strdup(_szId);
-  else
-    m_szId = 0;
-  m_nPPID = _nPPID;
 
   // gui plugin compat
   SetStatus(ICQ_STATUS_OFFLINE);
@@ -2345,13 +2013,7 @@ void ICQUser::Init(const char *_szId, unsigned long _nPPID)
   m_nGSID = 0;
   m_szClientInfo = NULL;
 
-  pthread_rdwr_init_np(&myMutex, NULL);
-  pthread_rdwr_set_name(&myMutex, m_szId);
-}
-
-unsigned long ICQUser::Uin() const
-{
-  return strtoul(m_szId, NULL, 10);
+  myMutex.setName(myAccountId);
 }
 
 void ICQUser::SetPermanent()
@@ -2361,9 +2023,9 @@ void ICQUser::SetPermanent()
 
   // Create the user file
   char szFilename[MAX_FILENAME_LEN];
-  char *p = PPIDSTRING(m_nPPID);
+  char* p = PPIDSTRING(myPpid);
   snprintf(szFilename, MAX_FILENAME_LEN, "%s/%s/%s.%s", BASE_DIR, USER_DIR,
-         m_szId, p);
+      myAccountId.c_str(), p);
   delete [] p;
   szFilename[MAX_FILENAME_LEN - 1] = '\0';
   m_fConf.SetFileName(szFilename);
@@ -2374,15 +2036,15 @@ void ICQUser::SetPermanent()
 
   // Notify the plugins of the change
   // Send a USER_BASIC, don't want a new signal just for this.
-  gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-        USER_BASIC, m_szId, m_nPPID, 0));
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER,
+      USER_BASIC, myId, 0));
 }
 
 //-----ICQUser::SetDefaults-----------------------------------------------------
 void ICQUser::SetDefaults()
 {
   char szTemp[12];
-  SetAlias(IdString());
+  setAlias(myAccountId);
   SetHistoryFile("default");
   SetSystemGroups(0);
   myGroups.clear();
@@ -2390,32 +2052,110 @@ void ICQUser::SetDefaults()
   SetAuthorization(false);
 
   szTemp[0] = '\0';
-  SetFirstName(szTemp);
-  SetLastName(szTemp);
-  SetEmailPrimary(szTemp);
-  SetEmailSecondary(szTemp);
-  SetEmailOld(szTemp);
-  SetCity(szTemp);
-  SetState(szTemp);
-  SetPhoneNumber(szTemp);
-  SetFaxNumber(szTemp);
-  SetAddress(szTemp);
-  SetCellularNumber(szTemp);
-  SetHomepage(szTemp);
-  SetHomepageDesc(szTemp);
-  SetZipCode(szTemp);
-  SetCompanyCity(szTemp);
-  SetCompanyState(szTemp);
-  SetCompanyPhoneNumber(szTemp);
-  SetCompanyFaxNumber(szTemp);
-  SetCompanyAddress(szTemp);
-  SetCompanyZip(szTemp);
-  SetCompanyName(szTemp);
-  SetCompanyDepartment(szTemp);
-  SetCompanyPosition(szTemp);
-  SetCompanyHomepage(szTemp);
-  SetAbout(szTemp);
   SetCustomAutoResponse(szTemp);
+}
+
+string ICQUser::getUserInfoString(const string& key) const
+{
+  try
+  {
+    PropertyMap::const_iterator i = myUserInfo.find(key);
+    if (i != myUserInfo.end())
+      // Try to cast value to a string
+      return any_cast<string>(i->second);
+  }
+  catch(const bad_any_cast &)
+  {
+  }
+  // Unknown property or not a string so just return an empty string object
+  return string();
+}
+
+unsigned int ICQUser::getUserInfoUint(const string& key) const
+{
+  try
+  {
+    PropertyMap::const_iterator i = myUserInfo.find(key);
+    if (i != myUserInfo.end())
+      // Try to cast value to an unsigned int
+      return any_cast<unsigned int>(i->second);
+  }
+  catch(const bad_any_cast &)
+  {
+  }
+  // Unknown property or not an int so just return 0
+  return 0;
+}
+
+bool ICQUser::getUserInfoBool(const string& key) const
+{
+  try
+  {
+    PropertyMap::const_iterator i = myUserInfo.find(key);
+    if (i != myUserInfo.end())
+      // Try to cast value to a bool
+      return any_cast<bool>(i->second);
+  }
+  catch(const bad_any_cast &)
+  {
+  }
+  // Unknown property or not an int so just return false
+  return false;
+}
+
+void ICQUser::setUserInfoString(const string& key, const string& value)
+{
+  PropertyMap::iterator i = myUserInfo.find(key);
+  if (i == myUserInfo.end() || i->second.type() != typeid(string))
+{
+    return;
+}
+
+  i->second = value;
+  saveUserInfo();
+}
+
+void ICQUser::setUserInfoUint(const string& key, unsigned int value)
+{
+  PropertyMap::iterator i = myUserInfo.find(key);
+  if (i == myUserInfo.end() || i->second.type() != typeid(unsigned int))
+{
+    return;
+}
+
+  i->second = value;
+  saveUserInfo();
+}
+
+void ICQUser::setUserInfoBool(const string& key, bool value)
+{
+  PropertyMap::iterator i = myUserInfo.find(key);
+  if (i == myUserInfo.end() || i->second.type() != typeid(bool))
+{
+    return;
+}
+
+  i->second = value;
+  saveUserInfo();
+}
+
+std::string ICQUser::getFullName() const
+{
+  string name = getFirstName();
+  string lastName = getLastName();
+  if (!name.empty() && !lastName.empty())
+    name += ' ';
+  return name + lastName;
+}
+
+std::string ICQUser::getEmail() const
+{
+  string email = getUserInfoString("Email1");
+  if (email.empty())
+    email = getUserInfoString("Email2");
+  if (email.empty())
+    email = getUserInfoString("Email0");
+  return email;
 }
 
 const char* ICQUser::UserEncoding() const
@@ -2465,7 +2205,10 @@ int ICQUser::Birthday(unsigned short nRange) const
   struct tm *ts = localtime(&t);
   int nDays = -1;
 
-  if (GetBirthMonth() == 0 || GetBirthDay() == 0)
+  int birthDay = getUserInfoUint("BirthDay");
+  int birthMonth = getUserInfoUint("BirthMonth");
+
+  if (birthMonth == 0 || birthDay == 0)
   {
     if (StatusBirthday() && User()) return 0;
     return -1;
@@ -2473,7 +2216,7 @@ int ICQUser::Birthday(unsigned short nRange) const
 
   if (nRange == 0)
   {
-    if (ts->tm_mon + 1 == GetBirthMonth() && ts->tm_mday == GetBirthDay())
+    if (ts->tm_mon + 1 == birthMonth && ts->tm_mday == birthDay)
       nDays = 0;
   }
   else
@@ -2492,20 +2235,18 @@ int ICQUser::Birthday(unsigned short nRange) const
       nDayMax = nMonthDays[nMonth];
     }
 
-    if (GetBirthMonth() == nMonth && GetBirthDay() >= nDayMin &&
-         GetBirthDay() <= nDayMax)
+    if (birthMonth == nMonth && birthDay >= nDayMin && birthDay <= nDayMax)
     {
-      nDays = GetBirthDay() - nDayMin;
+      nDays = birthDay - nDayMin;
     }
-    else if (nMonthNext != 0 && GetBirthMonth() == nMonthNext &&
-        GetBirthDay() <= nDayMaxNext)
+    else if (nMonthNext != 0 && birthMonth == nMonthNext && birthDay <= nDayMaxNext)
     {
-      nDays = GetBirthDay() + (nMonthDays[nMonth] - nDayMin);
+      nDays = birthDay + (nMonthDays[nMonth] - nDayMin);
     }
 
     /*struct tm tb = *ts;
-    tm_mday = GetBirthDay() - 1;
-    tm_mon = GetBirthMonth() - 1;
+    tm_mday = birthDay - 1;
+    tm_mon = birthMonth - 1;
     mktime(&tb);
     nDays = tb.tm_yday - ts->tm_yday;*/
   }
@@ -2522,27 +2263,28 @@ unsigned short ICQUser::Sequence(bool increment)
       return (m_nSequence);
 }
 
-void ICQUser::SetAlias(const char *s)
+void LicqUser::setAlias(const string& alias)
 {
-  if (s[0] == '\0')
+  if (alias.empty())
   {
-    if (m_szFirstName != NULL && m_szFirstName[0] != '\0')
-      SetString(&m_szAlias, m_szFirstName);
+    string firstName = getFirstName();
+    if (!firstName.empty())
+      myAlias = firstName;
     else
-      SetString(&m_szAlias, m_szId);
+      myAlias = myAccountId;
   }
   else
-    SetString(&m_szAlias, s);
+    myAlias = alias;
 
   // If there is a valid alias, set the server side list alias as well.
-  if (m_szAlias)
+  if (!myAlias.empty())
   {
-    size_t aliasLen = strlen(m_szAlias);
-    TLVPtr aliasTLV(new COscarTLV(0x131, aliasLen, reinterpret_cast<unsigned char*>(m_szAlias)));
+    size_t aliasLen = myAlias.size();
+    TLVPtr aliasTLV(new COscarTLV(0x131, aliasLen, myAlias.c_str()));
     AddTLV(aliasTLV);
   }
 
-  SaveGeneralInfo();
+  saveUserInfo();
 }
 
 
@@ -2555,7 +2297,7 @@ bool ICQUser::Away() const
 
 void ICQUser::SetHistoryFile(const char *s)
 {
-  m_fHistory.SetFile(s, m_szId, m_nPPID);
+  m_fHistory.SetFile(s, myAccountId.c_str(), myPpid);
   SaveLicqInfo();
 }
 
@@ -2605,18 +2347,20 @@ void ICQUser::SetSocketDesc(TCPSocket *s)
     m_nInfoSocketDesc = s->Descriptor();
   else if (s->Channel() == ICQ_CHNxSTATUS)
     m_nStatusSocketDesc = s->Descriptor();
-  m_nLocalPort = s->LocalPort();
+  m_nLocalPort = s->getLocalPort();
   m_nConnectionVersion = s->Version();
   if (m_bSecure != s->Secure())
   {
     m_bSecure = s->Secure();
     if (gLicqDaemon != NULL && m_bOnContactList)
-      gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_SECURITY,
-        m_szId, m_nPPID, m_bSecure ? 1 : 0));
+      gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_SECURITY,
+          myId, m_bSecure ? 1 : 0));
   }
 
-  if (m_nIntIp == 0) m_nIntIp = s->RemoteIp();
-  if (m_nPort == 0) m_nPort = s->RemotePort();
+  if (m_nIntIp == 0)
+    m_nIntIp = s->getRemoteIpInt();
+  if (m_nPort == 0)
+    m_nPort = s->getRemotePort();
   SetSendServer(false);
 }
 
@@ -2651,7 +2395,7 @@ void ICQUser::ClearSocketDesc(unsigned char nChannel)
   }
 
   if (gLicqDaemon != NULL && m_bOnContactList)
-    gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER, USER_SECURITY, m_szId, m_nPPID, 0));
+    gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_SECURITY, myId, 0));
 }
 
 unsigned short ICQUser::ConnectionVersion() const
@@ -2806,7 +2550,7 @@ char* ICQUser::IntIpStr(char* rbuf) const
     INetSocket *s = gSocketManager.FetchSocket(socket);
     if (s != NULL)
     {
-      strcpy(rbuf, s->RemoteIpStr(buf));
+      strcpy(rbuf, s->getRemoteIpString().c_str());
       gSocketManager.DropSocket(s);
     }
     else
@@ -2909,7 +2653,7 @@ char* ICQUser::usprintf(const char* _szFormat, unsigned long nFlags) const
           gLicqDaemon->ProtoPluginList(pl);
           for (it = pl.begin(); it != pl.end(); it++)
           {
-            if (m_nPPID == (*it)->PPID())
+            if (myPpid == (*it)->PPID())
             {
               strcpy(szTemp, (*it)->Name());
               sz = szTemp;
@@ -2919,39 +2663,31 @@ char* ICQUser::usprintf(const char* _szFormat, unsigned long nFlags) const
           break;
         }
         case 'e':
-          sz = GetEmailPrimary();
-          if (sz[0] == '\0')
-          {
-            sz = GetEmailSecondary();
-            if (sz[0] == '\0')
-              sz = GetEmailOld();
-          }
+          sz = getEmail().c_str();
           break;
         case 'n':
-          snprintf(szTemp, sizeof(szTemp), "%s %s", GetFirstName(), GetLastName());
-          szTemp[sizeof(szTemp) - 1] = '\0';
-          sz = szTemp;
+          sz = getFullName().c_str();
           break;
         case 'f':
-          sz = GetFirstName();
+          sz = getFirstName().c_str();
           break;
         case 'l':
-          sz = GetLastName();
+          sz = getLastName().c_str();
           break;
         case 'a':
-          sz = GetAlias();
+          sz = getAlias().c_str();
           break;
         case 'u':
-          sz = IdString();
+          sz = accountId().c_str();
           break;
         case 'w':
-          sz = GetHomepage();
+          sz = getUserInfoString("Homepage").c_str();
           break;
         case 'h':
-          sz = GetPhoneNumber();
+          sz = getUserInfoString("PhoneNumber").c_str();
           break;
         case 'c':
-          sz = GetCellularNumber();
+          sz = getUserInfoString("CellularNumber").c_str();
           break;
         case 'S':
           sz = StatusStrShort();
@@ -3211,34 +2947,51 @@ char* ICQUser::usprintf(const char* _szFormat, unsigned long nFlags) const
 }
 
 //Return value must be delete []'d
-char *ICQUser::MakeRealId(const char *_szId, unsigned long _nPPID,
+char* LicqUser::MakeRealId(const string& accountId, unsigned long ppid,
                                 char *&szRealId)
 {
-  if (!(_szId == 0 || strlen(_szId) == 0))
-    szRealId = new char[strlen(_szId) + 1];
-  else
+  if (accountId.empty())
   {
     szRealId = new char[1];
     szRealId[0] = '\0';
     return szRealId;
   }
 
+  szRealId = new char[accountId.length() + 1];
+
   int j = 0;
-  if (_nPPID == LICQ_PPID && !isdigit(_szId[0]))
+  if (ppid == LICQ_PPID && !isdigit(accountId[0]))
   {
-    for (unsigned int i = 0; i < strlen(_szId); i++)
-      if (_szId[i] != ' ')
-        szRealId[j++] = tolower(_szId[i]);
+    for (unsigned int i = 0; i < accountId.length(); i++)
+      if (accountId[i] != ' ')
+        szRealId[j++] = tolower(accountId[i]);
     szRealId[j] = '\0';
   }
   else
-    strcpy(szRealId, _szId);
+    strcpy(szRealId, accountId.c_str());
 
   return szRealId;
 }
 
-//-----ICQUser::SaveGeneralInfo----------------------------------------------
-void ICQUser::SaveGeneralInfo()
+string LicqUser::normalizeId(const string& accountId, unsigned long ppid)
+{
+  if (accountId.empty())
+    return string();
+
+  string realId = accountId;
+
+  // TODO Make the protocol plugin normalize the accountId
+  // For AIM, account id is case insensitive and spaces should be ignored
+  if (ppid == LICQ_PPID && !isdigit(accountId[0]))
+  {
+    boost::erase_all(realId, " ");
+    boost::to_lower(realId);
+  }
+
+  return realId;
+}
+
+void ICQUser::saveUserInfo()
 {
   if (!EnableSave()) return;
 
@@ -3249,24 +3002,18 @@ void ICQUser::SaveGeneralInfo()
      return;
   }
   m_fConf.SetSection("user");
-  m_fConf.WriteStr("Alias", m_szAlias);
+  m_fConf.writeString("Alias", myAlias);
   m_fConf.WriteBool("KeepAliasOnUpdate", m_bKeepAliasOnUpdate);
-  m_fConf.WriteStr("FirstName", m_szFirstName);
-  m_fConf.WriteStr("LastName", m_szLastName);
-  m_fConf.WriteStr("Email1", m_szEmailPrimary);
-  m_fConf.WriteStr("Email2", m_szEmailSecondary);
-  m_fConf.WriteStr("EmailO", m_szEmailOld);
-  m_fConf.WriteStr("City", m_szCity);
-  m_fConf.WriteStr("State", m_szState);
-  m_fConf.WriteStr("PhoneNumber", m_szPhoneNumber);
-  m_fConf.WriteStr("FaxNumber", m_szFaxNumber);
-  m_fConf.WriteStr("Address", m_szAddress);
-  m_fConf.WriteStr("CellularNumber", m_szCellularNumber);
-  m_fConf.WriteStr("Zipcode", m_szZipCode);
-  m_fConf.WriteNum("Country", m_nCountryCode);
   m_fConf.WriteNum("Timezone", m_nTimezone);
   m_fConf.WriteBool("Authorization", m_bAuthorization);
-  m_fConf.WriteBool("HideEmail", m_bHideEmail);
+
+  PropertyMap::const_iterator i;
+  for (i = myUserInfo.begin(); i != myUserInfo.end(); ++i)
+    m_fConf.writeVar(i->first, i->second);
+
+  saveCategory(myInterests, m_fConf, "Interests");
+  saveCategory(myBackgrounds, m_fConf, "Backgrounds");
+  saveCategory(myOrganizations, m_fConf, "Organizations");
 
   if (!m_fConf.FlushFile())
   {
@@ -3278,176 +3025,49 @@ void ICQUser::SaveGeneralInfo()
   m_fConf.CloseFile();
 }
 
-
-//-----ICQUser::SaveMoreInfo----------------------------------------------
-void ICQUser::SaveMoreInfo()
+void ICQUser::saveCategory(const UserCategoryMap& category, CIniFile& file, const string& key)
 {
-  if (!EnableSave()) return;
+  file.WriteNum(key + 'N', category.size());
 
-  if (!m_fConf.ReloadFile())
+  UserCategoryMap::const_iterator i;
+  unsigned int count = 0;
+  for (i = category.begin(); i != category.end(); ++i)
   {
-     gLog.Error("%sError opening '%s' for reading.\n%sSee log for details.\n",
-                L_ERRORxSTR, m_fConf.FileName(),  L_BLANKxSTR);
-     return;
+    char n[10];
+    snprintf(n, sizeof(n), "%04X", count);
+    file.WriteNum(key + "Cat" + n, i->first);
+    file.writeString(key + "Desc" + n, i->second);
+    ++count;
   }
-  m_fConf.SetSection("user");
-  m_fConf.WriteNum("Age", m_nAge);
-  m_fConf.WriteNum("Gender", m_nGender);
-  m_fConf.WriteStr("Homepage", m_szHomepage);
-  m_fConf.WriteNum("BirthYear", m_nBirthYear);
-  m_fConf.WriteNum("BirthMonth", m_nBirthMonth);
-  m_fConf.WriteNum("BirthDay", m_nBirthDay);
-  m_fConf.WriteNum("Language1", m_nLanguage[0]);
-  m_fConf.WriteNum("Language2", m_nLanguage[1]);
-  m_fConf.WriteNum("Language3", m_nLanguage[2]);
+}
 
-  if (!m_fConf.FlushFile())
+void ICQUser::loadCategory(UserCategoryMap& category, CIniFile& file, const string& key)
+{
+  category.clear();
+  unsigned int count;
+  file.ReadNum(key + 'N', count, 0);
+
+  if (count > MAX_CATEGORIES)
   {
-    gLog.Error("%sError opening '%s' for writing.\n%sSee log for details.\n",
-               L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-    return;
+    gLog.Warn("%sTrying to load more categories than the max limit. Truncating.\n", L_WARNxSTR);
+    count = MAX_CATEGORIES;
   }
 
-  m_fConf.CloseFile();
-}
-
-//-----ICQUser::SaveHomepageInfo----------------------------------------------
-void ICQUser::SaveHomepageInfo()
-{
-  if (!EnableSave()) return;
-
-  if (!m_fConf.ReloadFile())
+  for (unsigned int i = 0; i < count; ++i)
   {
-     gLog.Error("%sError opening '%s' for reading.\n%sSee log for details.\n",
-                L_ERRORxSTR, m_fConf.FileName(),  L_BLANKxSTR);
-     return;
+    char n[10];
+    snprintf(n, sizeof(n), "%04X", i);
+
+    unsigned int cat;
+    if (!file.ReadNum(key + "Cat" + n, cat))
+      continue;
+
+    string descr;
+    if (!file.readString(key + "Desc" + n, descr))
+      continue;
+
+    category[cat] = descr;
   }
-  m_fConf.SetSection("user");
-  m_fConf.WriteBool("HomepageCatPresent", m_bHomepageCatPresent);
-  m_fConf.WriteNum("HomepageCatCode", m_nHomepageCatCode);
-  m_fConf.WriteStr("HomepageDesc", m_szHomepageDesc);
-  m_fConf.WriteBool("ICQHomepagePresent", m_bICQHomepagePresent);
-
-  if (!m_fConf.FlushFile())
-  {
-    gLog.Error("%sError opening '%s' for writing.\n%sSee log for details.\n",
-               L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-    return;
-  }
-
-  m_fConf.CloseFile();
-}
-
-//-----ICQUser::SaveWorkInfo----------------------------------------------
-void ICQUser::SaveWorkInfo()
-{
-  if (!EnableSave()) return;
-
-  if (!m_fConf.ReloadFile())
-  {
-     gLog.Error("%sError opening '%s' for reading.\n%sSee log for details.\n",
-                L_ERRORxSTR, m_fConf.FileName(),  L_BLANKxSTR);
-     return;
-  }
-  m_fConf.SetSection("user");
-  m_fConf.WriteStr("CompanyCity", m_szCompanyCity);
-  m_fConf.WriteStr("CompanyState", m_szCompanyState);
-  m_fConf.WriteStr("CompanyPhoneNumber", m_szCompanyPhoneNumber);
-  m_fConf.WriteStr("CompanyFaxNumber", m_szCompanyFaxNumber);
-  m_fConf.WriteStr("CompanyAddress", m_szCompanyAddress);
-  m_fConf.WriteStr("CompanyZip", m_szCompanyZip);
-  m_fConf.WriteNum("CompanyCountry", m_nCompanyCountry);
-  m_fConf.WriteStr("CompanyName", m_szCompanyName);
-  m_fConf.WriteStr("CompanyDepartment", m_szCompanyDepartment);
-  m_fConf.WriteStr("CompanyPosition", m_szCompanyPosition);
-  m_fConf.WriteNum("CompanyOccupation", m_nCompanyOccupation);
-  m_fConf.WriteStr("CompanyHomepage", m_szCompanyHomepage);
-
-  if (!m_fConf.FlushFile())
-  {
-    gLog.Error("%sError opening '%s' for writing.\n%sSee log for details.\n",
-               L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-    return;
-  }
-
-  m_fConf.CloseFile();
-}
-
-
-//-----ICQUser::SaveAboutInfo-------------------------------------------------
-void ICQUser::SaveAboutInfo()
-{
-   if (!EnableSave()) return;
-
-   if (!m_fConf.ReloadFile())
-   {
-      gLog.Error("%sError opening '%s' for reading.\n%sSee log for details.\n",
-                 L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-      return;
-   }
-   m_fConf.SetSection("user");
-   m_fConf.WriteStr("About", m_szAbout);
-   if (!m_fConf.FlushFile())
-   {
-     gLog.Error("%sError opening '%s' for writing.\n%sSee log for details.\n",
-                L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-     return;
-   }
-
-   m_fConf.CloseFile();
-}
-
-//-----ICQUser::Save<categories>Info()-----------------------------------------
-static const char *const szN_int    = "InterestsN";
-static const char *const szCat_int  = "InterestsCat%04X";
-static const char *const szDesc_int = "InterestsDesc%04X";
-
-static const char *const szN_bac    = "BackgroundsN";
-static const char *const szCat_bac  = "BackgroundsCat%04X";
-static const char *const szDesc_bac = "BackgroundsDesc%04X";
-
-static const char *const szN_aff    = "OrganizationsN";
-static const char *const szCat_aff  = "OrganizationsCat%04X";
-static const char *const szDesc_aff = "OrganizationsDesc%04X";
-
-
-void ICQUser::SaveInterestsInfo()
-{
-  if (!EnableSave())
-    return;
-
-  m_Interests->SaveToDisk(m_fConf, szN_int, szCat_int, szDesc_int);
-}
-
-void ICQUser::LoadInterestsInfo()
-{
-  m_Interests->LoadFromDisk(m_fConf, szN_int, szCat_int, szDesc_int);
-}
-
-void ICQUser::SaveBackgroundsInfo()
-{
-  if (!EnableSave())
-    return;
-
-  m_Backgrounds->SaveToDisk(m_fConf, szN_bac, szCat_bac, szDesc_bac);
-}
-
-void ICQUser::LoadBackgroundsInfo()
-{
-  m_Backgrounds->LoadFromDisk(m_fConf, szN_bac, szCat_bac, szDesc_bac);
-}
-
-void ICQUser::SaveOrganizationsInfo()
-{
-  if (!EnableSave())
-    return;
-
-  m_Organizations->SaveToDisk(m_fConf,szN_aff,szCat_aff, szDesc_aff);
-}
-
-void ICQUser::LoadOrganizationsInfo()
-{
-  m_Organizations->LoadFromDisk(m_fConf, szN_aff,szCat_aff, szDesc_aff);
 }
 
 //-----ICQUser::SavePhoneBookInfo--------------------------------------------
@@ -3544,7 +3164,7 @@ void ICQUser::SaveLicqInfo()
      m_fConf.WriteStr(szBuf, iter->second.c_str());
    }
 
-  m_fConf.WriteNum("GroupCount", static_cast<unsigned short>(myGroups.size()));
+  m_fConf.WriteNum("GroupCount", static_cast<unsigned int>(myGroups.size()));
   i = 1;
   for (UserGroupList::iterator g = myGroups.begin(); g != myGroups.end(); ++g)
   {
@@ -3587,54 +3207,12 @@ void ICQUser::SaveNewMessagesInfo()
    m_fConf.CloseFile();
 }
 
-
-//-----ICQUser::SaveExtInfo--------------------------------------------------
-void ICQUser::SaveExtInfo()
-{
-   if (!EnableSave()) return;
-
-   if (!m_fConf.ReloadFile())
-   {
-      gLog.Error("%sError opening '%s' for writing.\n%sSee log for details.\n",
-                 L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-      return;
-   }
-   m_fConf.SetSection("user");
-   m_fConf.WriteStr("Homepage", GetHomepage());
-   m_fConf.WriteStr("City", GetCity());
-   m_fConf.WriteStr("State", GetState());
-   m_fConf.WriteNum("Country", GetCountryCode());
-   m_fConf.WriteNum("Timezone", (signed short)GetTimezone());
-   m_fConf.WriteStr("Zipcode", GetZipCode());
-   m_fConf.WriteStr("PhoneNumber", GetPhoneNumber());
-   m_fConf.WriteNum("Age", GetAge());
-   m_fConf.WriteNum("Sex", (unsigned short)GetGender());
-   m_fConf.WriteStr("About", GetAbout());
-   if (!m_fConf.FlushFile())
-   {
-     gLog.Error("%sError opening '%s' for writing.\n%sSee log for details.\n",
-                L_ERRORxSTR, m_fConf.FileName(), L_BLANKxSTR);
-     return;
-   }
-
-   m_fConf.CloseFile();
-
-}
-
 void ICQUser::saveAll()
 {
   SaveLicqInfo();
-  SaveGeneralInfo();
-  SaveMoreInfo();
-  SaveHomepageInfo();
-  SaveWorkInfo();
-  SaveAboutInfo();
-  SaveInterestsInfo();
-  SaveBackgroundsInfo();
-  SaveOrganizationsInfo();
+  saveUserInfo();
   SavePhoneBookInfo();
   SavePictureInfo();
-  SaveExtInfo();
 }
 
 //-----ICQUser::EventPush--------------------------------------------------------
@@ -3645,9 +3223,9 @@ void ICQUser::EventPush(CUserEvent *e)
   SaveNewMessagesInfo();
   Touch();
   SetLastReceivedEvent();
-  
-  gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-    USER_EVENTS, m_szId, m_nPPID, e->Id(), e->ConvoId()));
+
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER,
+      USER_EVENTS, myId, e->Id(), e->ConvoId()));
 }
 
 
@@ -3659,32 +3237,17 @@ void ICQUser::WriteToHistory(const char *_szText)
 
 
 //-----ICQUser::GetEvent--------------------------------------------------------
-CUserEvent *ICQUser::EventPeek(unsigned short index)
+void LicqUser::CancelEvent(unsigned short index)
 {
-  if (index >= NewMessages()) return (NULL);
-  return (m_vcMessages[index]);
+  if (index < NewMessages())
+    return;
+  m_vcMessages[index]->Cancel();
 }
 
 const CUserEvent* ICQUser::EventPeek(unsigned short index) const
 {
   if (index >= NewMessages()) return (NULL);
   return (m_vcMessages[index]);
-}
-
-CUserEvent *ICQUser::EventPeekId(int id)
-{
-  if (m_vcMessages.size() == 0) return NULL;
-  CUserEvent *e = NULL;
-  UserEventList::const_iterator iter;
-  for (iter = m_vcMessages.begin(); iter != m_vcMessages.end(); ++iter)
-  {
-    if ((*iter)->Id() == id)
-    {
-      e = *iter;
-      break;
-    }
-  }
-  return e;
 }
 
 const CUserEvent* ICQUser::EventPeekId(int id) const
@@ -3727,9 +3290,9 @@ CUserEvent *ICQUser::EventPop()
   m_vcMessages.pop_back();
   decNumUserEvents();
   SaveNewMessagesInfo();
-  
-  gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-     USER_EVENTS, m_szId, m_nPPID, e->Id()));
+
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER,
+      USER_EVENTS, myId, e->Id()));
 
   return e;
 }
@@ -3747,9 +3310,9 @@ void ICQUser::EventClear(unsigned short index)
   m_vcMessages.pop_back();
   decNumUserEvents();
   SaveNewMessagesInfo();
-  
-  gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-    USER_EVENTS, m_szId, m_nPPID, -id));
+
+  gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER,
+      USER_EVENTS, myId, -id));
 }
 
 
@@ -3764,19 +3327,21 @@ void ICQUser::EventClearId(int id)
       m_vcMessages.erase(iter);
       decNumUserEvents();
       SaveNewMessagesInfo();
-      
-      gLicqDaemon->PushPluginSignal(new CICQSignal(SIGNAL_UPDATExUSER,
-         USER_EVENTS, m_szId, m_nPPID, -id));
+
+      gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER,
+          USER_EVENTS, myId, -id));
       break;
     }
   }
 }
 
 
-bool ICQUser::GetInGroup(GroupType gtype, unsigned short groupId) const
+bool ICQUser::GetInGroup(GroupType gtype, int groupId) const
 {
   if (gtype == GROUPS_SYSTEM)
   {
+    if (groupId < 0)
+      return false;
     if (groupId == 0)
       return true;
     return (mySystemGroups & (1L << (groupId -1))) != 0;
@@ -3785,7 +3350,7 @@ bool ICQUser::GetInGroup(GroupType gtype, unsigned short groupId) const
     return myGroups.count(groupId) > 0;
 }
 
-void ICQUser::SetInGroup(GroupType g, unsigned short _nGroup, bool _bIn)
+void ICQUser::SetInGroup(GroupType g, int _nGroup, bool _bIn)
 {
   if (_bIn)
     AddToGroup(g, _nGroup);
@@ -3793,9 +3358,10 @@ void ICQUser::SetInGroup(GroupType g, unsigned short _nGroup, bool _bIn)
     RemoveFromGroup(g, _nGroup);
 }
 
-void ICQUser::AddToGroup(GroupType gtype, unsigned short groupId)
+void ICQUser::AddToGroup(GroupType gtype, int groupId)
 {
-  if (groupId == 0) return;
+  if (groupId <= 0)
+    return;
 
   if (gtype == GROUPS_SYSTEM)
     mySystemGroups |= (1L << (groupId - 1));
@@ -3804,9 +3370,9 @@ void ICQUser::AddToGroup(GroupType gtype, unsigned short groupId)
   SaveLicqInfo();
 }
 
-bool ICQUser::RemoveFromGroup(GroupType gtype, unsigned short groupId)
+bool ICQUser::RemoveFromGroup(GroupType gtype, int groupId)
 {
-  if (groupId == 0)
+  if (groupId <= 0)
     return false;
 
   bool inGroup;
@@ -3882,8 +3448,14 @@ void ICQUser::SetTLVList(TLVList& tlvs)
 //=====ICQOwner=================================================================
 
 //-----ICQOwner::constructor----------------------------------------------------
-ICQOwner::ICQOwner(const char *_szId, unsigned long _nPPID)
+LicqOwner::LicqOwner(const string& accountId, unsigned long ppid)
+  : LicqUser(accountId, ppid, true)
 {
+  // Pretend to be temporary to LicqUser constructior so it doesn't setup m_fConf
+  // Restore NotInList flag to proper value when we get here
+  m_bNotInList = false;
+  m_bOnContactList = true;
+
   char szTemp[MAX_LINE_LEN];
   char filename[MAX_FILENAME_LEN];
   m_bException = false;
@@ -3892,7 +3464,7 @@ ICQOwner::ICQOwner(const char *_szId, unsigned long _nPPID)
   m_nPDINFO = 0;
 
   // Get data from the config file
-  char *p = PPIDSTRING(_nPPID);
+  char* p = PPIDSTRING(ppid);
   snprintf(filename, MAX_FILENAME_LEN - 1, "%s/owner.%s", BASE_DIR, p);
   filename[MAX_FILENAME_LEN - 1] = '\0';
 
@@ -3903,17 +3475,10 @@ ICQOwner::ICQOwner(const char *_szId, unsigned long _nPPID)
                  L_WARNxSTR, filename);
   }
 
-  // Get the id before init
   m_fConf.SetFileName(filename);
   m_fConf.SetFlags(INI_FxWARN | INI_FxALLOWxCREATE);
   m_fConf.ReloadFile();
   m_fConf.SetFlags(0);
-  m_fConf.SetSection("user");
-  m_fConf.ReadStr("Uin", szTemp, "", true);
-
-  // Now we can init
-  Init(_szId, _nPPID);
-  m_bOnContactList = true;
 
   // And finally our favorite function
   LoadInfo();
@@ -3934,10 +3499,10 @@ ICQOwner::ICQOwner(const char *_szId, unsigned long _nPPID)
 
   m_fConf.CloseFile();
 
-  gLog.Info(tr("%sOwner configuration for %s.\n"), L_INITxSTR, m_szId);
+  gLog.Info(tr("%sOwner configuration for %s.\n"), L_INITxSTR, myAccountId.c_str());
 
   snprintf(filename, MAX_FILENAME_LEN - 1, "%s/%s/owner.%s.%s.history", BASE_DIR, HISTORY_DIR,
-           m_szId, p);
+      myAccountId.c_str(), p);
     SetHistoryFile(filename);
 
   if (m_nTimezone != SystemTimezone() && m_nTimezone != TIMEZONE_UNKNOWN)
@@ -3951,7 +3516,7 @@ ICQOwner::ICQOwner(const char *_szId, unsigned long _nPPID)
   delete [] p;
 }
 
-ICQOwner::~ICQOwner()
+LicqOwner::~LicqOwner()
 {
   // Save the current auto response
   if (!m_fConf.ReloadFile())
@@ -3975,16 +3540,6 @@ ICQOwner::~ICQOwner()
 
   if ( m_szPassword )
     free( m_szPassword );
-}
-
-void ICQOwner::SetUin(unsigned long uin)
-{
-  char id[16];
-  snprintf(id, 16, "%lu", uin);
-  free(m_szId);
-  m_szId = strdup(id);
-  m_nPPID = LICQ_PPID;
-  SaveLicqInfo();
 }
 
 unsigned long ICQOwner::AddStatusFlags(unsigned long s) const
@@ -4020,7 +3575,7 @@ void ICQOwner::SaveLicqInfo()
      return;
   }
   m_fConf.SetSection("user");
-  m_fConf.WriteStr("Uin", IdString());
+  m_fConf.writeString("Uin", accountId());
   m_fConf.WriteBool("WebPresence", WebAware());
   m_fConf.WriteBool("HideIP", HideIp());
   m_fConf.WriteBool("Authorization", GetAuthorization());
@@ -4061,7 +3616,7 @@ void ICQOwner::SetPicture(const char *f)
     if (remove(szFilename) != 0 && errno != ENOENT)
     {
       gLog.Error("%sUnable to delete %s's picture file (%s):\n%s%s.\n",
-                         L_ERRORxSTR, m_szAlias, szFilename, L_BLANKxSTR,
+          L_ERRORxSTR, myAlias.c_str(), szFilename, L_BLANKxSTR,
                          strerror(errno));
     }
   }

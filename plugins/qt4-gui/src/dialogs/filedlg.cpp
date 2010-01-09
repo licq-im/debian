@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,8 @@
 #include "filedlg.h"
 
 #include "config.h"
+
+#include <unistd.h>
 
 #ifdef USE_KDE
 #include <kfiledialog.h>
@@ -55,11 +57,18 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::FileDlg */
 
-FileDlg::FileDlg(const char* szId, unsigned long nPPID, QWidget* parent)
+FileDlg::FileDlg(const UserId& userId, QWidget* parent)
   : QWidget(parent),
-    myId(szId),
-    m_nPPID(nPPID)
+    myUserId(userId)
 {
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user != NULL)
+  {
+    myId = user->accountId().c_str();
+    m_nPPID = user->ppid();
+    gUserManager.DropUser(user);
+  }
+
   setObjectName("FileDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
   setWindowTitle(tr("Licq - File Transfer (%1)").arg(myId));
@@ -135,7 +144,7 @@ FileDlg::FileDlg(const char* szId, unsigned long nPPID, QWidget* parent)
   hbox->addWidget(btnCancel);
 
   //TODO fix this
-  ftman = new CFileTransferManager(gLicqDaemon, myId.toULong());
+  ftman = new CFileTransferManager(gLicqDaemon, myId.toLatin1().data());
   ftman->SetUpdatesEnabled(2);
   sn = new QSocketNotifier(ftman->Pipe(), QSocketNotifier::Read);
   connect(sn, SIGNAL(activated(int)), SLOT(slot_ft()));
@@ -275,7 +284,7 @@ void FileDlg::slot_ft()
   char buf[32];
   read(ftman->Pipe(), buf, 32);
 
-  QTextCodec* codec = UserCodec::codecForProtoUser(myId, m_nPPID);
+  const QTextCodec* codec = UserCodec::codecForUserId(myUserId);
 
   CFileTransferEvent* e = NULL;
   while ( (e = ftman->PopFileTransferEvent()) != NULL)
@@ -453,7 +462,7 @@ bool FileDlg::GetLocalFileName()
   QString f;
   bool bValid = false;
 
-  QTextCodec *codec = UserCodec::codecForProtoUser(m_szId, m_nPPID);
+  const QTextCodec* codec = UserCodec::codecForUserId(myUserId);
 
   // Get the local filename and open it, loop until valid or cancel
   while(!bValid)

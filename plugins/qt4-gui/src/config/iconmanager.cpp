@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,10 +55,8 @@
 #include "xpm/exticons/cellular.xpm"
 #include "xpm/exticons/collapsed.xpm"
 #include "xpm/exticons/expanded.xpm"
-#ifdef HAVE_LIBGPGME
 #include "xpm/exticons/gpgoff.xpm"
 #include "xpm/exticons/gpgon.xpm"
-#endif
 #include "xpm/exticons/invisible.xpm"
 #include "xpm/exticons/phone.xpm"
 #include "xpm/exticons/sharedfiles.xpm"
@@ -78,12 +76,12 @@ using namespace LicqQtGui;
 
 IconManager* IconManager::myInstance = NULL;
 
-void IconManager::createInstance(QString iconSet, QString extendedIconSet, QObject* parent)
+void IconManager::createInstance(const QString& iconSet, const QString& extendedIconSet, QObject* parent)
 {
   myInstance = new IconManager(iconSet, extendedIconSet, parent);
 }
 
-IconManager::IconManager(QString iconSet, QString extendedIconSet, QObject* parent)
+IconManager::IconManager(const QString& iconSet, const QString& extendedIconSet, QObject* parent)
   : QObject(parent)
 {
   if (!loadIcons(iconSet))
@@ -93,7 +91,7 @@ IconManager::IconManager(QString iconSet, QString extendedIconSet, QObject* pare
     gLog.Warn("%sUnable to load extended icons %s.\n", L_WARNxSTR, extendedIconSet.toLocal8Bit().data());
 }
 
-bool IconManager::loadIcons(QString iconSet)
+bool IconManager::loadIcons(const QString& iconSet)
 {
   CIniFile fIconsConf;
 
@@ -111,23 +109,34 @@ bool IconManager::loadIcons(QString iconSet)
 
   char filename[MAX_FILENAME_LEN];
 
+  // Note: With Qt 4.6 the QPixmap cannot be reused without clearing it
+  //       between loads or icons will be mixed up.
   QPixmap p;
 
 #define LOAD_ICON(name, icon) \
     if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    { \
       myIconMap.insert(icon, p); \
+      p = QPixmap(); \
+    } \
     else \
       myIconMap.remove(icon);
 
 #define LOAD2_ICON(name, icon, deficon) \
     if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    { \
       myIconMap.insert(icon, p); \
+      p = QPixmap(); \
+    } \
     else \
       myIconMap.insert(icon, deficon);
 
 #define LOAD_STATUSICON(name, protocol, icon) \
     if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    { \
       myStatusIconMap.insert(QPair<ProtocolType, StatusIconType>(protocol, icon), p); \
+      p = QPixmap(); \
+    } \
     else \
       myStatusIconMap.remove(QPair<ProtocolType, StatusIconType>(protocol, icon));
 
@@ -166,9 +175,7 @@ bool IconManager::loadIcons(QString iconSet)
   // Menu icons
   LOAD2_ICON("Remove",          RemoveIcon, remove_xpm);
   LOAD2_ICON("Search",          SearchIcon, search_xpm);
-#ifdef HAVE_LIBGPGME
   LOAD2_ICON("GPGKey",          GpgKeyIcon, gpgon_xpm);
-#endif
 
   // Toolbar icons
   LOAD2_ICON("BackColor",       BackColorIcon, bgcolor_xpm);
@@ -209,7 +216,7 @@ bool IconManager::loadIcons(QString iconSet)
   return true;
 }
 
-bool IconManager::loadExtendedIcons(QString iconSet)
+bool IconManager::loadExtendedIcons(const QString& iconSet)
 {
   CIniFile fIconsConf;
 
@@ -231,7 +238,10 @@ bool IconManager::loadExtendedIcons(QString iconSet)
 
 #define LOAD_ICON(name, icon, deficon) \
     if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    { \
       myIconMap.insert(icon, p); \
+      p = QPixmap(); \
+    } \
     else \
       myIconMap.insert(icon, deficon);
 
@@ -240,10 +250,8 @@ bool IconManager::loadExtendedIcons(QString iconSet)
   LOAD_ICON("Collapsed",            CollapsedIcon, collapsed_xpm);
   LOAD_ICON("CustomAR",             CustomArIcon, autoresponse_xpm);
   LOAD_ICON("Expanded",             ExpandedIcon, expanded_xpm);
-#ifdef HAVE_LIBGPGME
   LOAD_ICON("GPGKeyDisabled",       GpgKeyDisabledIcon, gpgoff_xpm);
   LOAD_ICON("GPGKeyEnabled",        GpgKeyEnabledIcon, gpgon_xpm);
-#endif
   LOAD_ICON("ICQphoneActive",       IcqPhoneActiveIcon, ICQphoneActive_xpm);
   LOAD_ICON("ICQphoneBusy",         IcqPhoneBusyIcon, ICQphoneBusy_xpm);
   LOAD_ICON("Invisible",            InvisibleIcon, invisible_xpm);
@@ -271,7 +279,7 @@ const QPixmap& IconManager::getIcon(IconType icon)
   return myEmptyIcon;
 }
 
-const QPixmap& IconManager::iconForStatus(unsigned long fullStatus, QString id, unsigned long ppid)
+const QPixmap& IconManager::iconForStatus(unsigned long fullStatus, const QString& id, unsigned long ppid)
 {
   bool isAim = (ppid == LICQ_PPID) && (!id[0].isDigit());
 

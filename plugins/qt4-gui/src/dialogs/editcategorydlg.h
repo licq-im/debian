@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,15 +38,14 @@ class EditCategoryDlg : public QDialog
   Q_OBJECT
 
 public:
-  EditCategoryDlg(ICQUserCategory* cat, QWidget* parent = 0);
+  EditCategoryDlg(UserCat cat, const UserCategoryMap& category, QWidget* parent = 0);
 
 signals:
-  void updated(ICQUserCategory* cat);
+  void updated(UserCat cat, const UserCategoryMap& category);
 
 private:
-  static const unsigned MAX_CAT = ICQUserCategory::MAX_CATEGORIES;
-  QComboBox* myCats[MAX_CAT];
-  QLineEdit* myDescr[MAX_CAT];
+  QComboBox* myCats[MAX_CATEGORIES];
+  QLineEdit* myDescr[MAX_CATEGORIES];
   unsigned short myNumCats;
   UserCat myUserCat;
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,11 @@
 # define PLUGIN_NAME "kde4-gui"
 #else
 # define PLUGIN_NAME "qt4-gui"
+#endif
+
+#ifdef HAVE_HUNSPELL
+// Default path to find Hunspell dictionaries in, not used if KDE support is enabled
+# define HUNSPELL_DICTS_DIR "/usr/share/myspell/dicts/"
 #endif
 
 // Defined here until there is a way to get constant from daemon

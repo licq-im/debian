@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -32,6 +32,8 @@ extern int errno;
 #include "licq_log.h"
 
 using namespace std;
+using boost::any;
+using boost::any_cast;
 
 //=====Pre class helper functions==============================================
 
@@ -552,7 +554,7 @@ char *CIniFile::GetDataFromLine(char *_szBuffer, const char *_szLine,
                                 bool bTrim, int _nMax)
 {
   //static char s_szData[MAX_LINE_LEN];
-  char *szPostEquals;
+  const char* szPostEquals;
   char szData[MAX_LINE_LEN];
   int nMax = (_nMax > 0 ? _nMax : MAX_LINE_LEN);
 
@@ -651,6 +653,23 @@ bool CIniFile::SetSection(const char *_szSection)
   m_szSectionName = strdup(_szSection);
   ResetSection();
   return (true);
+}
+
+bool CIniFile::readVar(const string& key, any& data)
+{
+  if (data.type() == typeid(string))
+    return readString(key, any_cast<string&>(data));
+  if (data.type() == typeid(unsigned int))
+    return ReadNum(key, any_cast<unsigned int&>(data));
+  if (data.type() == typeid(signed int))
+    return ReadNum(key, any_cast<signed int&>(data));
+  if (data.type() == typeid(bool))
+    return ReadBool(key, any_cast<bool&>(data));
+
+  // Unhandled data type
+  gLog.Warn("%sInternal Error: CIniFile::readVar, key=%s, data.type=%s\n",
+      L_WARNxSTR, key.c_str(), data.type().name());
+  return false;
 }
 
 bool CIniFile::readString(const string& key, string& data,
@@ -798,6 +817,21 @@ bool CIniFile::CreateSection(const char *_szSectionName)
   m_szSectionName = strdup(_szSectionName);
 
   return(true);
+}
+
+void CIniFile::writeVar(const string& key, const any& data)
+{
+  if (data.type() == typeid(string))
+    writeString(key, any_cast<const string&>(data));
+  else if (data.type() == typeid(unsigned int))
+    WriteNum(key, any_cast<unsigned int>(data));
+  else if (data.type() == typeid(signed int))
+    WriteNum(key, any_cast<signed int>(data));
+  else if (data.type() == typeid(bool))
+    WriteBool(key, any_cast<bool>(data));
+  else
+    gLog.Warn("%sInternal Error: CIniFile::writeVar, key=%s, data.type=%s\n",
+        L_WARNxSTR, key.c_str(), data.type().name());
 }
 
 void CIniFile::writeString(const std::string& key, const std::string& data)

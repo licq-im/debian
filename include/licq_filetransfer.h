@@ -199,7 +199,7 @@ typedef std::list<class CFileTransferManager *> FileTransferManagerList;
 class CFileTransferManager
 {
 public:
-  CFileTransferManager(CICQDaemon *d, unsigned long nUin);
+  CFileTransferManager(CICQDaemon* d, const char* accountId);
   ~CFileTransferManager();
 
   bool ReceiveFiles(const char *szDirectory);
@@ -208,10 +208,9 @@ public:
   void CloseFileTransfer();
 
   // Available after construction
-  unsigned short LocalPort() { return ftServer.LocalPort(); }
+  uint16_t LocalPort() const            { return ftServer.getLocalPort(); }
   const char *LocalName()  { return m_szLocalName; }
   direction Direction() { return m_nDirection; }
-  unsigned long Uin() { return m_nUin; }
   const char* Id() const { return myId; }
 
   // Available after FT_STARTxBATCH
@@ -267,7 +266,6 @@ protected:
   unsigned short m_nUpdatesEnabled;
 
   unsigned char m_nResult;
-  unsigned long m_nUin;
   unsigned short m_nSession, m_nSpeed, m_nState;
   char myId[16];
 

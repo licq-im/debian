@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,12 +26,14 @@
 #include <QTimer>
 #include <QVariant>
 
+#include <licq_types.h>
+
 #include "contactitem.h"
 #include "contactlist.h"
 
 class QImage;
 
-class ICQUser;
+class LicqUser;
 
 namespace LicqQtGui
 {
@@ -53,7 +55,7 @@ public:
    * @param licqUser Licq user that this object will represent
    * @param parent Object to use as parent for those objects that needs it
    */
-  ContactUserData(const ICQUser* licqUser, QObject* parent);
+  ContactUserData(const LicqUser* licqUser, QObject* parent);
 
   /**
    * Destructor, will remove the user from all groups
@@ -63,16 +65,17 @@ public:
   /**
    * Update user information
    *
-   * @param sig Licq signal with information on what to update
+   * @param subSignal Sub signal telling what the change was
+   * @param argument Additional data, usage depend on sub signal type
    */
-  void update(CICQSignal* sig);
+  void update(unsigned long subSignal, int argument);
 
   /**
    * Update all user information from daemon
    *
    * @param licqUser Licq user to read information from
    */
-  void updateAll(const ICQUser* licqUser);
+  void updateAll(const LicqUser* licqUser);
 
   /**
    * Update all data related to the gui configuration
@@ -82,14 +85,8 @@ public:
   /**
    * Get licq user id
    */
-  QString id() const
-  { return myId; }
-
-  /**
-   * Get licq protocol id
-   */
-  unsigned long ppid() const
-  { return myPpid; }
+  const UserId& userId() const
+  { return myUserId; }
 
   /**
    * Get user status
@@ -167,7 +164,7 @@ signals:
   /**
    * Signal emitted when the user group memberships (may) have changed
    */
-  void updateUserGroups(ContactUserData* user, const ICQUser* licqUser);
+  void updateUserGroups(ContactUserData* user, const LicqUser* licqUser);
 
 private:
   /**
@@ -191,7 +188,7 @@ private:
    * @param licqUser Licq user to read information from
    * @return True if any data was actually changed
    */
-  bool updateText(const ICQUser* licqUser);
+  bool updateText(const LicqUser* licqUser);
 
   /**
    * Update visibility status
@@ -225,7 +222,8 @@ private slots:
   void animate();
 
 private:
-  QString myId;
+  UserId myUserId;
+  QString myAccountId;
   unsigned long myPpid;
   unsigned short myStatus;
   unsigned long myStatusFull;

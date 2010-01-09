@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include "multicontactproxy.h"
 
 using namespace LicqQtGui;
+using std::set;
 
 
 MultiContactProxy::MultiContactProxy(ContactListModel* contactList, QObject* parent)
@@ -34,9 +35,9 @@ void MultiContactProxy::clear()
   invalidateFilter();
 }
 
-void MultiContactProxy::add(QString id, unsigned long ppid)
+void MultiContactProxy::add(const UserId& userId)
 {
-  myContacts.insert(QPair<QString, unsigned long>(id, ppid));
+  myContacts.insert(userId);
   invalidateFilter();
 }
 
@@ -44,29 +45,27 @@ void MultiContactProxy::remove(const QModelIndexList& indexes)
 {
   foreach (QModelIndex i, indexes)
   {
-    QString id = i.data(ContactListModel::UserIdRole).toString();
-    unsigned long ppid = i.data(ContactListModel::PpidRole).toUInt();
-    myContacts.remove(QPair<QString, unsigned long>(id, ppid));
+    UserId userId = i.data(ContactListModel::UserIdRole).value<UserId>();
+    myContacts.erase(userId);
   }
   invalidateFilter();
 }
 
-void MultiContactProxy::remove(QString id, unsigned long ppid)
+void MultiContactProxy::remove(const UserId& userId)
 {
-  myContacts.remove(QPair<QString, unsigned long>(id, ppid));
+  myContacts.erase(userId);
   invalidateFilter();
 }
 
 void MultiContactProxy::crop(const QModelIndexList& indexes)
 {
   // Make a new set with the contacts to keep
-  QSet<QPair<QString, unsigned long> > newList;
+  set<UserId> newList;
 
   foreach (QModelIndex i, indexes)
   {
-    QString id = i.data(ContactListModel::UserIdRole).toString();
-    unsigned long ppid = i.data(ContactListModel::PpidRole).toUInt();
-    newList.insert(QPair<QString, unsigned long>(id, ppid));
+    UserId userId = i.data(ContactListModel::UserIdRole).value<UserId>();
+    newList.insert(userId);
   }
 
   // Activate the new cropped list
@@ -84,9 +83,8 @@ void MultiContactProxy::addGroup(GroupType groupType, unsigned long groupId)
 
     if (static_cast<ContactListModel::ItemType>(userIndex.data(ContactListModel::ItemTypeRole).toInt()) == ContactListModel::UserItem)
     {
-      QString id = userIndex.data(ContactListModel::UserIdRole).toString();
-      unsigned long ppid = userIndex.data(ContactListModel::PpidRole).toUInt();
-      myContacts.insert(QPair<QString, unsigned long>(id, ppid));
+      UserId userId = userIndex.data(ContactListModel::UserIdRole).value<UserId>();
+      myContacts.insert(userId);
     }
   }
   invalidateFilter();
@@ -114,9 +112,8 @@ bool MultiContactProxy::filterAcceptsRow(int source_row, const QModelIndex& sour
     case ContactListModel::UserItem:
     {
       // Check if the contact is in our list
-      QString id = item.data(ContactListModel::UserIdRole).toString();
-      unsigned long ppid = item.data(ContactListModel::PpidRole).toUInt();
-      if (!myContacts.contains(QPair<QString, unsigned long>(id, ppid)))
+      UserId userId = item.data(ContactListModel::UserIdRole).value<UserId>();
+      if (myContacts.count(userId) == 0)
         return false;
 
       break;

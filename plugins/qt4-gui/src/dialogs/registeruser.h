@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@ public:
   virtual bool validateCurrentPage();
 
 signals:
-  void signal_done(bool success, QString id, unsigned long ppid);
+  void signal_done(bool success, const QString& id, unsigned long ppid);
 
 private:
   void createIntroPage();
@@ -71,7 +71,7 @@ private:
 
 private slots:
   void gotCaptcha(unsigned long ppid);
-  void gotNewOwner(QString id, unsigned long ppid);
+  void gotNewOwner(const QString& id, unsigned long ppid);
 };
 
 } // namespace LicqQtGui

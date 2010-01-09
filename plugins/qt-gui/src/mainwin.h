@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,7 +53,7 @@ class CSignalManager;
 class CQtLogWindow;
 class CSkin;
 class CICQDaemon;
-class ICQEvent;
+class LicqEvent;
 class OptionsDlg;
 class AwayMsgDlg;
 class RegisterUserDlg;
@@ -69,7 +69,6 @@ class UserEventCommon;
 class UserSendCommon;
 class IconManager;
 
-class CICQSignal;
 class UserInfoDlg;
 class UserEventTabDlg;
 
@@ -94,22 +93,16 @@ public:
               const char *extendedIconsName, bool bDisableDockIcon,
               QWidget *parent = 0);
   virtual ~CMainWindow();
-  UserEventCommon *callFunction(int fcn, const char *, unsigned long, int = -1);
-  bool RemoveUserFromList(const char *, unsigned long, QWidget *);
-  bool RemoveUserFromGroup(GroupType, unsigned long, const char *,
-    unsigned long, QWidget *);
+  UserEventCommon* callFunction(int fcn, const UserId& userId, int = -1);
+  bool RemoveUserFromList(const UserId& userId, QWidget *);
+  bool RemoveUserFromGroup(GroupType gtype, int group, const UserId& userId, QWidget* parent);
 
   void ApplySkin(const char *, bool = false);
   void ApplyIcons(const char *, bool = false);
   void ApplyExtendedIcons(const char *, bool = false);
   CUserView *UserView()  { return userView; }
   QPopupMenu *UserMenu() { return mnuUser; }
-  void SetUserMenuUser(const char *_szId, unsigned long _nPPID)
-  {
-    if (m_szUserMenuId)  free(m_szUserMenuId);
-    m_szUserMenuId = strdup(_szId);
-    m_nUserMenuPPID = _nPPID;
-  }
+  void SetUserMenuUser(const UserId& userId) { myMenuUserId = userId; }
   static QPixmap &iconForStatus(unsigned long FullStatus, const char *szId = "0",
     unsigned long nPPID = LICQ_PPID);
   static QPixmap &iconForEvent(unsigned short SubCommand);
@@ -175,7 +168,8 @@ public:
   FlashType m_nFlash;
   CSkin *skin;
 
-  unsigned long m_nCurrentGroup, m_nGroupStates;
+  int m_nCurrentGroup;
+  unsigned long m_nGroupStates;
   unsigned short m_nSortByStatus,
                  m_nSortColumn,
                  m_chatMsgStyle,
@@ -197,7 +191,7 @@ public:
   QString usprintfHelp;
 
 public slots:
-  void callInfoTab(int, const char *, unsigned long, bool = false, bool =false);
+  void callInfoTab(int, const UserId& userId, bool = false, bool =false);
 
 public:
   // Command Tools
@@ -263,8 +257,7 @@ public:
           pmAIMOffline, pmGPGKey, pmGPGKeyEnabled, pmGPGKeyDisabled;
   bool positionChanges;
   int m_nProtoNum;
-  char *m_szUserMenuId;
-  unsigned long m_nUserMenuPPID;
+  UserId myMenuUserId;
   std::vector<unsigned long> m_lnProtMenu;
 
   // AutoAway
@@ -286,10 +279,10 @@ public:
   
   // Functions
   void CreateUserView();
-  void CreateUserFloaty(const char *szId, unsigned long nPPID,
+  void CreateUserFloaty(const UserId& userId,
     unsigned short x = 0, unsigned short y = 0, unsigned short w = 0);
   void initMenu();
-  bool show_user(ICQUser *);
+  bool show_user(const LicqUser* u) const;
   void changeMainWinSticky(bool _bStick);
 
   virtual void resizeEvent (QResizeEvent *);
@@ -310,8 +303,8 @@ public slots:
   void updateUserWin();
   void slot_shutdown();
   void saveOptions();
-  void slot_updatedList(CICQSignal *);
-  void slot_updatedUser(CICQSignal *);
+  void slot_updatedList(unsigned long subSignal, int argument, const UserId& userId);
+  void slot_updatedUser(const UserId& userId, unsigned long subSignal, int argument=0, unsigned long cid=0);
   void slot_viewurl(QWidget *, QString);
 
 protected slots:
@@ -322,7 +315,7 @@ protected slots:
   void FillServerGroup();
   void saveAllUsers();
   void updateEvents();
-  void updateStatus(CICQSignal * = NULL);
+  void updateStatus(unsigned long ppid = 0);
   void updateGroups();
   void changeStatus(int index, unsigned long nPPID = 0xFFFFFFFF,
                     bool _bAutoLogon = false); //all
@@ -331,29 +324,28 @@ protected slots:
   void changePFMStatus(int index);
   void setCurrentGroupMenu(int id);
   void setCurrentGroup(int);
-  void callDefaultFunction(const char *, unsigned long);
+  void callDefaultFunction(const UserId& userId);
   void callDefaultFunction(QListViewItem *);
   void callOwnerFunction(int, unsigned long = LICQ_PPID);
   void callMsgFunction();
   void callUserFunction(int);
-  void slot_socket(const char *, unsigned long, unsigned long);
-  void slot_convoJoin(const char *, unsigned long, unsigned long);
-  void slot_convoLeave(const char *, unsigned long, unsigned long);
+  void slot_socket(const UserId& userId, unsigned long convoId);
+  void slot_convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId);
+  void slot_convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId);
   //TODO
   //void callUserFunction(const char *, unsigned long);
-  void slot_userfinished(const char *, unsigned long);
-  void slot_sendfinished(const char *, unsigned long);
-  void slot_ui_message(const char *, unsigned long);
+  void slot_userfinished(const UserId& userId);
+  void slot_sendfinished(const UserId& userId);
+  void slot_ui_message(const UserId& userId);
   void slot_usermenu();
   void slot_logon();
-  //void slot_ui_viewevent(unsigned long);
-  void slot_ui_viewevent(const char *);
+  void slot_ui_viewevent(const UserId& userId);
   void slot_protocolPlugin(unsigned long);
-  void slot_eventTag(const char *, unsigned long, unsigned long);
+  void slot_eventTag(const UserId& userId, unsigned long);
   void slot_doneplugindlg();
   void slot_doneOptions();
   void slot_doneOwnerManager();
-  void slot_doneOwnerFcn(ICQEvent *);
+  void slot_doneOwnerFcn(LicqEvent*);
   void slot_doneAwayMsgDlg();
   void slot_stats();
   void showAddUserDlg();
@@ -385,7 +377,7 @@ protected slots:
   void slot_updateAllUsersInGroup();
   void slot_popupall();
   void slot_aboutToQuit();
-  void UserInfoDlg_finished(const char *, unsigned long);
+  void UserInfoDlg_finished(const UserId& userId);
   void slot_doneUserEventTabDlg();
   void slot_pluginUnloaded(unsigned long);
 
@@ -398,8 +390,8 @@ protected slots:
 
 signals:
   void changeDockStatus(unsigned short);
-  void signal_sentevent(ICQEvent *e);
-  void signal_doneRegisterUser(ICQEvent *e);
+  void signal_sentevent(LicqEvent* e);
+  void signal_doneRegisterUser(LicqEvent* e);
 
 private:
   enum { /* ID's for the menu items in mnuUserAdm.
@@ -439,8 +431,7 @@ private:
         MNU_SYS_GPG = 12
   };
 
-  QValueList<unsigned short> myGroupIds;
-
+  QValueList<int> myGroupIds;
 };
 
 // -----------------------------------------------------------------------------

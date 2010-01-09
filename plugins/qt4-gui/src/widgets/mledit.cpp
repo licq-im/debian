@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,16 +23,28 @@
 
 #include "mledit.h"
 
+#ifndef USE_KDE
+#include <QAction>
+#endif
 #include <QKeyEvent>
 #include <QMenu>
 
 #include "config/general.h"
+#include "config/shortcuts.h"
+
+#ifdef HAVE_HUNSPELL
+# include "spellchecker.h"
+#endif
+
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::MLEdit */
 
 MLEdit::MLEdit(bool wordWrap, QWidget* parent, bool useFixedFont, const char* name)
   : MLEDIT_BASE(parent),
+#ifdef HAVE_HUNSPELL
+    mySpellChecker(NULL),
+#endif
     myUseFixedFont(useFixedFont),
     myFixSetTextNewlines(true),
     myLastKeyWasReturn(false),
@@ -53,6 +65,40 @@ MLEdit::~MLEdit()
 {
   // Empty
 }
+
+#ifndef USE_KDE
+void MLEdit::setCheckSpellingEnabled(bool check)
+{
+#ifdef HAVE_HUNSPELL
+  if (check && mySpellChecker == NULL && !mySpellingDictionary.isEmpty())
+    mySpellChecker = new SpellChecker(this->document(), mySpellingDictionary);
+  if (!check && mySpellChecker != NULL)
+    delete mySpellChecker;
+#else
+  Q_UNUSED(check);
+#endif
+}
+
+bool MLEdit::checkSpellingEnabled() const
+{
+#ifdef HAVE_HUNSPELL
+  return (mySpellChecker != NULL);
+#else
+  return false;
+#endif
+}
+#endif
+
+#ifdef HAVE_HUNSPELL
+void MLEdit::setSpellingDictionary(const QString& dicFile)
+{
+  mySpellingDictionary = dicFile;
+  if (mySpellChecker != NULL)
+    mySpellChecker->setDictionary(dicFile);
+  else
+    setCheckSpellingEnabled(true);
+}
+#endif
 
 void MLEdit::appendNoNewLine(const QString& s)
 {
@@ -85,67 +131,58 @@ void MLEdit::setForeground(const QColor& color)
   setPalette(pal);
 }
 
+void MLEdit::clearKeepUndo()
+{
+  QTextCursor cr = textCursor();
+  cr.select(QTextCursor::Document);
+  cr.removeSelectedText();
+}
+
+void MLEdit::deleteLine()
+{
+  QTextCursor cr = textCursor();
+  cr.select(QTextCursor::BlockUnderCursor);
+  if (!cr.hasSelection())
+    cr.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor);
+  if (!cr.hasSelection())
+    cr.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+  cr.removeSelectedText();
+}
+
+void MLEdit::deleteLineBackwards()
+{
+  QTextCursor cr = textCursor();
+  cr.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+  if (!cr.hasSelection())
+    cr.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor);
+  cr.removeSelectedText();
+}
+
+void MLEdit::deleteWordBackwards()
+{
+  QTextCursor cr = textCursor();
+  cr.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
+  cr.removeSelectedText();
+}
+
 void MLEdit::keyPressEvent(QKeyEvent* event)
 {
-  const bool isShift   = event->modifiers() & Qt::ShiftModifier;
-  const bool isControl = event->modifiers() & Qt::ControlModifier;
-
-  QTextCursor cr = textCursor();
-
   // Get flag from last time and reset it before any possible returns
   bool lastKeyWasReturn = myLastKeyWasReturn;
   myLastKeyWasReturn = false;
 
-  if (isShift && event->key() == Qt::Key_Insert)
-    return paste();
-
-  if (isShift && event->key() == Qt::Key_Delete)
-    return cut();
-
-  if (isControl && event->key() == Qt::Key_Insert)
-    return copy();
-
-  if (isControl)
+  // Ctrl+Return will either trigger dialog or (if disabled) insert a normal line break
+  if (event->modifiers() == Qt::ControlModifier &&
+      (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter))
   {
-    switch (event->key())
-    {
-      case Qt::Key_W:
-        cr.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
-        cr.removeSelectedText();
-        break;
-      case Qt::Key_U:
-        cr.select(QTextCursor::BlockUnderCursor);
-        if (!cr.hasSelection())
-          cr.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor);
-        if (!cr.hasSelection())
-          cr.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
-        cr.removeSelectedText();
-        break;
-      case Qt::Key_L:
-        cr.select(QTextCursor::Document);
-        cr.removeSelectedText();
-        break;
-      case Qt::Key_N: // Just the opposite of Ctrl+K
-        cr.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
-        if (!cr.hasSelection())
-          cr.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor);
-        cr.removeSelectedText();
-        break;
-      case Qt::Key_Return:
-      case Qt::Key_Enter:
-        if (Config::General::instance()->useDoubleReturn())
-          insertPlainText(QString("\n"));
-        else
-          emit ctrlEnterPressed();
-        break;
-      default:
-        MLEDIT_BASE::keyPressEvent(event);
-        break;
-    }
+    if (Config::General::instance()->useDoubleReturn())
+      insertPlainText(QString("\n"));
+    else
+      emit ctrlEnterPressed();
     return;
   }
 
-  if ((event->modifiers() & Qt::KeyboardModifierMask) == 0)
+  if (event->modifiers() == Qt::NoModifier)
   {
     switch (event->key())
     {
@@ -154,6 +191,7 @@ void MLEdit::keyPressEvent(QKeyEvent* event)
         if (lastKeyWasReturn && Config::General::instance()->useDoubleReturn())
         {
           // Return pressed twice, remove the previous line break and emit signal
+          QTextCursor cr = textCursor();
           cr.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor);
           cr.removeSelectedText();
           emit ctrlEnterPressed();
@@ -180,6 +218,35 @@ void MLEdit::keyPressEvent(QKeyEvent* event)
     }
   }
 
+  if (event->key() == Qt::Key_Delete && event->modifiers() == Qt::ShiftModifier)
+    return cut();
+  if (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ShiftModifier)
+    return paste();
+  if (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ControlModifier)
+    return copy();
+  if (event->key() == Qt::Key_PageDown && event->modifiers() == Qt::ShiftModifier)
+  {
+    emit scrollDownPressed();
+    return;
+  }
+  if (event->key() == Qt::Key_PageUp && event->modifiers() == Qt::ShiftModifier)
+  {
+    emit scrollUpPressed();
+    return;
+  }
+
+  Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+  QKeySequence ks = QKeySequence(event->key() | event->modifiers());
+
+  if (ks == shortcuts->getShortcut(Config::Shortcuts::InputClear))
+    return clearKeepUndo();
+  if (ks == shortcuts->getShortcut(Config::Shortcuts::InputDeleteLine))
+    return deleteLine();
+  if (ks == shortcuts->getShortcut(Config::Shortcuts::InputDeleteLineBack))
+    return deleteLineBackwards();
+  if (ks == shortcuts->getShortcut(Config::Shortcuts::InputDeleteWordBack))
+    return deleteWordBackwards();
+
   MLEDIT_BASE::keyPressEvent(event);
 }
 
@@ -196,6 +263,33 @@ void MLEdit::contextMenuEvent(QContextMenuEvent* event)
 
   if (!isReadOnly())
   {
+#ifdef HAVE_HUNSPELL
+    // Save position so we know which word to replace
+    myMenuPos = event->pos();
+
+    // Get word under cursor
+    QTextCursor cr = cursorForPosition(myMenuPos);
+    cr.select(QTextCursor::WordUnderCursor);
+    QString word = cr.selectedText();
+    if (!word.isEmpty())
+    {
+      // Get spelling suggestions
+      QStringList suggestions = mySpellChecker->getSuggestions(word);
+      if (!suggestions.isEmpty())
+      {
+        // Add spelling suggestions at the top of the menu
+        QAction* firstAction = menu->actions().first();
+        foreach (QString w, suggestions)
+        {
+          QAction* a = new QAction(w, menu);
+          connect(a, SIGNAL(triggered()), SLOT(replaceWord()));
+          menu->insertAction(firstAction, a);
+        }
+        menu->insertSeparator(firstAction);
+      }
+    }
+#endif
+
     QAction* tabul = new QAction(tr("Allow Tabulations"), menu);
     tabul->setCheckable(true);
     tabul->setChecked(!tabChangesFocus());
@@ -205,6 +299,20 @@ void MLEdit::contextMenuEvent(QContextMenuEvent* event)
 
   menu->exec(event->globalPos());
   delete menu;
+}
+#endif
+
+#ifdef HAVE_HUNSPELL
+void MLEdit::replaceWord()
+{
+  QAction* a = qobject_cast<QAction*>(sender());
+  if (a == NULL)
+    return;
+
+  // Mark the word under the cursor and replace it with the text from the menu item selected
+  QTextCursor cr = cursorForPosition(myMenuPos);
+  cr.select(QTextCursor::WordUnderCursor);
+  cr.insertText(a->text());
 }
 #endif
 
@@ -222,9 +330,9 @@ void MLEdit::updateFont()
 
 int MLEdit::heightForLines(int lines) const
 {
-  // We need to add frame width and the added height of the scroll area as
-  // we're calculating height for the widget, not the viewport.
-  return lines*myFontHeight + height() - viewport()->height() + 2 * frameWidth();
+  // We need to add frame width as we're calculating height for the widget, not just the viewport.
+  // The reason for the last constant is unknown, but seems the same regardless of font size and gui style
+  return lines*myFontHeight + 2*frameWidth() + 8;
 }
 
 void MLEdit::setSizeHintLines(int lines)

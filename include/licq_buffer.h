@@ -3,40 +3,17 @@
 
 #include <cstring>
 #include <map>
+#include <string>
 
 #include <boost/shared_array.hpp>
 #include <boost/shared_ptr.hpp>
 
-/*------------------------------------------------------------------------------
- * PacketIpToNetworkIp
- *
- * Takes an ip from the buffer class and converts it to network byte order:
- * Little endian machine:
- *  Packet returns ip in big-endian -> reverse digits -> call htonl
- * Big endian machine:
- *  Packet returns ip in little-endian -> reverse digits -> call htonl (does nothing)
- *----------------------------------------------------------------------------*/
-extern unsigned long PacketIpToNetworkIp(unsigned long l);
-
-/*------------------------------------------------------------------------------
- * NetworkIpToPacketIp
- *
- * Takes an ip in network order and converts it to the packet class format
- * Little endian machine:
- *  Packet returns ip in big-endian -> reverse digits -> call htonl
- * Big endian machine:
- *  Packet returns ip in little-endian -> reverse digits -> call htonl (does nothing)
- *----------------------------------------------------------------------------*/
-extern unsigned long NetworkIpToPacketIp(unsigned long l);
-
-extern void rev_e_short(unsigned short &);
-extern void rev_e_long(unsigned long &);
 
 //=====COscarTLV================================================================
 class COscarTLV
 {
 public:
-  COscarTLV(unsigned short type = 0, unsigned short length = 0, unsigned char *data = 0) : myType(type), myLen(length)
+  COscarTLV(unsigned short type = 0, unsigned short length = 0, const char* data = NULL) : myType(type), myLen(length)
   {
     if (myLen > 0)
     {
@@ -124,6 +101,15 @@ public:
    CBuffer& operator >> (unsigned char &in);
    CBuffer& operator >> (unsigned short &in);
    CBuffer& operator >> (unsigned long &in);
+
+  /**
+   * Get several bytes from the buffer
+   *
+   * @param size Number of bytes to read
+   * @return A string containing the requested bytes
+   */
+  std::string unpackRawString(size_t size);
+
    char *UnpackRaw(char *, unsigned short);
    char *UnpackBinBlock(char *, unsigned short);
    char *UnpackString(char *, unsigned short);
@@ -179,8 +165,6 @@ protected:
         *m_pDataPosRead;
    unsigned long m_nDataSize;
    TLVList myTLVs;
-
-   void antiwarning() { NetworkIpToPacketIp(PacketIpToNetworkIp(127)); }
 };
 
 

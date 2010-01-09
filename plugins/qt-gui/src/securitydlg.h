@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@
 
 class QPushButton;
 class QCheckBox;
-class ICQEvent;
+class LicqEvent;
 
 class CICQDaemon;
 class CSignalManager;
@@ -58,7 +58,7 @@ protected:
   QString initEdtUin, initEdtFirst, initEdtSecond;
 
 public slots:
-  void slot_doneUserFcn(ICQEvent *);
+  void slot_doneUserFcn(LicqEvent*);
 
 protected slots:
   void ok();

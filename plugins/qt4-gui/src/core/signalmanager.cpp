@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 
 #include <licq_icqd.h>
 #include <licq_log.h>
+#include <licq_user.h>
 
 #include "dialogs/ownereditdlg.h"
 
@@ -45,20 +46,35 @@ SignalManager::~SignalManager()
   delete sn;
 }
 
-void SignalManager::ProcessSignal(CICQSignal* sig)
+void SignalManager::ProcessSignal(LicqSignal* sig)
 {
+  UserId userId = sig->userId();
+
+  // Temporary code to get account id and ppid until the rest of the gui is updated to use user id directly
+  QString accountId;
+  unsigned long ppid = 0;
+  if (USERID_ISVALID(userId))
+  {
+    LicqUser* user = gUserManager.fetchUser(userId, LOCK_R);
+    if (user != NULL)
+    {
+      accountId = user->accountId().c_str();
+      ppid = user->ppid();
+      gUserManager.DropUser(user);
+    }
+  }
+
   switch (sig->Signal())
   {
     case SIGNAL_UPDATExLIST:
-      emit updatedList(sig);
+      emit updatedList(sig->SubSignal(), sig->Argument(), userId);
       break;
 
     case SIGNAL_UPDATExUSER:
-      emit updatedUser(sig);
+      emit updatedUser(userId, sig->SubSignal(), sig->Argument(), sig->CID());
 
-      if (gUserManager.FindOwner(sig->Id(), sig->PPID()) != NULL &&
-          sig->SubSignal() == USER_STATUS)
-        emit updatedStatus(sig);
+      if (gUserManager.isOwner(userId) && sig->SubSignal() == USER_STATUS)
+        emit updatedStatus(ppid);
       break;
 
     case SIGNAL_LOGON:
@@ -67,23 +83,23 @@ void SignalManager::ProcessSignal(CICQSignal* sig)
 
     case SIGNAL_LOGOFF:
       if (sig->SubSignal() == LOGOFF_PASSWORD)
-        new OwnerEditDlg(sig->PPID());
+        new OwnerEditDlg(ppid);
 
       emit logoff();
       break;
 
     case SIGNAL_UI_VIEWEVENT:
-      emit ui_viewevent(sig->Id());
+      emit ui_viewevent(userId);
       break;
 
     case SIGNAL_UI_MESSAGE:
       //TODO
-      emit ui_message(sig->Id(), sig->PPID());
+      emit ui_message(userId);
       break;
 
     case SIGNAL_ADDxSERVERxLIST:
       //TODO
-      gLicqDaemon->icqRenameUser(sig->Id());
+      gLicqDaemon->updateUserAlias(userId);
       break;
 
     case SIGNAL_NEWxPROTO_PLUGIN:
@@ -91,27 +107,27 @@ void SignalManager::ProcessSignal(CICQSignal* sig)
       break;
 
     case SIGNAL_EVENTxID:
-      emit eventTag(sig->Id(), sig->PPID(), sig->Argument());
+      emit eventTag(userId, sig->Argument());
       break;
 
     case SIGNAL_SOCKET:
-      emit socket(sig->Id(), sig->PPID(), sig->CID());
+      emit socket(userId, sig->CID());
       break;
 
     case SIGNAL_CONVOxJOIN:
-      emit convoJoin(sig->Id(), sig->PPID(), sig->CID());
+      emit convoJoin(userId, ppid, sig->CID());
       break;
 
     case SIGNAL_CONVOxLEAVE:
-      emit convoLeave(sig->Id(), sig->PPID(), sig->CID());
+      emit convoLeave(userId, ppid, sig->CID());
       break;
 
     case SIGNAL_VERIFY_IMAGE:
-      emit verifyImage(sig->PPID());
+      emit verifyImage(ppid);
       break;
 
     case SIGNAL_NEW_OWNER:
-      emit newOwner(sig->Id(), sig->PPID());
+      emit newOwner(accountId, ppid);
       break;
 
     default:
@@ -193,7 +209,7 @@ void SignalManager::process()
   {
     case 'S':  // A signal is pending
     {
-      CICQSignal* s = gLicqDaemon->PopPluginSignal();
+      LicqSignal* s = gLicqDaemon->popPluginSignal();
       ProcessSignal(s);
       break;
     }

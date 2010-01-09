@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,9 @@ class QWidget;
 namespace LicqQtGui
 {
 class ColorButton;
+#ifdef HAVE_HUNSPELL
+class FileNameEdit;
+#endif
 class HistoryView;
 class SettingsDlg;
 class TabWidget;
@@ -101,6 +104,10 @@ private:
   QCheckBox* myShowUserPicCheck;
   QCheckBox* myShowUserPicHiddenCheck;
   QCheckBox* myPopupAutoResponseCheck;
+#ifdef HAVE_HUNSPELL
+  QLabel* myDictionaryLabel;
+  FileNameEdit* myDictionaryEdit;
+#endif
 
   QGroupBox* myLocaleBox;
   QVBoxLayout* myLocaleLayout;
@@ -108,6 +115,7 @@ private:
   QLabel* myDefaultEncodingLabel;
   QComboBox* myDefaultEncodingCombo;
 
+  QCheckBox* myUseCustomUrlViewer;
   QLabel* myUrlViewerLabel;
   QLabel* myTerminalLabel;
   QComboBox* myUrlViewerCombo;

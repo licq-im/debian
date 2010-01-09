@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,8 +56,10 @@ void Config::ContactList::loadConfiguration(CIniFile& iniFile)
   iniFile.ReadNum("SortColumn", mySortColumn, 0);
   iniFile.ReadBool("SortColumnAscending", mySortColumnAscending, true);
   iniFile.ReadBool("UseThreadView", myThreadView, true);
+  iniFile.ReadBool("UseMode2View", myMode2View, false);
   iniFile.ReadBool("ShowEmptyGroups", myShowEmptyGroups, true);
-  iniFile.ReadNum("TVGroupStates", myGroupStates, 0xFFFFFFFE);
+  iniFile.ReadNum("TVGroupStates", myGroupStates[0], 0xFFFFFFFE);
+  iniFile.ReadNum("TVGroupStates2", myGroupStates[1], 0xFFFFFFFE);
   iniFile.ReadBool("ShowExtIcons", myShowExtendedIcons, true);
   iniFile.ReadBool("ShowPhoneIcons", myShowPhoneIcons, true);
   iniFile.ReadBool("ShowUserIcons", myShowUserIcons, true);
@@ -130,8 +132,10 @@ void Config::ContactList::saveConfiguration(CIniFile& iniFile) const
   iniFile.WriteBool("ShowOfflineUsers", myShowOffline);
   iniFile.WriteBool("AlwaysShowONU", myAlwaysShowONU);
   iniFile.WriteBool("UseThreadView", myThreadView);
+  iniFile.WriteBool("UseMode2View", myMode2View);
   iniFile.WriteBool("ShowEmptyGroups", myShowEmptyGroups);
-  iniFile.WriteNum("TVGroupStates", myGroupStates);
+  iniFile.WriteNum("TVGroupStates", myGroupStates[0]);
+  iniFile.WriteNum("TVGroupStates2", myGroupStates[1]);
   iniFile.WriteBool("ShowExtIcons", myShowExtendedIcons);
   iniFile.WriteBool("ShowPhoneIcons", myShowPhoneIcons);
   iniFile.WriteBool("ShowUserIcons", myShowUserIcons);
@@ -202,7 +206,8 @@ void Config::ContactList::setColumnCount(int columnCount)
   changeListLayout();
 }
 
-void Config::ContactList::setColumn(int column, QString heading, QString format, unsigned short width, AlignmentMode alignment)
+void Config::ContactList::setColumn(int column, const QString& heading,
+    const QString& format, unsigned short width, AlignmentMode alignment)
 {
   if (column < 0 || column >= MAX_COLUMNCOUNT)
     return;
@@ -372,6 +377,16 @@ void Config::ContactList::setThreadView(bool threadView)
   changeCurrentList();
 }
 
+void Config::ContactList::setMode2View(bool mode2View)
+{
+  if (mode2View == myMode2View)
+    return;
+
+  myMode2View = mode2View;
+
+  changeCurrentList();
+}
+
 void Config::ContactList::setShowEmptyGroups(bool showEmptyGroups)
 {
   if (showEmptyGroups == myShowEmptyGroups)
@@ -382,7 +397,7 @@ void Config::ContactList::setShowEmptyGroups(bool showEmptyGroups)
   changeCurrentList();
 }
 
-void Config::ContactList::setGroup(GroupType groupType, unsigned long groupId)
+void Config::ContactList::setGroup(GroupType groupType, int groupId)
 {
   if (groupType == myGroupType && groupId == myGroupId)
     return;
@@ -401,20 +416,20 @@ void Config::ContactList::setSortColumn(unsigned short column, bool ascending)
   emit listSortingChanged();
 }
 
-bool Config::ContactList::groupState(unsigned short group) const
+bool Config::ContactList::groupState(int group, bool online) const
 {
-  return myGroupStates & (1 << qMin(static_cast<int>(group), 31));
+  return myGroupStates[online ? 0 : 1] & (1 << qMin(group, 31));
 }
 
-void Config::ContactList::setGroupState(unsigned short group, bool expanded)
+void Config::ContactList::setGroupState(int group, bool online, bool expanded)
 {
   if(group > 31)
     group = 31;
 
   if (expanded)
-    myGroupStates |= (1 << group);
+    myGroupStates[online ? 0 : 1] |= (1 << group);
   else
-    myGroupStates &= ~(1 << group);
+    myGroupStates[online ? 0 : 1] &= ~(1 << group);
 
   // Called by view when a group has changed state so don't emit any signal
 }

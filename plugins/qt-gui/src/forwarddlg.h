@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
 
 #ifndef FORWARDDLG_H
 #define FORWARDDLG_H
+
+#include <licq_types.h>
 
 #include "licqdialog.h"
 
@@ -43,8 +45,7 @@ protected:
   CSignalManager *sigman;
   CInfoField *edtUser;
   QPushButton *btnOk, *btnCancel;
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
 protected slots:
   void slot_ok();
 };

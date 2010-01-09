@@ -503,7 +503,7 @@ void CMSN::Run()
           {
             CMSNBuffer packet(sock->RecvBuffer());
             sock->ClearRecvBuffer();
-            char *szUser = strdup(sock->OwnerId());
+            char *szUser = strdup(LicqUser::getUserAccountId(sock->userId()).c_str());
             gSocketMan.DropSocket(sock);
 
             HandlePacket(nCurrent, packet, szUser);
@@ -512,11 +512,14 @@ void CMSN::Run()
 	  }
 	  else
 	  {
-	    // Shouldn't get here, as we close the socket with a BYE command.
-	    // But just to be safe..
+            // Sometimes SB just drops connection without sending any BYE for the user(s) first
+            // This seems to happen when other user is offical client
 	    if (sock)
 	      gSocketMan.DropSocket(sock);
 	    gSocketMan.CloseSocket(nCurrent);
+
+            // Clean up any conversations that was associated with the socket
+            killConversation(nCurrent);
 	  }
 	}
       }
@@ -742,7 +745,7 @@ CMSNDataEvent *CMSN::FetchStartDataEvent(const string &_strUser)
   return pReturn;  
 }
 
-void CMSN::PushPluginSignal(CICQSignal *p)
+void CMSN::pushPluginSignal(LicqSignal* p)
 {
-  m_pDaemon->PushPluginSignal(p);
+  m_pDaemon->pushPluginSignal(p);
 }

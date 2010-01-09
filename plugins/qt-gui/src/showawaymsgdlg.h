@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,12 @@
 
 #include "licqdialog.h"
 
-//#include "user.h"
+#include <licq_types.h>
 
 class MLEditWrap;
 class CSignalManager;
 class CICQDaemon;
-class ICQEvent;
+class LicqEvent;
 
 class QPushButton;
 class QCheckBox;
@@ -38,13 +38,11 @@ class ShowAwayMsgDlg : public LicqDialog
   Q_OBJECT
 public:
   ShowAwayMsgDlg(CICQDaemon *_server, CSignalManager *_sigman,
-                 const char *szId, unsigned long nPPID,
-                 QWidget *parent = 0);
+      const UserId& userId, QWidget *parent = 0);
   virtual ~ShowAwayMsgDlg();
 
 protected:
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   MLEditWrap *mleAwayMsg;
   QCheckBox *chkShowAgain;
   QPushButton *btnOk;
@@ -55,7 +53,7 @@ protected:
 
 protected slots:
   virtual void accept();
-  void doneEvent(ICQEvent *);
+  void doneEvent(LicqEvent*);
 };
 
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,10 +20,12 @@
 #ifndef KEYREQUESTDLG_H
 #define KEYREQUESTDLG_H
 
+#include <licq_types.h>
+
 #include "licqdialog.h"
 
 class CSignalManager;
-class ICQEvent;
+class LicqEvent;
 
 class QLabel;
 class QPushButton;
@@ -32,13 +34,11 @@ class KeyRequestDlg : public LicqDialog
 {
   Q_OBJECT
 public:
-  KeyRequestDlg(CSignalManager *_sigman, const char *szId,
-    unsigned long nPPID, QWidget *parent = 0);
+  KeyRequestDlg(CSignalManager *_sigman, const UserId& userId, QWidget *parent = 0);
   virtual ~KeyRequestDlg();
 
 protected:
-  char *m_szId;
-  unsigned long m_nPPID;
+  UserId myUserId;
   QPushButton *btnSend, *btnCancel;
   QLabel *lblStatus;
   bool m_bOpen;
@@ -48,7 +48,7 @@ protected:
 
 protected slots:
   void startSend();
-  void doneEvent(ICQEvent *);
+  void doneEvent(LicqEvent*);
   void openConnection();
   void closeConnection();
 };

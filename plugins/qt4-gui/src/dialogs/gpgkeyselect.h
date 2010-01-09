@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2006 Licq developers
+ * Copyright (C) 2005-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,10 +23,12 @@
 #include <QDialog>
 #include <QTreeWidget>
 
+#include <licq_types.h>
+
 class QCheckBox;
 class QLineEdit;
 
-class ICQUser;
+class LicqUser;
 
 namespace LicqQtGui
 {
@@ -35,13 +37,12 @@ class KeyView : public QTreeWidget
   Q_OBJECT
 
 public:
-  KeyView(QString id, unsigned long ppid, QWidget* parent = 0);
+  KeyView(const UserId& userId, QWidget* parent = 0);
   ~KeyView() {};
 
 private:
-  QString szId;
-  unsigned long nPPID;
-  void testViewItem(QTreeWidgetItem* item, const ICQUser* u);
+  UserId myUserId;
+  void testViewItem(QTreeWidgetItem* item, const LicqUser* u);
   int maxItemVal;
   QTreeWidgetItem* maxItem;
   void initKeyList();
@@ -52,7 +53,7 @@ class GPGKeySelect : public QDialog
 {
   Q_OBJECT
 public:
-  GPGKeySelect(QString id, unsigned long ppid, QWidget* parent = 0);
+  GPGKeySelect(const UserId& userId, QWidget* parent = 0);
   ~GPGKeySelect();
 
 signals:
@@ -61,8 +62,7 @@ signals:
 private:
   QTreeWidget* keySelect;
   QCheckBox* useGPG;
-  QString szId;
-  unsigned long nPPID;
+  UserId myUserId;
   void updateIcon();
   QLineEdit* filterText;
 

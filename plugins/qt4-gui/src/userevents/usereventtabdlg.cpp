@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 
 #include <licq_message.h>
 
+#include <QAction>
+#include <QActionGroup>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -33,6 +35,7 @@
 
 #include "config/chat.h"
 #include "config/iconmanager.h"
+#include "config/shortcuts.h"
 
 #include "helpers/support.h"
 
@@ -56,14 +59,53 @@ UserEventTabDlg::UserEventTabDlg(QWidget* parent, const char* name)
   QVBoxLayout* lay = new QVBoxLayout(this);
   lay->setContentsMargins(0, 0, 0, 0);
 
-  if (Config::Chat::instance()->dialogRect().isValid())
-    setGeometry(Config::Chat::instance()->dialogRect());
+  if (Config::Chat::instance()->tabDialogRect().isValid())
+    setGeometry(Config::Chat::instance()->tabDialogRect());
 
   myTabs = new TabWidget();
   lay->addWidget(myTabs);
 
   connect(myTabs, SIGNAL(currentChanged(int)), SLOT(currentChanged(int)));
   connect(myTabs, SIGNAL(mouseMiddleClick(QWidget*)), SLOT(removeTab(QWidget*)));
+
+  QActionGroup* tabActionGroup = new QActionGroup(this);
+  connect(tabActionGroup, SIGNAL(triggered(QAction*)), SLOT(switchTab(QAction*)));
+
+#define ADD_TABSHORTCUT(var, shortcut, index) \
+  var = new QAction(tabActionGroup); \
+  var->setData(index);
+
+  ADD_TABSHORTCUT(myTabSwitch01Action, Config::Shortcuts::ChatTab01, 0);
+  ADD_TABSHORTCUT(myTabSwitch02Action, Config::Shortcuts::ChatTab02, 1);
+  ADD_TABSHORTCUT(myTabSwitch03Action, Config::Shortcuts::ChatTab03, 2);
+  ADD_TABSHORTCUT(myTabSwitch04Action, Config::Shortcuts::ChatTab04, 3);
+  ADD_TABSHORTCUT(myTabSwitch05Action, Config::Shortcuts::ChatTab05, 4);
+  ADD_TABSHORTCUT(myTabSwitch06Action, Config::Shortcuts::ChatTab06, 5);
+  ADD_TABSHORTCUT(myTabSwitch07Action, Config::Shortcuts::ChatTab07, 6);
+  ADD_TABSHORTCUT(myTabSwitch08Action, Config::Shortcuts::ChatTab08, 7);
+  ADD_TABSHORTCUT(myTabSwitch09Action, Config::Shortcuts::ChatTab09, 8);
+  ADD_TABSHORTCUT(myTabSwitch10Action, Config::Shortcuts::ChatTab10, 9);
+
+#undef ADD_TABSHORTCUT
+
+  addActions(tabActionGroup->actions());
+  updateShortcuts();
+  connect(Config::Shortcuts::instance(), SIGNAL(shortcutsChanged()), SLOT(updateShortcuts()));
+}
+
+void UserEventTabDlg::updateShortcuts()
+{
+  const Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+  myTabSwitch01Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab01));
+  myTabSwitch02Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab02));
+  myTabSwitch03Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab03));
+  myTabSwitch04Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab04));
+  myTabSwitch05Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab05));
+  myTabSwitch06Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab06));
+  myTabSwitch07Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab07));
+  myTabSwitch08Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab08));
+  myTabSwitch09Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab09));
+  myTabSwitch10Action->setShortcut(shortcuts->getShortcut(Config::Shortcuts::ChatTab10));
 }
 
 UserEventTabDlg::~UserEventTabDlg()
@@ -74,13 +116,24 @@ UserEventTabDlg::~UserEventTabDlg()
 
 void UserEventTabDlg::addTab(UserEventCommon* tab, int index)
 {
-  const ICQUser* u = gUserManager.FetchUser(tab->id().toLatin1(), tab->ppid(), LOCK_R);
+  // Insert tab before we lock the user as our event() function will be called
+  // when tab is inserted and will also need to fetch user.
+  // Tab label will be set later by updateTabLabel()
+  myTabs->insertTab(index, tab, QString());
+
+  const LicqUser* u = gUserManager.fetchUser(tab->userId());
   if (u == NULL)
     return;
 
-  index = myTabs->insertTab(index, tab, QString::fromUtf8(u->GetAlias()));
   updateTabLabel(tab, u);
   gUserManager.DropUser(u);
+}
+
+void UserEventTabDlg::switchTab(QAction* action)
+{
+  int index = action->data().toInt();
+
+  myTabs->setCurrentIndex(index);
 }
 
 void UserEventTabDlg::selectTab(QWidget* tab)
@@ -108,13 +161,13 @@ bool UserEventTabDlg::tabExists(QWidget* tab)
 void UserEventTabDlg::updateConvoLabel(UserEventCommon* tab)
 {
   // Show the list of users in the conversation
-  list<string> users = tab->convoUsers();
-  list<string>::iterator it;
+  list<UserId> users = tab->convoUsers();
+  list<UserId>::iterator it;
   QString newLabel = QString::null;
 
   for (it = users.begin(); it != users.end(); ++it)
   {
-    const ICQUser* u = gUserManager.FetchUser((*it).c_str(), tab->ppid(), LOCK_R);
+    const LicqUser* u = gUserManager.fetchUser(*it);
 
     if (!newLabel.isEmpty())
       newLabel += ", ";
@@ -131,7 +184,7 @@ void UserEventTabDlg::updateConvoLabel(UserEventCommon* tab)
   myTabs->setTabText(myTabs->indexOf(tab), newLabel);
 }
 
-void UserEventTabDlg::updateTabLabel(const ICQUser* u)
+void UserEventTabDlg::updateTabLabel(const LicqUser* u)
 {
   if (u == NULL)
     return;
@@ -140,26 +193,28 @@ void UserEventTabDlg::updateTabLabel(const ICQUser* u)
   {
     UserEventCommon* tab = dynamic_cast<UserEventCommon*>(myTabs->widget(index));
 
-    if (tab->ppid() == u->PPID() &&
-        tab->isUserInConvo(u->IdString()))
+    if (tab->isUserInConvo(u->id()))
       updateTabLabel(tab, u);
   }
 }
 
-void UserEventTabDlg::updateTabLabel(UserEventCommon* tab, const ICQUser* u)
+void UserEventTabDlg::updateTabLabel(UserEventCommon* tab, const LicqUser* u)
 {
   if (tab == NULL)
     return;
 
   bool fetched = false;
   if (u == NULL ||
-      !tab->isUserInConvo(u->IdString()))
+      !tab->isUserInConvo(u->id()))
   {
-    u = gUserManager.FetchUser(tab->id().toLatin1(), tab->ppid(), LOCK_R);
+    u = gUserManager.fetchUser(tab->userId());
     if (u == NULL)
       return;
     fetched = true;
   }
+
+  int index = myTabs->indexOf(tab);
+  myTabs->setTabText(index, QString::fromUtf8(u->GetAlias()));
 
   QIcon icon;
 
@@ -202,27 +257,25 @@ void UserEventTabDlg::updateTabLabel(UserEventCommon* tab, const ICQUser* u)
     if (u->GetTyping() == ICQ_TYPING_ACTIVE)
       myTabs->setTabColor(tab, Config::Chat::instance()->tabTypingColor());
     else
-      myTabs->setTabColor(tab, QColor("black"));
+      myTabs->setTabColor(tab, QColor());
   }
 
   if (fetched)
     gUserManager.DropUser(u);
 
-  int index = myTabs->indexOf(tab);
   myTabs->setTabIcon(index, icon);
   if (myTabs->currentIndex() == index)
     setWindowIcon(icon);
 }
 
-void UserEventTabDlg::setTyping(const ICQUser* u, int convoId)
+void UserEventTabDlg::setTyping(const LicqUser* u, int convoId)
 {
   for (int index = 0; index < myTabs->count(); index++)
   {
     UserEventCommon* tab = dynamic_cast<UserEventCommon*>(myTabs->widget(index));
 
     if (tab->convoId() == static_cast<unsigned long>(convoId) &&
-        tab->ppid() == u->PPID() &&
-        tab->isUserInConvo(u->IdString()))
+        tab->isUserInConvo(u->id()))
       tab->setTyping(u->GetTyping());
   }
 }
@@ -299,15 +352,17 @@ void UserEventTabDlg::clearEvents(QWidget* tab)
 
 void UserEventTabDlg::saveGeometry()
 {
-  Config::Chat::instance()->setDialogRect(geometry());
+  Config::Chat::instance()->setTabDialogRect(geometry());
 }
 
-void UserEventTabDlg::moveEvent(QMoveEvent* /* e */)
+void UserEventTabDlg::moveEvent(QMoveEvent* event)
 {
   saveGeometry();
+  QWidget::moveEvent(event);
 }
 
-void UserEventTabDlg::resizeEvent(QResizeEvent* /* e */)
+void UserEventTabDlg::resizeEvent(QResizeEvent* event)
 {
   saveGeometry();
+  QWidget::resizeEvent(event);
 }

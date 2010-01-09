@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,14 +53,11 @@ StatsDlg::StatsDlg(QWidget* parent)
   lay->addSpacing(20);
 
   QDialogButtonBox* buttons = new QDialogButtonBox(
-      QDialogButtonBox::Ok);
+      QDialogButtonBox::Ok | QDialogButtonBox::Reset);
   connect(buttons, SIGNAL(accepted()), SLOT(close()));
-
-  QPushButton* button = buttons->addButton(QDialogButtonBox::Reset);
-  connect(button, SIGNAL(clicked()), SLOT(reset()));
-  button->setAutoDefault(false);
-
+  connect(buttons->button(QDialogButtonBox::Reset), SIGNAL(clicked()), SLOT(reset()));
   lay->addWidget(buttons);
+  buttons->button(QDialogButtonBox::Ok)->setFocus();
 
   prepare();
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ class QGroupBox;
 class QProgressBar;
 class QPushButton;
 
-class ICQEvent;
+class LicqEvent;
 
 namespace LicqQtGui
 {
@@ -44,9 +44,19 @@ public:
   MMSendDlg(MMUserView* _mmv, QWidget* parent = 0);
   ~MMSendDlg();
 
-  int go_message(QString);
-  int go_url(QString, QString);
+  int go_message(const QString& msg);
+  int go_url(const QString& url, const QString& desc);
   int go_contact(StringList& users);
+
+signals:
+  /**
+   * Since daemon doesn't notify us when an event is sent we'll have to handle
+   * it ourselfs. This signal is sent to notify other windows about the event
+   * that was sent.
+   *
+   * @param event Event object that was sent
+   */
+  void eventSent(const LicqEvent* event);
 
 private:
   QString s1, s2;
@@ -56,14 +66,12 @@ private:
   QGroupBox* grpSending;
   QPushButton* btnCancel;
   QProgressBar* barSend;
-  QString myId;
   MMUserView* mmv;
-  unsigned long m_nPPID;
   unsigned long icqEventTag;
 
   void SendNext();
 private slots:
-  void slot_done(ICQEvent*);
+  void slot_done(const LicqEvent* event);
   void slot_cancel();
 };
 

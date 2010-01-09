@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,8 @@
 #ifdef USE_KDE
 #include <kmainwindow.h>
 #endif
+
+#include <licq_types.h>
 
 #include <list>
 #include <deque>
@@ -99,7 +101,7 @@ class ChatDlg : public QMainWindow
 {
    Q_OBJECT
 public:
-  ChatDlg(const char *szId, unsigned long nPPID, CICQDaemon *daemon,
+  ChatDlg(const UserId& userId, CICQDaemon *daemon,
           CMainWindow *m, QWidget *parent = 0);
   virtual ~ChatDlg();
 

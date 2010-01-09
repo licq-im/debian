@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2006 Licq developers
+ * Copyright (C) 2002-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,7 +41,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ReqAuthDlg */
 
-ReqAuthDlg::ReqAuthDlg(QString id, unsigned long /* ppid */, QWidget* parent)
+ReqAuthDlg::ReqAuthDlg(const QString& id, unsigned long /* ppid */, QWidget* parent)
   : QDialog(parent)
 {
   Support::setWidgetProps(this, "RequestAuthDialog");
@@ -96,11 +96,12 @@ ReqAuthDlg::ReqAuthDlg(QString id, unsigned long /* ppid */, QWidget* parent)
 void ReqAuthDlg::ok()
 {
   QString id = edtUin->text();
+  UserId userId = LicqUser::makeUserId(id.toLatin1().data(), LICQ_PPID);
 
   if (!id.isEmpty())
   {
     //TODO add a drop down list for protocol
-    QTextCodec* codec = UserCodec::codecForProtoUser(id, LICQ_PPID);
+    const QTextCodec* codec = UserCodec::codecForUserId(userId);
     gLicqDaemon->icqRequestAuth(id.toLatin1().data(),
       codec->fromUnicode(mleRequest->toPlainText()));
     close();

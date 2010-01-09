@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,11 +24,10 @@
 
 using namespace LicqQtGui;
 
-SingleContactProxy::SingleContactProxy(ContactListModel* contactList, QString id, unsigned long ppid, QObject* parent)
+SingleContactProxy::SingleContactProxy(ContactListModel* contactList, const UserId& userId, QObject* parent)
   : QAbstractProxyModel(parent),
     myContactList(contactList),
-    myId(id),
-    myPpid(ppid)
+    myUserId(userId)
 {
   connect(myContactList, SIGNAL(columnsInserted(const QModelIndex&, int, int)), SLOT(update()));
   connect(myContactList, SIGNAL(columnsRemoved(const QModelIndex&, int, int)), SLOT(update()));
@@ -48,13 +47,13 @@ SingleContactProxy::~SingleContactProxy()
 void SingleContactProxy::update()
 {
   for (int i = 0; i < MAX_COLUMNCOUNT; ++i)
-    mySourceIndex[i] = myContactList->userIndex(myId, myPpid, i);
+    mySourceIndex[i] = myContactList->userIndex(myUserId, i);
 }
 
 void SingleContactProxy::slot_dataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight)
 {
   // Check if this affects us
-  unsigned short groupId = topLeft.data(ContactListModel::GroupIdRole).toUInt();
+  int groupId = topLeft.data(ContactListModel::GroupIdRole).toInt();
   if (groupId == ContactListModel::SystemGroupOffset)
     if (topLeft.row() <= mySourceIndex[0].row() && bottomRight.row() >= mySourceIndex[0].row())
       emit dataChanged(createIndex(0, 0, 0), createIndex(0, myContactList->columnCount() - 1, 0));
@@ -63,7 +62,7 @@ void SingleContactProxy::slot_dataChanged(const QModelIndex& topLeft, const QMod
 QModelIndex SingleContactProxy::index(int row, int column, const QModelIndex& parent) const
 {
   // Only one top level item so return invalid for anything else
-  if (!parent.isValid() && row == 0)
+  if (!parent.isValid() && row == 0 && column >= 0 && column < MAX_COLUMNCOUNT)
     return createIndex(0, column, 0);
 
   return QModelIndex();
@@ -89,7 +88,7 @@ int SingleContactProxy::columnCount(const QModelIndex& /* parent */) const
 
 QVariant SingleContactProxy::data(const QModelIndex& index, int role) const
 {
-  if (index.isValid() && index.row() == 0 && index.column() < MAX_COLUMNCOUNT)
+  if (index.isValid() && index.row() == 0 && index.column() >= 0 && index.column() < MAX_COLUMNCOUNT)
     return myContactList->data(mySourceIndex[index.column()], role);
 
   return QVariant();
@@ -97,14 +96,10 @@ QVariant SingleContactProxy::data(const QModelIndex& index, int role) const
 
 Qt::ItemFlags SingleContactProxy::flags(const QModelIndex& index) const
 {
-  if (!index.isValid() || index.row() != 0)
-    return Qt::ItemIsEnabled;
+  if (!index.isValid() || index.row() != 0 || index.column() < 0 || index.column() >= MAX_COLUMNCOUNT)
+    return 0;
 
-  int column = index.column();
-  if (column < 0 || column >= MAX_COLUMNCOUNT)
-    return Qt::ItemIsEnabled;
-
-  return myContactList->flags(mySourceIndex[column]);
+  return myContactList->flags(mySourceIndex[index.column()]);
 }
 
 QVariant SingleContactProxy::headerData(int section, Qt::Orientation orientation, int role) const

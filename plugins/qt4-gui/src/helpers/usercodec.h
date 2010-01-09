@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2001-2006 Licq developers
+ * Copyright (C) 2001-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,10 +23,12 @@
 
 #include <QObject>
 
+#include <licq_types.h>
+
 class QTextCodec;
 
 class CChatUser;
-class ICQUser;
+class LicqUser;
 
 namespace LicqQtGui
 {
@@ -44,13 +46,13 @@ public:
   static encoding_t m_encodings[];
 
   // Retrieves the default codec
-  static QTextCodec* defaultEncoding();
-  // Retrieves the codec for an ICQUser object
-  static QTextCodec* codecForICQUser(const ICQUser* u);
+  static const QTextCodec* defaultEncoding();
+  // Retrieves the codec for an LicqUser object
+  static const QTextCodec* codecForUser(const LicqUser* u);
   // Retrieves the codec for an CChatUser object
-  static QTextCodec* codecForCChatUser(CChatUser* u);
+  static const QTextCodec* codecForCChatUser(CChatUser* u);
   // Retrieves the codec for a proto user
-  static QTextCodec* codecForProtoUser(const QString& id, unsigned long ppid);
+  static const QTextCodec* codecForUserId(const UserId& userId);
 
   static QByteArray encodingForMib(int mib);
   static QString nameForEncoding(const QByteArray& encoding);

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,7 +55,6 @@ using namespace LicqQtGui;
 MMSendDlg::MMSendDlg(MMUserView* _mmv, QWidget* p)
   : QDialog(p),
     mmv(_mmv),
-    m_nPPID(0),
     icqEventTag(0)
 {
   Support::setWidgetProps(this, "MMSendDialog");
@@ -77,15 +76,15 @@ MMSendDlg::MMSendDlg(MMUserView* _mmv, QWidget* p)
 
   connect(btnCancel, SIGNAL(clicked()), SLOT(slot_cancel()));
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(ICQEvent*)), SLOT(slot_done(ICQEvent*)));
+      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(slot_done(const LicqEvent*)));
 
-  barSend->setMaximum(mmv->contacts().count());
+  barSend->setMaximum(mmv->contacts().size());
   barSend->setValue(0);
 
   setMinimumWidth(300);
 }
 
-int MMSendDlg::go_message(QString msg)
+int MMSendDlg::go_message(const QString& msg)
 {
   m_nEventType = ICQ_CMDxSUB_MSG;
   s1 = msg;
@@ -98,7 +97,7 @@ int MMSendDlg::go_message(QString msg)
   return 0;
 }
 
-int MMSendDlg::go_url(QString url, QString desc)
+int MMSendDlg::go_url(const QString& url, const QString& desc)
 {
   m_nEventType = ICQ_CMDxSUB_URL;
   s1 = desc;
@@ -125,12 +124,12 @@ int MMSendDlg::go_contact(StringList& users)
   return result();
 }
 
-void MMSendDlg::slot_done(ICQEvent* e)
+void MMSendDlg::slot_done(const LicqEvent* e)
 {
   if ( !e->Equals(icqEventTag) )
     return;
 
-  bool isOk = (e != NULL && e->Result() == EVENT_ACKED);
+  bool isOk = (e != NULL ? (e->Result() == EVENT_ACKED) : (icqEventTag == 0));
 
   icqEventTag = 0;
 
@@ -139,6 +138,15 @@ void MMSendDlg::slot_done(ICQEvent* e)
     grpSending->setTitle(grpSending->title() + tr("failed"));
     btnCancel->setText(tr("&Close"));
     return;
+  }
+
+  if (e != NULL)
+  {
+    // Let other dialogs know a message was sent
+    // TODO: This will currently only work with ICQ protocol since we don't yet
+    //       have an event available here for other protocols that we can
+    //       forward.
+    emit eventSent(e);
   }
 
   // Send next message
@@ -156,20 +164,18 @@ void MMSendDlg::SendNext()
     return;
   }
 
-  QPair<QString, unsigned long> contact = *mmv->contacts().begin();
+  UserId userId = *mmv->contacts().begin();
 
-  myId = contact.first;
-  m_nPPID = contact.second;
-
-  if (myId.isEmpty()) return;
+  if (!USERID_ISVALID(userId))
+    return;
 
   switch (m_nEventType)
   {
     case ICQ_CMDxSUB_MSG:
     {
-      const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), m_nPPID, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
       if (u == NULL) return;
-      QTextCodec* codec = UserCodec::codecForICQUser(u);
+      const QTextCodec* codec = UserCodec::codecForUser(u);
       grpSending->setTitle(tr("Sending mass message to %1...").arg(QString::fromUtf8(u->GetAlias())));
       gUserManager.DropUser(u);
 
@@ -226,8 +232,8 @@ void MMSendDlg::SendNext()
           messageRaw = codec->fromUnicode(s1);
         }
 
-        icqEventTag = gLicqDaemon->ProtoSendMessage(
-            myId.toLatin1(), m_nPPID, messageRaw.data(), false, ICQ_TCPxMSG_NORMAL, true);
+        icqEventTag = gLicqDaemon->sendMessage(userId, messageRaw.data(),
+            true, ICQ_TCPxMSG_NORMAL, true);
 
         tmp = gTranslator.NToRN(messageRaw);
         wholeMessagePos += strlen(tmp);
@@ -238,22 +244,22 @@ void MMSendDlg::SendNext()
     }
     case ICQ_CMDxSUB_URL:
     {
-      const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), m_nPPID, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
       if (u == NULL) return;
       grpSending->setTitle(tr("Sending mass URL to %1...").arg(QString::fromUtf8(u->GetAlias())));
-      QTextCodec* codec = UserCodec::codecForICQUser(u);
+      const QTextCodec* codec = UserCodec::codecForUser(u);
       gUserManager.DropUser(u);
 
-      icqEventTag = gLicqDaemon->ProtoSendUrl(
-          myId.toLatin1(), m_nPPID, s2.toLatin1(),
-          codec->fromUnicode(s1), false, ICQ_TCPxMSG_NORMAL, true);
+      icqEventTag = gLicqDaemon->sendUrl(userId, s2.toLatin1().data(),
+          codec->fromUnicode(s1).data(), true, ICQ_TCPxMSG_NORMAL, true);
       break;
     }
     case ICQ_CMDxSUB_CONTACTxLIST:
     {
-      const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), m_nPPID, LOCK_R);
+      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
       if (u == NULL) return;
       grpSending->setTitle(tr("Sending mass list to %1...").arg(QString::fromUtf8(u->GetAlias())));
+      QString myId = u->accountId().c_str();
       gUserManager.DropUser(u);
 
       icqEventTag = gLicqDaemon->icqSendContactList(
@@ -281,7 +287,7 @@ void MMSendDlg::slot_cancel()
     gLicqDaemon->CancelEvent(icqEventTag);
     icqEventTag = 0;
   }
-  //disconnect(sigman, SIGNAL(doneUserFcn(ICQEvent*)), SLOT(slot_done(ICQEvent*)));
+  //disconnect(sigman, SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(slot_done(const LicqEvent*)));
 
   reject();
 }

@@ -5,11 +5,12 @@
 #include "config.h"
 #endif
 
+#include <licq_types.h>
+
 class CICQDaemon;
-class ICQUser;
 class CUserEvent;
-class CICQSignal;
-class ICQEvent;
+class LicqSignal;
+class LicqEvent;
 
 class CLicqAutoReply
 {
@@ -30,13 +31,26 @@ protected:
 
   CICQDaemon *licqDaemon;
 
-public:
   void ProcessPipe();
-  void ProcessSignal(CICQSignal *);
-  void ProcessEvent(ICQEvent *);
+  void ProcessSignal(LicqSignal* s);
+  void ProcessEvent(LicqEvent* e);
 
-  void ProcessUserEvent(const char *, unsigned long, unsigned long);
-  bool AutoReplyEvent(const char *, unsigned long, CUserEvent *);
+  /**
+   * A new event arrived for a user
+   *
+   * @param userId Affected user
+   * @param eventId Id of event
+   */
+  void processUserEvent(const UserId& userId, unsigned long eventId);
+
+  /**
+   * Make auto reply for an event
+   *
+   * @param userId Affected user
+   * @Param event Event to reply to
+   * @return True if a reply was sent
+   */
+  bool autoReplyEvent(const UserId& userId, const CUserEvent* event);
 
   bool POpen(const char *cmd);
   int PClose();

@@ -4,11 +4,11 @@
 #include <pthread.h>
 
 #include "licq_message.h"
+#include "licq_types.h"
 
 class CPacket;
 class CICQDaemon;
 class CUserEvent;
-class ICQUser;
 
 //-----CExtendedAck----------------------------------------------------------
 
@@ -62,8 +62,6 @@ class CSearchAck
 {
 public:
   // Accessors
-  //! Returns the UIN of the search result.
-  unsigned long Uin() const { return m_nUin; }
   //! Returns the alias (nickname) of the search result.
   const char* Alias() const { return m_szAlias; }
   //! Returns the first name of the search result.
@@ -72,10 +70,14 @@ public:
   const char* LastName() const { return m_szLastName; }
   //! Returns the e-mail address of the search result.
   const char* Email() const { return m_szEmail; }
-  //! Retunrs the Id string
-  const char* Id() const { return m_szId; }
-  //! Returns the protocol plugin id
-  unsigned long PPID() const { return m_nPPID; }
+
+  /**
+   * Get the user id
+   *
+   * @return User id of search match
+   */
+  const UserId& userId() const { return myUserId; }
+
   //! If non-zero, the number of search results that were found that could not
   //! be displayed.  The server has a 40 user limit on search results.  This
   //! is valid when Result() is EVENT_SUCCESS.
@@ -92,12 +94,9 @@ public:
   ~CSearchAck();
 
 protected:
-  CSearchAck(unsigned long _nUin);
-  CSearchAck(const char *_szId, unsigned long _nPPID);
+  CSearchAck(const UserId& userId);
 
-  unsigned long m_nPPID;
-  char *m_szId;
-  unsigned long m_nUin;
+  UserId myUserId;
   char *m_szAlias;
   char *m_szFirstName;
   char *m_szLastName;
@@ -148,7 +147,7 @@ enum EventResult
     relevant data fields set.  A plugin will receive an event in response
     to any asynchronous function call (such as icqSendMessage) eventually.
 */
-class ICQEvent
+class LicqEvent
 {
 public:
   // Accessors
@@ -192,17 +191,12 @@ public:
   //!accepting/rejecting chat or file requests.
   unsigned short SubSequence() const { return m_nSubSequence; }
 
-  //!The uin of the user the event was destined for.  Only relevant if
-  //!this was a message/url...
-  unsigned long Uin() const { return m_nDestinationUin; }
-
-  //!The user id that the event was destined for.  Only relevant if
-  //!this was a message/url...
-  const char* Id() const { return m_szId; }
-
-  //!The protocol id of the user that the event was destined for.
-  //!Only relevant if this was a message/url...
-  unsigned long PPID() const { return m_nPPID; }
+  /**
+   * Get user id the event was destined for.
+   *
+   * @return User id for event if relevant
+   */
+  const UserId& userId() const { return myUserId; }
 
   //!Special structure containing information relevant if this is a
   //!search event.
@@ -221,25 +215,23 @@ public:
   //!with the relevant fields set.  This is helpful in searches for example
   //!to avoid having to add the user to the list before checking their
   //!other information.
-  const ICQUser* UnknownUser() const { return m_pUnknownUser; }
+  const LicqUser* UnknownUser() const { return m_pUnknownUser; }
 
   // Returns the event and transfers ownership to the calling function
   CUserEvent *GrabUserEvent();
   CSearchAck *GrabSearchAck();
-  ICQUser *GrabUnknownUser();
+  LicqUser* GrabUnknownUser();
 
   //!Compare this event to the id to see if the plugin matches a waiting
   //!event with the event that the daemon has signaled to the plugin.
   bool Equals(unsigned long) const;
 
-  ~ICQEvent();
+  ~LicqEvent();
 
 protected:
-  ICQEvent(CICQDaemon *_xDaemon, int _nSocketDesc, CPacket *p, ConnectType _eConnect,
-           unsigned long _nUin, CUserEvent *e);
-  ICQEvent(CICQDaemon *_xDaemon, int _nSocketDesc, CPacket *p, ConnectType _eConnect,
-           const char *_szId, unsigned long _nPPID, CUserEvent *e);
-  ICQEvent(const ICQEvent* e);
+  LicqEvent(CICQDaemon *_xDaemon, int _nSocketDesc, CPacket *p, ConnectType _eConnect,
+      const UserId& userId = USERID_NONE, CUserEvent* e = NULL);
+  LicqEvent(const LicqEvent* e);
 
   // Daemon only
   unsigned short SubType() const     { return m_nSubType; }
@@ -267,14 +259,12 @@ protected:
   unsigned long  m_nSNAC;
   unsigned short m_nCommand;
   unsigned short m_nSubCommand;
-  unsigned long  m_nDestinationUin;
   unsigned short m_nSequence;
   unsigned short m_nSubSequence;
   unsigned short m_nSubType;
   unsigned short m_nExtraInfo;
   int            m_nSocketDesc;
-  char           *m_szId;
-  unsigned long  m_nPPID;
+  UserId         myUserId;
   CPacket        *m_pPacket;
   pthread_t      thread_send;
   bool           thread_running;
@@ -283,7 +273,7 @@ protected:
   CUserEvent    *m_pUserEvent;
   CExtendedAck  *m_pExtendedAck;
   CSearchAck    *m_pSearchAck;
-  ICQUser       *m_pUnknownUser;
+  LicqUser* m_pUnknownUser;
 
   CICQDaemon    *m_pDaemon;
 
@@ -298,6 +288,10 @@ friend void *ProcessRunningEvent_Server_tep(void *p);
 friend void *OscarServiceSendQueue_tep(void *p);
 friend void *MonitorSockets_tep(void *p);
 };
+
+// Temporary until all occurenses of deprecated name ICQEvent have been removed
+typedef LicqEvent ICQEvent;
+
 
 //=====CICQSignal============================================================
 
@@ -429,35 +423,49 @@ const unsigned long LIST_ALL                     = LIST_INVALIDATE;
     from the following list.  Each signal contains the signal type, an
     optional sub-type, uin and signal specific argument.
 */
-class CICQSignal
+class LicqSignal
 {
 public:
-  CICQSignal(unsigned long _nSignal, unsigned long _nSubSignal, unsigned long _nUin,
-             int nArg = 0, unsigned long nCID = 0);
-  CICQSignal(unsigned long _nSignal, unsigned long _nSubSignal, const char *_szId,
-             unsigned long _nPPID, int nArg = 0, unsigned long nCID = 0);
-  CICQSignal(const CICQSignal* s);
-  ~CICQSignal();
+  /**
+   * Constructor
+   *
+   * @param signal Signal type
+   * @param subSignal Signal sub type
+   * @param userId Id of user affected by signal if applicable
+   * @param argument Additional data for signal, usage is signal dependant
+   * @param cid Conversation id, if applicable
+   */
+  LicqSignal(unsigned long signal, unsigned long subSignal,
+      const UserId& userId = USERID_NONE, int argument = 0, unsigned long cid = 0);
+
+  /**
+   * Copy constructor
+   *
+   * @param s LicqSignal object to copy fields from
+   */
+  LicqSignal(const LicqSignal* s);
 
   //!Returns the signal being posted to the plugin.
-  unsigned long Signal() const { return m_nSignal; }
+  unsigned long Signal() const { return mySignal; }
   //!Returns the sub-signal being posted to the plugin.
-  unsigned long SubSignal() const { return m_nSubSignal; }
-  //!UIN that the signal is related.  See signals to understand how this
-  //!value is set.
-  unsigned long Uin() const { return m_nUin; }
-  const char* Id() const { return m_szId; }
-  unsigned long PPID() const { return m_nPPID; }
-  int Argument() const { return m_nArgument; }
-  unsigned long CID() const { return m_nCID; }
+  unsigned long SubSignal() const { return mySubSignal; }
+
+  /**
+   * Get id for user related to this signal
+   *
+   * @return user id if relevant, otherwise zero
+   */
+  const UserId& userId() const { return myUserId; }
+
+  int Argument() const { return myArgument; }
+  unsigned long CID() const { return myCid; }
+
 protected:
-  unsigned long m_nSignal;
-  unsigned long m_nSubSignal;
-  unsigned long m_nUin;
-  char *m_szId;
-  unsigned long m_nPPID;
-  int m_nArgument;
-  unsigned long m_nCID;
+  const unsigned long mySignal;
+  const unsigned long mySubSignal;
+  const UserId myUserId;
+  const int myArgument;
+  const unsigned long myCid;
 };
 
 //! Signals that can be sent to protocol plugins.

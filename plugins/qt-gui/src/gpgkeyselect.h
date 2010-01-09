@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2006 Licq developers
+ * Copyright (C) 2005-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 #ifndef GPGKEYSELECT_H
 #define GPGKEYSELECT_H
 
+#include <licq_types.h>
+
 #include "licqdialog.h"
 
 #include <qobject.h>
@@ -27,7 +29,7 @@
 #include <qdialog.h>
 
 class CICQDaemon;
-class ICQUser;
+class LicqUser;
 class QCheckBox;
 class QLineEdit;
 
@@ -35,13 +37,12 @@ class KeyView : public QListView
 {
     Q_OBJECT
 public:
-  KeyView( QWidget *parent, const char *szId, unsigned long nPPID );
+  KeyView(QWidget *parent, const UserId& userId);
   ~KeyView() {};
 
 protected:
-  const char *szId;
-  unsigned long nPPID;
-  void testViewItem( QListViewItem *item, ICQUser *u );
+  UserId myUserId;
+  void testViewItem(QListViewItem* item, const LicqUser* u);
   int maxItemVal;
   QListViewItem *maxItem;
   void initKeyList();
@@ -52,14 +53,13 @@ class GPGKeySelect : public QDialog
 {
   Q_OBJECT
 public:
-  GPGKeySelect ( const char *szId, unsigned long nPPID, QWidget *parent = 0);
+  GPGKeySelect(const UserId& userId, QWidget *parent = 0);
   ~GPGKeySelect();
 
 protected:
   QListView *keySelect;
   QCheckBox *useGPG;
-  char *szId;
-  unsigned long nPPID;
+  UserId myUserId;
   void updateIcon();
   QLineEdit *filterText;
 

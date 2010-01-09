@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,6 +46,9 @@
 #include "widgets/colorbutton.h"
 #include "widgets/historyview.h"
 #include "widgets/tabwidget.h"
+#ifdef HAVE_HUNSPELL
+# include "widgets/filenameedit.h"
+#endif
 
 #include "settingsdlg.h"
 
@@ -133,13 +136,29 @@ QWidget* Settings::Chat::createPageChat(QWidget* parent)
   myShowUserPicHiddenCheck->setToolTip(tr("Hide user picture upon opening"));
   myChatLayout->addWidget(myShowUserPicHiddenCheck, 6, 1);
 
+#if defined USE_KDE or defined HAVE_HUNSPELL
   myCheckSpelling = new QCheckBox(tr("Check spelling"));
   myCheckSpelling->setToolTip(tr("Mark misspelled words as you type."));
-#ifndef USE_KDE
-  myCheckSpelling->setVisible(false);
-#endif
   myChatLayout->addWidget(myCheckSpelling, 7, 0);
+#endif
 
+#ifdef HAVE_HUNSPELL
+  QHBoxLayout* dictionaryLayout = new QHBoxLayout();
+  myDictionaryLabel = new QLabel(tr("Dictionary file:"));
+  myDictionaryLabel->setToolTip(tr("Dictionary file to use when checking spelling."));
+  dictionaryLayout->addWidget(myDictionaryLabel);
+  myDictionaryEdit = new FileNameEdit();
+  myDictionaryEdit->setToolTip(myDictionaryLabel->toolTip());
+  myDictionaryEdit->setFilter(tr("*.dic|Dictionary files for Hunspell\\/Myspell (*.dic)"));
+  myDictionaryEdit->setDefaultPath(HUNSPELL_DICTS_DIR);
+  myDictionaryLabel->setBuddy(myDictionaryEdit);
+  dictionaryLayout->addWidget(myDictionaryEdit);
+  myDictionaryLabel->setEnabled(false);
+  myDictionaryEdit->setEnabled(false);
+  connect(myCheckSpelling, SIGNAL(toggled(bool)), myDictionaryLabel, SLOT(setEnabled(bool)));
+  connect(myCheckSpelling, SIGNAL(toggled(bool)), myDictionaryEdit, SLOT(setEnabled(bool)));
+  myChatLayout->addLayout(dictionaryLayout, 7, 1);
+#endif
 
   myLocaleBox = new QGroupBox(tr("Localization"));
   myLocaleLayout = new QVBoxLayout(myLocaleBox);
@@ -185,14 +204,19 @@ QWidget* Settings::Chat::createPageChat(QWidget* parent)
   myTerminalLabel->setBuddy(myTerminalEdit);
   myExtensionsLayout->addWidget(myTerminalEdit, 0, 1);
 
+  myUseCustomUrlViewer = new QCheckBox(tr("Use custom URI viewer"));
+  myUseCustomUrlViewer->setToolTip(tr("Use a custom browser for URIs, instead of the system wide setting."));
+  myExtensionsLayout->addWidget(myUseCustomUrlViewer, 1, 0, 1, 2);
+
   myUrlViewerLabel = new QLabel(tr("URI viewer:"));
   myUrlViewerLabel->setToolTip(tr("The command to run in case Qt is unable to open an URL.\n"
         "It is passed an URL as the last parameter.\n"
         "Refer to the hints dialog for Qt URL handling rules."));
-  myExtensionsLayout->addWidget(myUrlViewerLabel, 1, 0);
+  myExtensionsLayout->addWidget(myUrlViewerLabel, 2, 0);
 
   myUrlViewerCombo = new QComboBox();
   myUrlViewerCombo->setEditable(true);
+  myUrlViewerCombo->addItem("viewurl-firefox.sh");
   myUrlViewerCombo->addItem("viewurl-firefox.sh");
   myUrlViewerCombo->addItem("viewurl-lynx.sh");
   myUrlViewerCombo->addItem("viewurl-mozilla.sh");
@@ -203,12 +227,15 @@ QWidget* Settings::Chat::createPageChat(QWidget* parent)
   myUrlViewerCombo->addItem("viewurl-w3m.sh");
   myUrlViewerCombo->setToolTip(myUrlViewerLabel->toolTip());
   myUrlViewerLabel->setBuddy(myUrlViewerCombo);
-  myExtensionsLayout->addWidget(myUrlViewerCombo, 1, 1);
+  myExtensionsLayout->addWidget(myUrlViewerCombo, 2, 1);
 #ifdef USE_KDE
+  myUseCustomUrlViewer->setVisible(false);
   myUrlViewerLabel->setVisible(false);
   myUrlViewerCombo->setVisible(false);
+#else
+  connect(myUseCustomUrlViewer, SIGNAL(toggled(bool)), myUrlViewerCombo, SLOT(setEnabled(bool)));
+  connect(myUseCustomUrlViewer, SIGNAL(toggled(bool)), myUrlViewerLabel, SLOT(setEnabled(bool)));
 #endif
-
 
   myPageChatLayout->addWidget(myChatBox);
   myPageChatLayout->addWidget(myLocaleBox);
@@ -364,7 +391,7 @@ QWidget* Settings::Chat::createPageChatDisp(QWidget* parent)
   myChatColorsLayout->setRowStretch(7, 1);
 
   myChatTabs = new TabWidget(w);
-  myChatView = new HistoryView(false, QString(), 0, myChatTabs);
+  myChatView = new HistoryView(false, USERID_NONE, myChatTabs);
   myChatTabs->addTab(myChatView, "Marge");
 
   myPageChatDispLayout->addWidget(myChatDispBox, 0, 0);
@@ -534,7 +561,12 @@ void Settings::Chat::load()
   myAutoPosReplyWinCheck->setChecked(chatConfig->autoPosReplyWin());
   myAutoSendThroughServerCheck->setChecked(chatConfig->autoSendThroughServer());
   myShowSendCloseCheck->setChecked(chatConfig->showDlgButtons());
+#if defined USE_KDE or defined HAVE_HUNSPELL
   myCheckSpelling->setChecked(chatConfig->checkSpelling());
+#endif
+#ifdef HAVE_HUNSPELL
+  myDictionaryEdit->setFileName(chatConfig->spellingDictionary());
+#endif
   myMsgWinStickyCheck->setChecked(chatConfig->msgWinSticky());
   mySingleLineChatModeCheck->setChecked(chatConfig->singleLineChatMode());
   myTabbedChattingCheck->setChecked(chatConfig->tabbedChatting());
@@ -543,6 +575,13 @@ void Settings::Chat::load()
   myShowUserPicCheck->setChecked(chatConfig->showUserPic());
   myShowUserPicHiddenCheck->setChecked(chatConfig->showUserPicHidden());
   myPopupAutoResponseCheck->setChecked(chatConfig->popupAutoResponse());
+
+  myUseCustomUrlViewer->setChecked(chatConfig->useCustomUrlBrowser());
+  if (!chatConfig->useCustomUrlBrowser())
+  {
+    myUrlViewerLabel->setEnabled(false);
+    myUrlViewerCombo->setEnabled(false);
+  }
 
   if (!chatConfig->msgChatView())
   {
@@ -611,12 +650,18 @@ void Settings::Chat::apply()
   chatConfig->setAutoPosReplyWin(myAutoPosReplyWinCheck->isChecked());
   chatConfig->setAutoSendThroughServer(myAutoSendThroughServerCheck->isChecked());
   chatConfig->setShowDlgButtons(myShowSendCloseCheck->isChecked());
+#if defined USE_KDE or defined HAVE_HUNSPELL
   chatConfig->setCheckSpelling(myCheckSpelling->isChecked());
+#endif
+#ifdef HAVE_HUNSPELL
+  chatConfig->setSpellingDictionary(myDictionaryEdit->fileName());
+#endif
   chatConfig->setMsgWinSticky(myMsgWinStickyCheck->isChecked());
   chatConfig->setSingleLineChatMode(mySingleLineChatModeCheck->isChecked());
   chatConfig->setShowUserPic(myShowUserPicCheck->isChecked());
   chatConfig->setShowUserPicHidden(myShowUserPicHiddenCheck->isChecked());
   chatConfig->setPopupAutoResponse(myPopupAutoResponseCheck->isChecked());
+  chatConfig->setUseCustomUrlBrowser(myUseCustomUrlViewer->isChecked());
 
   gLicqDaemon->SetSendTypingNotification(mySendTNCheck->isChecked());
 

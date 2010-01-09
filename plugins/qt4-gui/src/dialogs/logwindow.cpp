@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,11 +52,10 @@ using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::LogWindow */
 
 LogWindow::LogWindow(QWidget* parent)
-  : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint
-      | Qt::WindowMinimizeButtonHint)
+  : QDialog(parent)
 {
   Support::setWidgetProps(this, "NetworkLog");
-  setWindowTitle(tr("Licq Network Log"));
+  setWindowTitle(tr("Licq - Network Log"));
 
   QVBoxLayout* top_lay = new QVBoxLayout(this);
 
@@ -143,9 +142,4 @@ void LogWindow::save()
     t << outputBox->toPlainText();
     f.close();
   }
-}
-
-void LogWindow::showEvent(QShowEvent* /* event */)
-{
-  outputBox->GotoEnd();
 }

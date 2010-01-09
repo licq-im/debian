@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,6 @@ class QLineEdit;
 class QListWidget;
 class QPushButton;
 
-class CICQSignal;
-
 namespace LicqQtGui
 {
 class EditGrpDlg : public QDialog
@@ -44,14 +42,14 @@ private:
    *
    * @return Group id for current group or zero if no group is marked
    */
-  unsigned short currentGroupId() const;
+  int currentGroupId() const;
 
   /**
    * Set current group id in list
    *
    * @param groupId Id of group to make current
    */
-  void setCurrentGroupId(unsigned short groupId);
+  void setCurrentGroupId(int groupId);
 
   /**
    * Move a group in the list
@@ -72,12 +70,18 @@ private:
 
   QLineEdit* edtName;
 
-  unsigned short myEditGroupId;
+  int myEditGroupId;
 
   void RefreshList();
 
 private slots:
-  void listUpdated(CICQSignal* sig);
+  /**
+   * The daemon list has changed
+   *
+   * @param subSignal Sub signal telling what the change was
+   */
+  void listUpdated(unsigned long subSignal);
+
   void slot_add();
   void slot_remove();
   void slot_up();

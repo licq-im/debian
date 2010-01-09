@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,15 +31,26 @@ class UserSendContactEvent : public UserSendCommon
   Q_OBJECT
 
 public:
-  UserSendContactEvent(QString id, unsigned long ppid, QWidget* parent = 0);
+  /**
+   * Constructor, create and open send contact dialog
+   *
+   * @param userId User to open dialog for
+   * @param parent Parent widget
+   */
+  UserSendContactEvent(const UserId& userId, QWidget* parent = 0);
   virtual ~UserSendContactEvent();
 
-  void setContact(QString id, unsigned long ppid);
+  /**
+   * Add contact to send
+   *
+   * @param userId Id of user to add
+   */
+  void setContact(const UserId& userId);
 
 private:
   MMUserView* myContactsList;
 
-  virtual bool sendDone(ICQEvent* e);
+  virtual bool sendDone(const LicqEvent* e);
   virtual void resetSettings();
 
 private slots:

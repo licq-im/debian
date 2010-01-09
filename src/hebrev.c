@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -48,15 +48,10 @@ char *strhebpatch(char *dest, const char *src)
 	short int mode = 0, imode;
 	const char *hmark = NULL, *lmark, *nmark, *nlmark;
 	char ch;
-	char* temp_str = NULL;
 
 	if (src == NULL)
 		return NULL;
-	
-	if ((temp_str = (char*)malloc(strlen(src) + 1)) == NULL)
-		return NULL;
 
-	
 	for (;;)
 	{
 		if (mode == 0)

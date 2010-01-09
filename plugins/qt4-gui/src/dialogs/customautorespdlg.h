@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,6 +23,8 @@
 
 #include <QDialog>
 
+#include <licq_types.h>
+
 namespace LicqQtGui
 {
 class MLEdit;
@@ -32,12 +34,11 @@ class CustomAutoRespDlg : public QDialog
   Q_OBJECT
 
 public:
-  CustomAutoRespDlg(QString id, unsigned long ppid, QWidget* parent = 0);
+  CustomAutoRespDlg(const UserId& userId, QWidget* parent = 0);
 
 private:
   MLEdit* myMessage;
-  QString myId;
-  unsigned long myPpid;
+  UserId myUserId;
 
 private slots:
   void ok();

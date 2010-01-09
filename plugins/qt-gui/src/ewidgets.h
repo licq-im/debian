@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,13 +38,13 @@
 #include <qspinbox.h>
 
 #include <licq_message.h>
+#include <licq_types.h>
 
 #include "mlview.h"
 
 class CUserEvent;
-class ICQEvent;
+class LicqEvent;
 class CMainWindow;
-class ICQUser;
 
 bool QueryUser(QWidget *, QString, QString, QString, bool bConfirmYes=false, QString szConfirm=NULL, bool bConfirmNo=false, QString szConfirmNo=NULL);
 int QueryUser(QWidget *, QString, QString, QString, QString);
@@ -218,17 +218,15 @@ class CMessageViewWidget : public MLView
 {
   Q_OBJECT
 private:
-  char *m_szId;
-  unsigned long m_nPPID;
   CMainWindow *mainwin;
 public:
   static QStringList getStyleNames(bool includeHistoryStyles = false);
 
-  CMessageViewWidget(const char *szId, unsigned long nPPID,
+  CMessageViewWidget(const UserId& userId,
     CMainWindow *m, QWidget *parent = 0, const char *name = 0, bool historyMode = false);
   virtual ~CMessageViewWidget();
 
-  void setOwner(const char *szId);
+  void setOwner(const UserId& userId);
   void updateContent();
   void clear();
   void addMsg(direction dir, bool fromHistory, QString eventDescription, QDateTime date, 
@@ -249,12 +247,13 @@ public:
   QColor m_colorNotice;
   
 public slots:
-  virtual void addMsg(const CUserEvent* e, const char* _szId = NULL, unsigned long _nPPID = 0);
-  void addMsg(ICQEvent *);
+  virtual void addMsg(const CUserEvent* e, const UserId& userId = USERID_NONE);
+  void addMsg(LicqEvent*);
 
 private:
   void internalAddMsg(QString s);
   QString m_buffer;
+  UserId myUserId;
 };
 
 /* ----------------------------------------------------------------------------- */

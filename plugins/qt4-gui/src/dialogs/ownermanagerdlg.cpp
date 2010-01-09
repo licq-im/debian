@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -185,19 +185,19 @@ void OwnerManagerDlg::registerOwner()
   else
   {
     registerUserDlg = new RegisterUserDlg(this);
-    connect(registerUserDlg, SIGNAL(signal_done(bool, QString, unsigned long)),
-        SLOT(registerDone(bool, QString, unsigned long)));
+    connect(registerUserDlg, SIGNAL(signal_done(bool, const QString&, unsigned long)),
+        SLOT(registerDone(bool, const QString&, unsigned long)));
   }
 }
 
-void OwnerManagerDlg::registerDone(bool success, QString newId, unsigned long newPpid)
+void OwnerManagerDlg::registerDone(bool success, const QString& /* newId */, unsigned long newPpid)
 {
   registerUserDlg = 0;
 
   if (success)
   {
     updateOwners();
-    LicqGui::instance()->showInfoDialog(mnuUserGeneral, newId, newPpid);
+    LicqGui::instance()->showInfoDialog(mnuUserGeneral, gUserManager.ownerUserId(newPpid));
   }
 }
 

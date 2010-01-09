@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,7 +54,6 @@ ForwardDlg::ForwardDlg(CUserEvent* e, QWidget* p)
   setAttribute(Qt::WA_DeleteOnClose, true);
 
   m_nEventType = e->SubCommand();
-  m_nPPID = 0;
 
   QString t;
   switch (e->SubCommand())
@@ -105,7 +104,7 @@ ForwardDlg::~ForwardDlg()
 
 void ForwardDlg::slot_ok()
 {
-  if (myId.isEmpty())
+  if (!USERID_ISVALID(myUserId))
     return;
 
   switch(m_nEventType)
@@ -113,7 +112,7 @@ void ForwardDlg::slot_ok()
     case ICQ_CMDxSUB_MSG:
     {
       s1.prepend(tr("Forwarded message:\n"));
-      UserSendMsgEvent* e = new UserSendMsgEvent(myId, m_nPPID);
+      UserSendMsgEvent* e = new UserSendMsgEvent(myUserId);
       e->setText(s1);
       e->show();
       break;
@@ -121,7 +120,7 @@ void ForwardDlg::slot_ok()
     case ICQ_CMDxSUB_URL:
     {
       s1.prepend(tr("Forwarded URL:\n"));
-      UserSendUrlEvent* e = new UserSendUrlEvent(myId, m_nPPID);
+      UserSendUrlEvent* e = new UserSendUrlEvent(myUserId);
       e->setUrl(s2, s1);
       e->show();
       break;
@@ -160,13 +159,12 @@ void ForwardDlg::dropEvent(QDropEvent* de)
   if (nPPID == 0 || text.length() <= 4)
     return;
 
-  myId = text.mid(4);
-  m_nPPID = nPPID;
+  myUserId = LicqUser::makeUserId(text.toLatin1().data(), nPPID);
 
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   if (u == NULL)
     return;
 
-  edtUser->setText(QString::fromUtf8(u->GetAlias()) + " (" + myId + ")");
+  edtUser->setText(QString::fromUtf8(u->GetAlias()) + " (" + u->accountId().c_str() + ")");
   gUserManager.DropUser(u);
 }

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,19 +35,17 @@
 #include "licq_utility.h"
 #include "licq_user.h"
 
-CUtilityDlg::CUtilityDlg(CUtility *u, const char *szId, unsigned long nPPID,
-  CICQDaemon *_server)
+CUtilityDlg::CUtilityDlg(CUtility *u, const UserId& userId, CICQDaemon *_server)
   : QWidget(0, "UtilityDialog",  WDestructiveClose)
 {
-  m_szId = szId ? strdup(szId) : 0;
-  m_nPPID = nPPID;
+  myUserId = userId;
   m_xUtility = u;
   server = _server;
   m_bIntWin = false;
   intwin = NULL;
   snOut = snErr = NULL;
 
-  m_xUtility->SetFields(m_szId, m_nPPID);
+  m_xUtility->setFields(myUserId);
 
   QGridLayout *lay = new QGridLayout(this, 1, 3, 8, 4);
   lay->setColStretch(2, 2);
@@ -127,10 +125,7 @@ CUtilityDlg::~CUtilityDlg()
   delete intwin;
   delete snOut;
   delete snErr;
-
-  if (m_szId) free(m_szId);
 }
-
 
 void CUtilityDlg::slot_cancel()
 {
@@ -235,7 +230,7 @@ void CUtilityDlg::slot_run()
   if (nSystemResult == -1)
   {
     lblUtility->setText(tr("Failed:"));
-    m_xUtility->SetFields(m_szId, m_nPPID);
+    m_xUtility->setFields(myUserId);
   }
   else
   {

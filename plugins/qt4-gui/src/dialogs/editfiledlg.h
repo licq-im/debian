@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ class EditFileDlg: public QDialog
   Q_OBJECT
 
 public:
-  EditFileDlg(QString fname, QWidget* parent = 0);
+  EditFileDlg(const QString& fname, QWidget* parent = 0);
 
 private:
   QString myFile;

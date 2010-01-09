@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008 Licq developers
+ * Copyright (C) 2008-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include "config/iconmanager.h"
 #include "contactlist/contactlist.h"
 #include "helpers/licqstrings.h"
+#include "views/userview.h"
 
 #include "licqgui.h"
 #include "mainwin.h"
@@ -51,7 +52,7 @@ GroupMenu::GroupMenu(QWidget* parent)
   connect(mySystemGroupActions, SIGNAL(triggered(QAction*)), SLOT(addUsersToGroup(QAction*)));
 
   // System groups
-  for (unsigned int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
   {
     a = mySystemGroupActions->addAction(LicqStrings::getSystemGroupName(i));
     a->setData(i + ContactListModel::SystemGroupOffset);
@@ -63,6 +64,7 @@ GroupMenu::GroupMenu(QWidget* parent)
   // Menu
   myMoveUpAction = addAction(tr("Move &Up"), this, SLOT(moveGroupUp()));
   myMoveDownAction = addAction(tr("Move &Down"), this, SLOT(moveGroupDown()));
+  myRenameAction = addAction(tr("Rename"), this, SLOT(renameGroup()));
   addMenu(myGroupsMenu);
   myRemoveGroupAction = addAction(tr("Remove Group"), this, SLOT(removeGroup()));
 
@@ -107,14 +109,13 @@ void GroupMenu::aboutToShowMenu()
 {
   // Hide current group from move to submenu
   foreach (QAction* a, mySystemGroupActions->actions())
-    a->setVisible(a->data().toUInt() != myGroupId);
+    a->setVisible(a->data().toInt() != myGroupId);
   foreach (QAction* a, myUserGroupActions->actions())
-    a->setVisible(a->data().toUInt() != myGroupId);
+    a->setVisible(a->data().toInt() != myGroupId);
 
   // Actions that are only available for user groups
   bool special = (myGroupId >= ContactListModel::SystemGroupOffset || myGroupId == 0);
-  myMoveUpAction->setEnabled(!special && myGroupId > 1);
-  myMoveDownAction->setEnabled(!special && myGroupId < gUserManager.NumGroups());
+  myRenameAction->setEnabled(!special);
   myRemoveGroupAction->setEnabled(!special);
 
   mySortIndex = 0;
@@ -128,16 +129,20 @@ void GroupMenu::aboutToShowMenu()
       gUserManager.DropGroup(group);
     }
   }
+
+  myMoveUpAction->setEnabled(!special && mySortIndex > 0);
+  myMoveDownAction->setEnabled(!special && static_cast<unsigned int>(mySortIndex) < gUserManager.NumGroups()-1);
 }
 
-void GroupMenu::setGroup(unsigned int groupId)
+void GroupMenu::setGroup(int groupId, bool online)
 {
   myGroupId = groupId;
+  myOnline = online;
 }
 
-void GroupMenu::popup(QPoint pos, unsigned int groupId)
+void GroupMenu::popup(QPoint pos, int groupId, bool online)
 {
-  setGroup(groupId);
+  setGroup(groupId, online);
   QMenu::popup(pos);
 }
 
@@ -154,6 +159,11 @@ void GroupMenu::moveGroupDown()
   gUserManager.ModifyGroupSorting(myGroupId, mySortIndex + 1);
 }
 
+void GroupMenu::renameGroup()
+{
+  gMainWindow->getUserView()->editGroupName(myGroupId, myOnline);
+}
+
 void GroupMenu::removeGroup()
 {
   QString warning(tr("Are you sure you want to remove the group '%1'?")
@@ -167,11 +177,11 @@ void GroupMenu::removeGroup()
 void GroupMenu::addUsersToGroup(QAction* action)
 {
   // Group id used by model
-  unsigned int groupId = action->data().toUInt();
+  int groupId = action->data().toInt();
 
   // Group id used by daemon
   GroupType gtype = (groupId < ContactListModel::SystemGroupOffset ? GROUPS_USER : GROUPS_SYSTEM);
-  unsigned int gid = (groupId < ContactListModel::SystemGroupOffset ? groupId - 1 : groupId - ContactListModel::SystemGroupOffset);
+  int gid = (groupId < ContactListModel::SystemGroupOffset ? groupId - 1 : groupId - ContactListModel::SystemGroupOffset);
 
   ContactListModel* list = LicqGui::instance()->contactList();
   QModelIndex groupIndex = list->groupIndex(myGroupId);
@@ -181,10 +191,8 @@ void GroupMenu::addUsersToGroup(QAction* action)
   {
     QModelIndex userIndex = list->index(i, 0, groupIndex);
 
-    QString id = userIndex.data(ContactListModel::UserIdRole).toString();
-    unsigned long ppid = userIndex.data(ContactListModel::PpidRole).toUInt();
+    UserId userId = userIndex.data(ContactListModel::UserIdRole).value<UserId>();
 
-    gUserManager.SetUserInGroup(id.toLatin1(), ppid, gtype, gid, true,
-        gtype == GROUPS_SYSTEM);
+    gUserManager.setUserInGroup(userId, gtype, gid, true, gtype == GROUPS_SYSTEM);
   }
 }

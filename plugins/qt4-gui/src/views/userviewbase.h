@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 #define USERVIEWBASE_H
 
 #include <QTreeView>
+
+#include <licq_types.h>
 
 class QAbstractProxyModel;
 
@@ -69,14 +71,21 @@ public:
    */
   virtual void scrollTo(const QModelIndex& index, ScrollHint hint = EnsureVisible);
 
+  /**
+   * Open editor for group name
+   *
+   * @param groupId Id of group to edit
+   * @param online True to put editor at single or online instance of group
+   */
+  void editGroupName(int groupId, bool online);
+
 signals:
   /**
    * Signal emitted when user has double clicked on a contact
    *
-   * @param id User id of contact
-   * @param ppid Protocol id of contact
+   * @param userId User id of contact
    */
-  void userDoubleClicked(QString id, unsigned long ppid);
+  void userDoubleClicked(const UserId& userId);
 
 protected slots:
   /**

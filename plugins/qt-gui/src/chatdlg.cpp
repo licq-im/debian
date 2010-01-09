@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -110,12 +110,18 @@ enum ChatMenu_Identifiers {
 
 
 // ---------------------------------------------------------------------------
-ChatDlg::ChatDlg(const char *szId, unsigned long nPPID, CICQDaemon *daemon,
+ChatDlg::ChatDlg(const UserId& userId, CICQDaemon *daemon,
                  CMainWindow *m, QWidget *parent)
   : QMainWindow(parent, "ChatDialog", WDestructiveClose)
 {
-  m_szId = szId ? strdup(szId) : 0;
-  m_nPPID = nPPID;
+  const LicqUser* user = gUserManager.fetchUser(userId);
+  if (user != NULL)
+  {
+    m_szId = strdup(user->accountId().c_str());
+    m_nPPID = user->ppid();
+  }
+  gUserManager.DropUser(user);
+
   m_bAudio = true;
   licqDaemon = daemon;
   sn = NULL;
@@ -748,7 +754,7 @@ void ChatDlg::slot_chat()
         QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->Name());
 
         if (n.isEmpty())
-          n = u->Id();
+          n = USERID_TOSTR(u->userId());
         chatClose(u);
         InformUser(this, tr("%1 closed connection.").arg(n));
         break;
@@ -917,7 +923,7 @@ void ChatDlg::slot_chat()
 
       default:
       {
-        gLog.Error("%sInternal Error: invalid command from chat manager (%d).\n",
+        gLog.Warn("%sInternal Error: invalid command from chat manager (%d).\n",
            L_ERRORxSTR, e->Command());
         break;
       }

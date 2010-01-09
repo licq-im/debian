@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -278,12 +278,10 @@ void AwayMsgDlg::slot_autocloseStop()
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
-CustomAwayMsgDlg::CustomAwayMsgDlg(const char *szId,
-    unsigned long nPPID, QWidget *parent)
+CustomAwayMsgDlg::CustomAwayMsgDlg(const UserId& userId, QWidget *parent)
     : LicqDialog(parent, "CustomAwayMessageDialog", false, WDestructiveClose)
 {
-  m_szId = szId ? strdup(szId) : 0;
-  m_nPPID = nPPID;
+  myUserId = userId;
 
   QBoxLayout* top_lay = new QVBoxLayout(this, 10);
 
@@ -320,7 +318,7 @@ CustomAwayMsgDlg::CustomAwayMsgDlg(const char *szId,
   l->addWidget(btnClear);
   l->addWidget(btnCancel);
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   setCaption(QString(tr("Set Custom Auto Response for %1"))
              .arg(QString::fromUtf8(u->GetAlias())));
   if (*u->CustomAutoResponse())
@@ -350,13 +348,12 @@ void CustomAwayMsgDlg::slot_ok()
   while(s[s.length()-1].isSpace())
     s.truncate(s.length()-1);
 
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u != NULL)
   {
     u->SetCustomAutoResponse(s.local8Bit());
     gUserManager.DropUser(u);
-    CICQSignal sig(SIGNAL_UPDATExUSER, USER_BASIC, m_szId, m_nPPID);
-    gMainWindow->slot_updatedUser(&sig);
+    gMainWindow->slot_updatedUser(myUserId, USER_BASIC);
   }
   close();
 }
@@ -364,13 +361,12 @@ void CustomAwayMsgDlg::slot_ok()
 
 void CustomAwayMsgDlg::slot_clear()
 {
-  ICQUser *u = gUserManager.FetchUser(m_szId, m_nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
   if (u != NULL)
   {
     u->ClearCustomAutoResponse();
     gUserManager.DropUser(u);
-    CICQSignal sig(SIGNAL_UPDATExUSER, USER_BASIC, m_szId, m_nPPID);
-    gMainWindow->slot_updatedUser(&sig);
+    gMainWindow->slot_updatedUser(myUserId, USER_BASIC);
   }
   close();
 }

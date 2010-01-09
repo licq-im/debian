@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ namespace LicqQtGui
 class MessageListItem : public QTreeWidgetItem
 {
 public:
-  MessageListItem(const CUserEvent* theMsg, QTextCodec* codec, QTreeWidget* parent);
+  MessageListItem(const CUserEvent* theMsg, const QTextCodec* codec, QTreeWidget* parent);
   ~MessageListItem(void);
   void MarkRead();
   void SetEventLine();
@@ -42,7 +42,7 @@ public:
 private:
   bool myUnread;
   CUserEvent* myMsg;
-  QTextCodec* myCodec;
+  const QTextCodec* myCodec;
 };
 
 class MessageList : public QTreeWidget

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 
 #include <QMap>
 #include <QMenu>
+
+#include <licq_types.h>
 
 #include "gui-defines.h"
 
@@ -58,10 +60,17 @@ public:
   /**
    * Change which contact the menu will be displayed for.
    *
-   * @param id Contact id
-   * @param ppid Contact protocol id
+   * @param userId Contact id
    */
-  void setUser(QString id, unsigned long ppid);
+  void setUser(const UserId& userId);
+
+  /**
+   * Change which contact the menu will be displayed for.
+   *
+   * @param ppid Contact protocol id
+   * @param userId Contact id
+   */
+  void setUser(const QString& id, unsigned long ppid);
 
   /**
    * Convenience function t set user and popup the menu on a given location.
@@ -70,7 +79,7 @@ public:
    * @param id Contact id
    * @param ppid Contact protocol id
    */
-  void popup(QPoint pos, QString id, unsigned ppid);
+  void popup(QPoint pos, const UserId& userId);
 
 private slots:
   /**
@@ -101,6 +110,7 @@ private slots:
 
 private:
   // Current contact
+  UserId myUserId;
   QString myId;
   unsigned long myPpid;
 
@@ -133,9 +143,7 @@ private:
     ModeAutoFileAccept,
     ModeAutoChatAccept,
     ModeAutoSecure,
-#ifdef HAVE_LIBGPGME
     ModeUseGpg,
-#endif
     ModeUseRealIp,
     ModeStatusOnline,
     ModeStatusAway,
@@ -151,9 +159,7 @@ private:
   QAction* myCustomArAction;
   QAction* myToggleFloatyAction;
   QAction* myRemoveUserAction;
-#ifdef HAVE_LIBGPGME
   QAction* mySetKeyAction;
-#endif
   QAction* myCopyIdAction;
   QAction* myViewHistoryAction;
   QAction* myViewGeneralAction;

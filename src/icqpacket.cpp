@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -32,11 +32,13 @@ extern int errno;
 
 #include "time-fix.h"
 
+#include "licq_byteorder.h"
 #include "licq_packets.h"
 #include "licq_socket.h"
 #include "licq_icq.h"
 #include "licq_translate.h"
 #include "licq_log.h"
+#include "licq_user.h"
 #include "licq_utility.h"
 #include "licq_color.h"
 #include "support.h"
@@ -133,6 +135,10 @@ static unsigned char icq_check_data[256] = {
   0x6E, 0x3C, 0x31, 0x64, 0x35, 0x5A, 0x00, 0x00,
 };
 #endif
+
+static unsigned short login_fix [] = {
+  5695, 23595, 23620, 23049, 0x2886, 0x2493, 23620, 23049, 2853, 17372, 1255, 1796, 1657, 13606, 1930, 23918, 31234, 30120, 0x1BEA, 0x5342, 0x30CC, 0x2294, 0x5697, 0x25FA, 0x3303, 0x078A, 0x0FC5, 0x25D6, 0x26EE,0x7570, 0x7F33, 0x4E94, 0x07C9, 0x7339, 0x42A8
+};
 
 void Encrypt_Server(CBuffer* /* buffer */)
 {
@@ -274,8 +280,8 @@ struct PluginList status_plugins[] =
 
 //======Server TCP============================================================
 bool CSrvPacketTcp::s_bRegistered = false;
-unsigned short CSrvPacketTcp::s_nSequence[32] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                                  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+unsigned short CSrvPacketTcp::s_nSequence[32] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                                                  0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff };
 unsigned short CSrvPacketTcp::s_nSubSequence = 0;
 pthread_mutex_t CSrvPacketTcp::s_xMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -310,7 +316,7 @@ void CSrvPacketTcp::InitBuffer()
 {
   pthread_mutex_lock(&s_xMutex);
   if (s_nSequence[m_nService] == 0xffff)
-    s_nSequence[m_nService] = rand() & 0x7fff;
+    s_nSequence[m_nService] = login_fix[ rand() % (sizeof(login_fix)/sizeof(login_fix[0])-1) ];
   m_nSequence = s_nSequence[m_nService]++;
   s_nSequence[m_nService] &= 0x7fff;
   pthread_mutex_unlock(&s_xMutex);
@@ -528,15 +534,6 @@ CPacket::~CPacket()
 {
   delete buffer;
 }
-
-//----SetIps-----------------------------------------------------------------
-void CPacket::SetIps(INetSocket *s)
-{
-  if (s_nLocalIp == 0 || s_nLocalIp == s_nRealIp)
-    s_nLocalIp = NetworkIpToPacketIp(s->LocalIp());
-  s_nRealIp = NetworkIpToPacketIp(s->LocalIp());
-}
-
 
 
 //=====UDP======================================================================
@@ -1511,7 +1508,7 @@ CPU_CheckInvisible::CPU_CheckInvisible(const char *szId)
 
 //-----ThroughServer-------------------------------------------------------
 CPU_ThroughServer::CPU_ThroughServer(const char *szId,
-                                     unsigned char msgType, char *szMessage,
+    unsigned char msgType, const char* szMessage,
                                      unsigned short nCharset, bool bOffline,
                                      size_t nLen)
   : CPU_CommonFamily(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SENDxSERVER)
@@ -2470,7 +2467,11 @@ CPU_AckThroughServer::CPU_AckThroughServer(const ICQUser* u,
     m_szMessage = PipeInput(m_szMessage);
   
     gTranslator.ClientToServer(m_szMessage);
-  
+
+    // If message is 8099 characters or longer the server will disconnect us so better to truncate
+    if (strlen(m_szMessage) >= 8099)
+      m_szMessage[8099] = '\0';
+
     m_nSize += strlen(m_szMessage)+1;
   }
 }
@@ -2745,7 +2746,7 @@ CPU_ExportContactStart::CPU_ExportContactStart()
 }
 
 //-----ExportToServerList-------------------------------------------------------
-CPU_ExportToServerList::CPU_ExportToServerList(const StringList& users,
+CPU_ExportToServerList::CPU_ExportToServerList(const list<UserId>& users,
                                                unsigned short _nType)
   : CPU_CommonFamily(ICQ_SNACxFAM_LIST, ICQ_SNACxLIST_ROSTxADD)
 {
@@ -2753,13 +2754,13 @@ CPU_ExportToServerList::CPU_ExportToServerList(const StringList& users,
   unsigned short m_nGSID = 0;
   int nSize = 0;
 
-  StringList::const_iterator i;
+  list<UserId>::const_iterator i;
   for (i = users.begin(); i != users.end(); ++i)
   {
-    const ICQUser* pUser = gUserManager.FetchUser(i->c_str(), LICQ_PPID, LOCK_R);
+    const LicqUser* pUser = gUserManager.fetchUser(*i);
     if (pUser)
     {
-      nSize += i->size();
+      nSize += pUser->accountId().size();
       nSize += 10;
 
       char *szUnicode = strdup(pUser->GetAlias());
@@ -2784,7 +2785,22 @@ CPU_ExportToServerList::CPU_ExportToServerList(const StringList& users,
     m_nSID = gUserManager.GenerateSID();
 
     // Save the SID
-    ICQUser* u = gUserManager.FetchUser(i->c_str(), LICQ_PPID, LOCK_W);
+    LicqUser* u = gUserManager.fetchUser(*i, LOCK_W);
+    if (u == NULL)
+    {
+      gLog.Warn("%sTrying to export invalid user %s to server\n", L_ERRORxSTR,
+          USERID_TOSTR(*i));
+      continue;
+    }
+
+    if (u->ppid() != LICQ_PPID)
+    {
+      gLog.Warn("%sTrying to export non ICQ user %s to ICQ server\n", L_ERRORxSTR,
+          USERID_TOSTR(*i));
+      gUserManager.DropUser(u);
+      continue;
+    }
+
     switch (_nType)
     {
       case ICQ_ROSTxIGNORE: // same as ICQ_ROSTxNORMAL
@@ -2830,13 +2846,14 @@ CPU_ExportToServerList::CPU_ExportToServerList(const StringList& users,
       nAliasSize = strlen(szUnicodeName);
     }
 
+    string accountId = u->accountId();
     gUserManager.DropUser(u);
 
     SetExtraInfo(m_nGSID);
 
-    nLen = i->size();
+    nLen = accountId.size();
     buffer->PackUnsignedShortBE(nLen);
-    buffer->Pack(i->c_str(), nLen);
+    buffer->Pack(accountId.c_str(), nLen);
     buffer->PackUnsignedShortBE(m_nGSID);
     buffer->PackUnsignedShortBE(m_nSID);
     buffer->PackUnsignedShortBE(_nType);
@@ -3637,7 +3654,7 @@ CPU_ReverseTCPRequest::CPU_ReverseTCPRequest(unsigned long nDestinationUin,
              >> nPort2 >> nJunk // port which they tried to connect to
              >> nJunk >> nJunk // nPort again
              >> nVersion;
-      nIp = PacketIpToNetworkIp(nIp);
+      nIp = LE_32(nIp);
 #endif
 
 
@@ -3982,25 +3999,18 @@ CPU_Meta_SetMoreInfo::CPU_Meta_SetMoreInfo( unsigned short nAge,
 }
 
 //-----Meta_SetInterestsInfo----------------------------------------------------
-CPU_Meta_SetInterestsInfo::CPU_Meta_SetInterestsInfo(
-                                             const ICQUserCategory* interests)
+CPU_Meta_SetInterestsInfo::CPU_Meta_SetInterestsInfo(const UserCategoryMap& interests)
   : CPU_CommonFamily(ICQ_SNACxFAM_VARIOUS, ICQ_SNACxMETA)
 {
   m_nMetaCommand = ICQ_CMDxMETA_INTERESTSxINFOxSET;
 
-  m_Interests = new ICQUserCategory(CAT_INTERESTS);
-
   int packetSize = 2 + 2 + 2 + 4 + 2 + 2 + 2 + 1;
-  unsigned char num_Interests = 0;
-  unsigned short cat;
-  const char *descr;
-  int i;
-  for (i = 0; interests->Get(i, &cat, &descr); i++)
+  UserCategoryMap::const_iterator i;
+  for (i = interests.begin(); i != interests.end(); ++i)
   {
-    char *tmp = strdup(descr);
+    char* tmp = strdup(i->second.c_str());
     gTranslator.ClientToServer(tmp);
-    m_Interests->AddCategory(cat, tmp);
-    num_Interests++;
+    myInterests[i->first] = tmp;
     packetSize += 2 + 2 + strlen_safe(tmp) + 1;
     free(tmp);
   }
@@ -4017,51 +4027,36 @@ CPU_Meta_SetInterestsInfo::CPU_Meta_SetInterestsInfo(
   buffer->PackUnsignedShortBE(m_nSubSequence);
   buffer->PackUnsignedShort(m_nMetaCommand); 			// subtype
 
-  buffer->PackChar(num_Interests);
-  for (i = 0; m_Interests->Get(i, &cat, &descr); i++)
+  buffer->PackChar(myInterests.size());
+  for (i = myInterests.begin(); i != myInterests.end(); ++i)
   {
-    buffer->PackUnsignedShort(cat);
-    buffer->PackString(descr);
+    buffer->PackUnsignedShort(i->first);
+    buffer->PackString(i->second.c_str());
   }
 }
 
-CPU_Meta_SetInterestsInfo::~CPU_Meta_SetInterestsInfo()
-{
-  delete m_Interests;
-}
-
 //-----Meta_SetOrgBackInfo------------------------------------------------------
-CPU_Meta_SetOrgBackInfo::CPU_Meta_SetOrgBackInfo(
-                                             const ICQUserCategory* orgs,
-                                             const ICQUserCategory* background)
+CPU_Meta_SetOrgBackInfo::CPU_Meta_SetOrgBackInfo(const UserCategoryMap& orgs,
+    const UserCategoryMap& background)
   : CPU_CommonFamily(ICQ_SNACxFAM_VARIOUS, ICQ_SNACxMETA)
 {
   m_nMetaCommand = ICQ_CMDxMETA_ORGBACKxINFOxSET;
 
-  m_Orgs = new ICQUserCategory(CAT_ORGANIZATION);
-  m_Background = new ICQUserCategory(CAT_BACKGROUND);
-
   int packetSize = 2 + 2 + 2 + 4 + 2 + 2 + 2 + 2;
-  unsigned char num_Orgs = 0;
-  unsigned char num_Background = 0;
-  unsigned short cat;
-  const char *descr;
-  int i;
-  for (i = 0; orgs->Get(i, &cat, &descr); i++)
+  UserCategoryMap::const_iterator i;
+  for (i = orgs.begin(); i != orgs.end(); ++i)
   {
-    char *tmp = strdup(descr);
+    char* tmp = strdup(i->second.c_str());
     gTranslator.ClientToServer(tmp);
-    m_Orgs->AddCategory(cat, tmp);
-    num_Orgs++;
+    myOrganizations[i->first] = tmp;
     packetSize += 2 + 2 + strlen_safe(tmp) + 1;
     free(tmp);
   }
-  for (i = 0; background->Get(i, &cat, &descr); i++)
+  for (i = background.begin(); i != background.end(); ++i)
   {
-    char *tmp = strdup(descr);
+    char* tmp = strdup(i->second.c_str());
     gTranslator.ClientToServer(tmp);
-    m_Background->AddCategory(cat, tmp);
-    num_Background++;
+    myBackgrounds[i->first] = tmp;
     packetSize += 2 + 2 + strlen_safe(tmp) + 1;
     free(tmp);
   }
@@ -4078,24 +4073,18 @@ CPU_Meta_SetOrgBackInfo::CPU_Meta_SetOrgBackInfo(
   buffer->PackUnsignedShortBE(m_nSubSequence);
   buffer->PackUnsignedShort(m_nMetaCommand); 			// subtype
 
-  buffer->PackChar(num_Background);
-  for (i = 0; m_Background->Get(i, &cat, &descr); i++)
+  buffer->PackChar(myBackgrounds.size());
+  for (i = myBackgrounds.begin(); i != myBackgrounds.end(); ++i)
   {
-    buffer->PackUnsignedShort(cat);
-    buffer->PackString(descr);
+    buffer->PackUnsignedShort(i->first);
+    buffer->PackString(i->second.c_str());
   }
-  buffer->PackChar(num_Orgs);
-  for (i = 0; m_Orgs->Get(i, &cat, &descr); i++)
+  buffer->PackChar(myOrganizations.size());
+  for (i = myOrganizations.begin(); i != myOrganizations.end(); ++i)
   {
-    buffer->PackUnsignedShort(cat);
-    buffer->PackString(descr);
+    buffer->PackUnsignedShort(i->first);
+    buffer->PackString(i->second.c_str());
   }
-}
-
-CPU_Meta_SetOrgBackInfo::~CPU_Meta_SetOrgBackInfo()
-{
-  delete m_Orgs;
-  delete m_Background;
 }
 
 //-----Meta_SetWorkInfo------------------------------------------------------
@@ -4276,7 +4265,7 @@ CPU_Meta_SetSecurityInfo::CPU_Meta_SetSecurityInfo(
 CPU_Meta_RequestAllInfo::CPU_Meta_RequestAllInfo(const char *_szId)
   : CPU_CommonFamily(ICQ_SNACxFAM_VARIOUS, ICQ_SNACxMETA)
 {
-  if (gUserManager.FindOwner(_szId, LICQ_PPID) == 0)
+  if (_szId == gUserManager.OwnerId(LICQ_PPID))
     m_nMetaCommand = ICQ_CMDxMETA_REQUESTxALLxINFO;
   else
     m_nMetaCommand = ICQ_CMDxMETA_REQUESTxALLxINFOxOWNER;
@@ -4594,8 +4583,8 @@ CBuffer *CPacketTcp::Finalize(INetSocket *s)
   // Set the local port in the tcp packet now
   if (s != NULL && LocalPortOffset() != NULL)
   {
-    LocalPortOffset()[0] = s->LocalPort() & 0xFF;
-    LocalPortOffset()[1] = (s->LocalPort() >> 8) & 0xFF;
+    LocalPortOffset()[0] = s->getLocalPort() & 0xFF;
+    LocalPortOffset()[1] = (s->getLocalPort() >> 8) & 0xFF;
   }
 
   Encrypt_Client(buffer, m_nVersion);
@@ -4915,7 +4904,7 @@ CPT_Message::CPT_Message(char *_sMessage, unsigned short nLevel, bool bMR,
 }
 
 //-----Url----------------------------------------------------------------------
-CPT_Url::CPT_Url(char *szMessage, unsigned short nLevel, bool bMR,
+CPT_Url::CPT_Url(const char* szMessage, unsigned short nLevel, bool bMR,
  CICQColor *pColor, ICQUser *pUser)
   : CPacketTcp(ICQ_CMDxTCP_START,
        ICQ_CMDxSUB_URL | (bMR ? ICQ_CMDxSUB_FxMULTIREC : 0),
@@ -5874,7 +5863,7 @@ CPX_FileTransfer::CPX_FileTransfer(ConstFileList &lFileList, const char *_szFile
   }
 
   // Remove path from filename (if it exists)
-  char *pcEndOfPath = strrchr(_szFilename, '/');
+  const char* pcEndOfPath = strrchr(_szFilename, '/');
   if (pcEndOfPath != NULL)
      m_szFilename = strdup(pcEndOfPath + 1);
   else

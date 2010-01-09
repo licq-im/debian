@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2003 Licq developers
+ * Copyright (C) 1998 - 2009 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -12,6 +12,7 @@
 #include "config.h"
 #endif
 
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -20,10 +21,6 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-#ifdef HAVE_INET_ATON
-#include <arpa/inet.h>
-#endif
 
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
@@ -72,16 +69,7 @@ using namespace std;
 
 char *ip_ntoa(unsigned long in, char *buf)
 {
-  in_addr _in = { in };
-  return inet_ntoa_r(_in, buf);
-}
-
-char *inet_ntoa_r(struct in_addr in, char *buf)
-{
-  register char *p;
-  p = (char *)&in;
-#define UC(b)   (((int)b)&0xff)
-  sprintf(buf, "%d.%d.%d.%d", UC(p[0]), UC(p[1]), UC(p[2]), UC(p[3]));
+  inet_ntop(AF_INET, &in, buf, 32);
   return buf;
 }
 
@@ -168,20 +156,63 @@ void CSocketSet::Unlock()
 
 //=====INetSocket===============================================================
 
-char *INetSocket::LocalIpStr(char *buf)
+string INetSocket::addrToString(const struct sockaddr* addr)
 {
-  return (inet_ntoa_r(*(struct in_addr *)&m_sLocalAddr.sin_addr.s_addr, buf));
+  switch (addr->sa_family)
+  {
+    case AF_INET:
+    {
+      char buf[INET_ADDRSTRLEN];
+      inet_ntop(AF_INET, &((struct sockaddr_in*)addr)->sin_addr.s_addr, buf, sizeof(buf));
+      return buf;
+    }
+
+    case AF_INET6:
+    {
+      char buf[INET6_ADDRSTRLEN];
+      inet_ntop(AF_INET6, &((struct sockaddr_in6*)addr)->sin6_addr.s6_addr, buf, sizeof(buf));
+      return buf;
+    }
+
+    default:
+      return string();
+  }
 }
 
-char *INetSocket::RemoteIpStr(char *buf)
+uint32_t INetSocket::addrToInt(const struct sockaddr* addr)
 {
-  return (inet_ntoa_r(*(struct in_addr *)&m_sRemoteAddr.sin_addr.s_addr, buf));
+  if (addr->sa_family == AF_INET)
+    return ((struct sockaddr_in*)addr)->sin_addr.s_addr;
+  return 0;
 }
 
-void INetSocket::SetOwner(const char *_szOwnerId, unsigned long _nOwnerPPID)
+uint16_t INetSocket::getAddrPort(const struct sockaddr* addr)
 {
-  m_szOwnerId = strdup(_szOwnerId);
-  m_nOwnerPPID = _nOwnerPPID;
+  switch (addr->sa_family)
+  {
+    case AF_INET:
+      return ntohs(((struct sockaddr_in*)addr)->sin_port);
+
+    case AF_INET6:
+      return ntohs(((struct sockaddr_in6*)addr)->sin6_port);
+
+    default:
+      return 0;
+  }
+}
+
+char *INetSocket::LocalIpStr(char *buf) const
+{
+  string str = getLocalIpString();
+  strcpy(buf, str.c_str());
+  return buf;
+}
+
+char *INetSocket::RemoteIpStr(char *buf) const
+{
+  string str = getRemoteIpString();
+  strcpy(buf, str.c_str());
+  return buf;
 }
 
 //-----INetSocket::Error------------------------------------------------------
@@ -243,19 +274,14 @@ char *INetSocket::ErrorStr(char *buf, int buflen)
 }
 
 
-INetSocket::INetSocket(const char *_szOwnerId, unsigned long _nOwnerPPID)
+INetSocket::INetSocket(const UserId& userId)
 {
   m_nDescriptor = -1;
-  if (_szOwnerId)
-    m_szOwnerId = strdup(_szOwnerId);
-  else
-    m_szOwnerId = 0;
-  m_nOwnerPPID = _nOwnerPPID;
+  myUserId = userId;
   m_nVersion = 0;
   m_nErrorType = SOCK_ERROR_none;
-  memset(&m_sRemoteAddr, 0, sizeof(struct sockaddr_in));
-  memset(&m_sLocalAddr, 0, sizeof(struct sockaddr_in));
-  m_szRemoteName = NULL;
+  memset(&myRemoteAddr, 0, sizeof(myRemoteAddrStorage));
+  memset(&myLocalAddr, 0, sizeof(myLocalAddrStorage));
   m_xProxy = NULL;
   m_nChannel = ICQ_CHNxNONE;
   
@@ -274,18 +300,12 @@ INetSocket::~INetSocket()
     pthread_mutex_unlock(&mutex);
     nResult = pthread_mutex_destroy(&mutex);
   } while (nResult != 0);
-
-  if (m_szOwnerId)
-    free(m_szOwnerId);
-
-  if (m_szRemoteName != NULL) free (m_szRemoteName);
 }
 
 //-----INetSocket::dumpPacket---------------------------------------------------
 void INetSocket::DumpPacket(CBuffer *b, direction d)
 {
   char *szPacket;
-  char szIpR[32], szIpL[32];
 
   // This speeds things up if no one is logging packets
   if (!gLog.LoggingPackets()) return;
@@ -295,39 +315,19 @@ void INetSocket::DumpPacket(CBuffer *b, direction d)
   case D_SENDER:
     gLog.Packet("%sPacket (%sv%lu, %lu bytes) sent:\n%s(%s:%d -> %s:%d)\n%s\n",
      L_PACKETxSTR, m_szID, Version(), b->getDataSize(), L_BLANKxSTR,
-     LocalIpStr(szIpL),
-     LocalPort(), RemoteIpStr(szIpR), RemotePort(), b->print(szPacket));
+          getLocalIpString().c_str(), getLocalPort(),
+          getRemoteIpString().c_str(), getRemotePort(),
+          b->print(szPacket));
     break;
   case D_RECEIVER:
      gLog.Packet("%sPacket (%sv%lu, %lu bytes) received:\n%s(%s:%d <- %s:%d)\n%s\n",
       L_PACKETxSTR, m_szID, Version(), b->getDataSize(), L_BLANKxSTR,
-      LocalIpStr(szIpL),
-      LocalPort(), RemoteIpStr(szIpR), RemotePort(), b->print(szPacket));
+          getLocalIpString().c_str(), getLocalPort(),
+          getRemoteIpString().c_str(), getRemotePort(),
+          b->print(szPacket));
      break;
   }
   delete[] szPacket;
-}
-
-
-/*-----INetSocket::setDestination----------------------------------------------
- * Takes an ip in network order and a port in host byte order and sets the
- * remote ip and port to those values
- *---------------------------------------------------------------------------*/
-bool INetSocket::SetRemoteAddr(unsigned long _nRemoteIp, unsigned short _nRemotePort)
-{
-  if (_nRemoteIp == 0 || _nRemotePort == 0)
-  {
-    m_nErrorType = SOCK_ERROR_h_errno;
-    // The Remote IP could be 0 if a proxy could not resolve it.  So let's do
-    // this to fix that.
-    if (m_xProxy)
-      m_sRemoteAddr.sin_port = htons(_nRemotePort);
-    return(false);  // if the rIp is invalid, exit
-  }
-
-  m_sRemoteAddr.sin_port = htons(_nRemotePort);
-  m_sRemoteAddr.sin_addr.s_addr = _nRemoteIp;
-  return(true);
 }
 
 
@@ -335,77 +335,34 @@ bool INetSocket::SetRemoteAddr(unsigned long _nRemoteIp, unsigned short _nRemote
 void INetSocket::ResetSocket()
 {
   CloseConnection();
-  memset(&m_sRemoteAddr, 0, sizeof(struct sockaddr_in));
-  memset(&m_sLocalAddr, 0, sizeof(struct sockaddr_in));
+  memset(&myRemoteAddr, 0, sizeof(myRemoteAddrStorage));
+  memset(&myLocalAddr, 0, sizeof(myLocalAddrStorage));
 }
 
 
 /*-----INetSocket::SetLocalAddress------------------------------------------
  * Sets the sockaddr_in structures using data from the connected socket
  *---------------------------------------------------------------------------*/
-bool INetSocket::SetLocalAddress(bool bIp)
+bool INetSocket::SetLocalAddress(bool /* bIp */)
 {
   // Setup the local structure
-  socklen_t sizeofSockaddr = sizeof(struct sockaddr_in);
+  socklen_t sizeofSockaddr = sizeof(myLocalAddrStorage);
 
-  if (getsockname(m_nDescriptor, (struct sockaddr *)&m_sLocalAddr, &sizeofSockaddr) < 0)
+  if (getsockname(m_nDescriptor, (struct sockaddr*)&myLocalAddr, &sizeofSockaddr) < 0)
   {
     m_nErrorType = SOCK_ERROR_errno;
     return (false);
   }
 
-  // This should never happen unless the IP stack is fucked
-  if (m_sLocalAddr.sin_addr.s_addr == INADDR_ANY && bIp)
-  {
-    gLog.Warn(tr("%sYour IP stack or SOCKS client is a piece of crap.\n"
-                 "%sAttempting to guess local IP.\n"), L_WARNxSTR, L_BLANKxSTR);
-    char szHostName[256];
-    if (gethostname(szHostName, 256) == -1)
-    {
-      strcpy(szHostName, "localhost");
-    }
-    struct hostent sLocalHost;
-    char temp[1024];
-    h_errno = gethostbyname_r_portable(szHostName, &sLocalHost, temp, sizeof(temp));
-    if (h_errno != 0)
-    {
-      m_nErrorType = SOCK_ERROR_h_errno;
-      return false;
-    }
-    m_sLocalAddr.sin_addr.s_addr = ((struct in_addr *)sLocalHost.h_addr)->s_addr;
-  }
   return (true);
 }
 
-
-//-----INetSocket::GetIpByName-------------------------------------------------
-unsigned long INetSocket::GetIpByName(const char *_szHostName)
+bool INetSocket::connectTo(const string& remoteName, uint16_t remotePort, ProxyServer* proxy)
 {
-  // check if the hostname is in dot and number notation
-  struct in_addr ina;
-  if (inet_aton(_szHostName, &ina))
-     return(ina.s_addr);
+  myRemoteName = remoteName;
+  m_xProxy = proxy;
 
-  // try and resolve hostname
-  struct hostent host;
-  char temp[1024];
-  h_errno = gethostbyname_r_portable(_szHostName, &host, temp, sizeof(temp));
-  if (h_errno == -1) // Couldn't resolve hostname/ip
-  {
-    return (0);
-  }
-  else if (h_errno > 0)
-  {
-    return (0);
-  }
-  // return the ip
-  return ((struct in_addr *)(host.h_addr))->s_addr;
-}
-
-
-//-----INetSocket::OpenConnection-----------------------------------------------
-bool INetSocket::OpenConnection()
-{
+  // If we're using a proxy, let the proxy class handle this
   if (m_xProxy != NULL)
   {
     if (!m_xProxy->OpenConnection())
@@ -414,95 +371,174 @@ bool INetSocket::OpenConnection()
       return(false);
     }
 
-    bool ret;
-    if (m_szRemoteName)
-      ret = m_xProxy->OpenProxyConnection(m_szRemoteName, RemotePort());
-    else
-    {
-      char szIpR[32];
-      ret = m_xProxy->OpenProxyConnection(RemoteIpStr(szIpR), RemotePort());
-    }
+    bool ret = m_xProxy->OpenProxyConnection(remoteName.c_str(), remotePort);
     if (!ret)
     {
       m_nErrorType = SOCK_ERROR_proxy;
       return(false);
     }
-    
-    m_nDescriptor = m_xProxy->Descriptor();
-  }
-  else
-  {
-    // If no destination set then someone screwed up
-    if(m_sRemoteAddr.sin_addr.s_addr == 0 || ntohs(m_sRemoteAddr.sin_port) == 0)
-    {
-      m_nErrorType = SOCK_ERROR_internal;
-      return(false);
-    }
 
+    memcpy(&myRemoteAddr, m_xProxy->ProxyAddr(), sizeof(myRemoteAddrStorage));
+    m_nDescriptor = m_xProxy->Descriptor();
+    return SetLocalAddress();
+  }
+
+  // No proxy, let's do this ourselves
+
+  // If already connected, close the old connection first
+  if (m_nDescriptor != -1)
+    CloseConnection();
+
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+#ifdef LICQ_DISABLE_IPV6
+  hints.ai_family = AF_INET;
+#else
+  hints.ai_family = AF_UNSPEC;
+#endif
+  hints.ai_socktype = m_nSockType;
+#ifdef AI_ADDRCONFIG
+  // AI_ADDRCONFIG = Don't return IPvX address if host has no IPvX address configured
+  hints.ai_flags = AI_ADDRCONFIG;
+#endif
+
+  // If anything happens here, the error will be in errno
+  m_nErrorType = SOCK_ERROR_errno;
+
+  struct addrinfo* addrs;
+  int s = getaddrinfo(remoteName.c_str(), NULL, &hints, &addrs);
+  if(s != 0)
+  {
+    gLog.Warn(tr("%sError when trying to resolve %s. getaddrinfo() returned %d\n."),
+        L_WARNxSTR, remoteName.c_str(), s);
+    return false;
+  }
+
+  // getaddrinfo() returns a list of addresses, we'll try them one by one until
+  //   we manage to make a connection. The list is already be sorted with
+  //   preferred address first.
+  struct addrinfo* ai;
+  for (ai = addrs; ai != NULL; ai = ai->ai_next)
+  {
+    memcpy(&myRemoteAddr, ai->ai_addr, sizeof(myRemoteAddrStorage));
+
+    // We didn't use getaddrinfo to lookup port so set in manually
+    if (myRemoteAddr.sa_family == AF_INET)
+      ((struct sockaddr_in*)&myRemoteAddr)->sin_port = htons(remotePort);
+    else if (myRemoteAddr.sa_family == AF_INET6)
+      ((struct sockaddr_in6*)&myRemoteAddr)->sin6_port = htons(remotePort);
+
+    gLog.Info(tr("%sConnecting to %s:%i...\n"), L_SRVxSTR,
+        addrToString(&myRemoteAddr).c_str(), remotePort);
+
+    // Create socket of the returned type
+    m_nDescriptor = socket(myRemoteAddr.sa_family, m_nSockType, 0);
     if (m_nDescriptor == -1)
-      m_nDescriptor = socket(AF_INET, m_nSockType, 0);
-    if (m_nDescriptor == -1)
-    {
-      m_nErrorType = SOCK_ERROR_errno;
-      return(false);
-    }
+      continue;
 
 #ifdef IP_PORTRANGE
     int i=IP_PORTRANGE_HIGH;
     if (setsockopt(m_nDescriptor, IPPROTO_IP, IP_PORTRANGE, &i, sizeof(i))<0)
     {
-      m_nErrorType = SOCK_ERROR_errno;
-      return(false);
+      close(m_nDescriptor);
+      m_nDescriptor = -1;
+      gLog.Warn(tr("%sFailed to set port range for socket.\n"), L_WARNxSTR);
+      continue;
     }
 #endif
 
-    m_sRemoteAddr.sin_family = AF_INET;
+    // Try to connect, exit loop if successful
+    if (connect(m_nDescriptor, (struct sockaddr*)&myRemoteAddr, sizeof(myRemoteAddrStorage)) != -1)
+      break;
 
-    // if connect fails then call CloseConnection to clean up before returning
-    socklen_t sizeofSockaddr = sizeof(struct sockaddr);
-    if (connect(m_nDescriptor, (struct sockaddr *)&m_sRemoteAddr, sizeofSockaddr) < 0)
-    {
-      // errno has been set
-      m_nErrorType = SOCK_ERROR_errno;
-      CloseConnection();
-      return(false);
-    }
+    // Failed to connect, close socket and try next
+    close(m_nDescriptor);
+    m_nDescriptor = -1;
+  }
+
+  // Return the memory allocated by getaddrinfo
+  freeaddrinfo(addrs);
+
+  // If we reached the end of the address list we didn't find anything that could connect
+  if (ai == NULL)
+    return false;
 
 #ifdef USE_SOCKS5
     if (m_nSockType != SOCK_STREAM) return true;
 #endif
-  }
-  
+
   return SetLocalAddress();
 }
 
+bool INetSocket::connectTo(uint32_t remoteAddr, uint16_t remotePort, ProxyServer* proxy)
+{
+  char buf[INET_ADDRSTRLEN];
+  return connectTo(string(inet_ntop(AF_INET, &remoteAddr, buf, sizeof(buf))), remotePort, proxy);
+}
 
 //-----INetSocket::StartServer--------------------------------------------------
 bool INetSocket::StartServer(unsigned int _nPort)
 {
-  m_nDescriptor = socket(AF_INET, m_nSockType, 0);
-  if (m_nDescriptor == -1)
+  socklen_t addrlen;
+  memset(&myLocalAddr, 0, sizeof(myLocalAddrStorage));
+
+#ifndef LICQ_DISABLE_IPV6
+  // Try to create an IPv6 socket
+  m_nDescriptor = socket(AF_INET6, m_nSockType, 0);
+  if (m_nDescriptor != -1)
   {
-    m_nErrorType = SOCK_ERROR_errno;
-    return (false);
+    // IPv6 socket created
+
+#ifdef IPV6_PORTRANGE
+    int i = IPV6_PORTRANGE_HIGH;
+    if (setsockopt(m_nDescriptor, IPPROTO_IPV6, IPV6_PORTRANGE, &i, sizeof(i)) < 0)
+    {
+      m_nErrorType = SOCK_ERROR_errno;
+      ::close(m_nDescriptor);
+      m_nDescriptor = -1;
+      return false;
+    }
+#endif
+
+    addrlen = sizeof(sockaddr_in6);
+    myLocalAddr.sa_family = AF_INET6;
+    ((struct sockaddr_in6*)&myLocalAddr)->sin6_port = htons(_nPort);
+    ((struct sockaddr_in6*)&myLocalAddr)->sin6_addr = in6addr_any;
   }
+  else
+  {
+    // Unable to create an IPv6 socket, try with IPv4 instead
+    gLog.Warn(tr("%sFailed to start local server using IPv6 socket (falling back to IPv4):\n%s%s\n"),
+        L_WARNxSTR, L_BLANKxSTR, strerror(errno));
+
+#endif
+    m_nDescriptor = socket(AF_INET, m_nSockType, 0);
+    if (m_nDescriptor == -1)
+    {
+      m_nErrorType = SOCK_ERROR_errno;
+      return (false);
+    }
 
 #ifdef IP_PORTRANGE
-  int i=IP_PORTRANGE_HIGH;
-  if (setsockopt(m_nDescriptor, IPPROTO_IP, IP_PORTRANGE, &i, sizeof(i))<0)
-  {
-    m_nErrorType = SOCK_ERROR_errno;
-    ::close(m_nDescriptor);
-    m_nDescriptor = -1;
-    return(false);
+    int i = IP_PORTRANGE_HIGH;
+    if (setsockopt(m_nDescriptor, IPPROTO_IP, IP_PORTRANGE, &i, sizeof(i)) < 0)
+    {
+      m_nErrorType = SOCK_ERROR_errno;
+      ::close(m_nDescriptor);
+      m_nDescriptor = -1;
+      return false;
+    }
+#endif
+
+    addrlen = sizeof(sockaddr_in);
+    myLocalAddr.sa_family = AF_INET;
+    ((struct sockaddr_in*)&myLocalAddr)->sin_port = htons(_nPort);
+    ((struct sockaddr_in*)&myLocalAddr)->sin_addr.s_addr = INADDR_ANY;
+#ifndef LICQ_DISABLE_IPV6
   }
 #endif
 
-  memset(&m_sLocalAddr.sin_zero, 0, 8);
-  m_sLocalAddr.sin_family = AF_INET;
-  m_sLocalAddr.sin_port = htons(_nPort);
-  m_sLocalAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  if (bind(m_nDescriptor, (struct sockaddr *)&m_sLocalAddr, sizeof(sockaddr_in)) == -1)
+  if (bind(m_nDescriptor, (struct sockaddr*)&myLocalAddr, addrlen) == -1)
   {
     m_nErrorType = SOCK_ERROR_errno;
     ::close(m_nDescriptor);
@@ -513,21 +549,18 @@ bool INetSocket::StartServer(unsigned int _nPort)
   if (!SetLocalAddress(false)) return (false);
 
   if (m_nSockType == SOCK_STREAM)
-    listen(m_nDescriptor, 10); // Allow 10 unprocessed connections
+  {
+    // Allow 10 unprocessed connections
+    if (listen(m_nDescriptor, 10) != 0)
+    {
+      m_nErrorType = SOCK_ERROR_errno;
+      ::close(m_nDescriptor);
+      m_nDescriptor = -1;
+      return false;
+    }
+  }
+
   return(true);
-}
-
-
-//-----INetSocket::SetRemoteAddr-----------------------------------------------
-bool INetSocket::SetRemoteAddr(const char *_szRemoteName, unsigned short _nRemotePort)
-{
-  if (m_szRemoteName != NULL) free (m_szRemoteName);
-  if (_szRemoteName != NULL)
-    m_szRemoteName = strdup(_szRemoteName);
-  else
-    m_szRemoteName = NULL;
-
-  return(SetRemoteAddr(GetIpByName(_szRemoteName), _nRemotePort));
 }
 
 
@@ -593,7 +626,8 @@ bool INetSocket::RecvRaw()
 
 //=====SrvSocket===============================================================
 
-SrvSocket::SrvSocket(const char *s, unsigned long n) : INetSocket(s, n)
+SrvSocket::SrvSocket(const UserId& userId)
+  : INetSocket(userId)
 {
   strcpy(m_szID, "SRV");
   m_nSockType = SOCK_STREAM;
@@ -732,59 +766,18 @@ bool SrvSocket::RecvPacket()
   return (true);
 }
 
-/*-----SrvSocket::ConnectTo--------------------------------------------------
-* Establish connection to server (through proxy or not)
-*---------------------------------------------------------------------------*/
-bool SrvSocket::ConnectTo(const char* server, unsigned short port,
-                          ProxyServer *xProxy)
-{
-  char ipbuf[32];
-
-  if (xProxy == NULL)
-  {
-    gLog.Info(tr("%sResolving %s port %d...\n"), L_SRVxSTR, server, port);
-    if (!SetRemoteAddr(server, port)) {
-      char buf[128];
-      gLog.Warn(tr("%sUnable to resolve %s:\n%s%s.\n"), L_ERRORxSTR,
-                server, L_BLANKxSTR, ErrorStr(buf, 128));
-      return false;
-    }
-    gLog.Info(tr("%sICQ server found at %s:%d.\n"), L_SRVxSTR,
-              RemoteIpStr(ipbuf), RemotePort());
-  }
-  else
-  {
-    // It doesn't matter if it resolves or not, the proxy should do it then
-    SetProxy(xProxy);
-    SetRemoteAddr(server, port);
-  }
-
-  if (xProxy == NULL)
-    gLog.Info(tr("%sOpening socket to server.\n"), L_SRVxSTR);
-  else
-    gLog.Info(tr("%sOpening socket to server %s:%d via proxy.\n"),
-              L_SRVxSTR, server, port);
-  if (!OpenConnection())
-  {
-    char buf[128];
-    gLog.Warn(tr("%sUnable to connect to %s:%d:\n%s%s.\n"), L_ERRORxSTR,
-              RemoteIpStr(ipbuf), RemotePort(), L_BLANKxSTR,
-              ErrorStr(buf, 128));
-    return false;
-  }
-
-  return true;
-}
 
 //=====TCPSocket===============================================================
-TCPSocket::TCPSocket(const char *s, unsigned long n) : INetSocket(s, n)
+TCPSocket::TCPSocket(const UserId& userId)
+  : INetSocket(userId)
 {
   strcpy(m_szID, "TCP");
   m_nSockType = SOCK_STREAM;
   m_p_SSL = NULL;
 }
 
-TCPSocket::TCPSocket() : INetSocket(0, 0)
+TCPSocket::TCPSocket()
+  : INetSocket(USERID_NONE)
 {
   strcpy(m_szID, "TCP");
   m_nSockType = SOCK_STREAM;
@@ -803,7 +796,7 @@ TCPSocket::~TCPSocket()
  *---------------------------------------------------------------------------*/
 bool TCPSocket::RecvConnection(TCPSocket &newSocket)
 {
-  socklen_t sizeofSockaddr = sizeof(struct sockaddr_in);
+  socklen_t sizeofSockaddr = sizeof(myRemoteAddrStorage);
   bool success = false;
 
   // Make sure we stay under FD_SETSIZE
@@ -813,7 +806,13 @@ bool TCPSocket::RecvConnection(TCPSocket &newSocket)
   // for more details
   // This probably has no affect, since we are using multiple threads, but keep it here 
   // to be used as a sanity check.
-  int newDesc = accept(m_nDescriptor, (struct sockaddr *)&newSocket.m_sRemoteAddr, &sizeofSockaddr);
+  int newDesc = accept(m_nDescriptor, (struct sockaddr*)&newSocket.myRemoteAddr, &sizeofSockaddr);
+  if (newDesc < 0)
+  {
+    // Something went wrong, probably indicates an error somewhere else
+    gLog.Warn(tr("%sCannot accept new connection:\n%s%s\n"), L_WARNxSTR, L_BLANKxSTR, strerror(errno));
+    return false;
+  }
   if (newDesc < FD_SETSIZE)
   {
     newSocket.m_nDescriptor = newDesc;
@@ -838,16 +837,9 @@ bool TCPSocket::RecvConnection(TCPSocket &newSocket)
 void TCPSocket::TransferConnectionFrom(TCPSocket &from)
 {
   m_nDescriptor = from.m_nDescriptor;
-  m_sLocalAddr = from.m_sLocalAddr;
-  m_sRemoteAddr = from.m_sRemoteAddr;
-
-  if (m_szOwnerId)
-    free (m_szOwnerId);
-  if (from.m_szOwnerId)
-    m_szOwnerId = strdup(from.m_szOwnerId);
-  else
-    m_szOwnerId = 0;
-  m_nOwnerPPID = from.m_nOwnerPPID;
+  myLocalAddr = from.myLocalAddr;
+  myRemoteAddr = from.myRemoteAddr;
+  myUserId = from.myUserId;
 
   m_nVersion = from.m_nVersion;
   if (from.m_p_SSL)
@@ -1217,7 +1209,7 @@ bool TCPSocket::SSL_Pending()
 bool TCPSocket::SecureConnect()
 {
   pthread_mutex_init(&mutex_ssl, NULL);
-  if (m_nOwnerPPID == LICQ_PPID)
+  if (LicqUser::getUserProtocolId(myUserId) == LICQ_PPID)
     m_p_SSL = SSL_new(gSSL_CTX);
   else
     m_p_SSL = SSL_new(gSSL_CTX_NONICQ);
@@ -1253,7 +1245,7 @@ bool TCPSocket::SecureListen()
 {
   pthread_mutex_init(&mutex_ssl, NULL);
 
-  if (m_nOwnerPPID == LICQ_PPID)
+  if (LicqUser::getUserProtocolId(myUserId) == LICQ_PPID)
     m_p_SSL = SSL_new(gSSL_CTX);
   else
     m_p_SSL = SSL_new(gSSL_CTX_NONICQ);
@@ -1315,8 +1307,8 @@ void TCPSocket::SecureStop()
 
 #endif /*-----End of OpenSSL code------------------------------------------*/
 
-UDPSocket::UDPSocket(const char* ownerId, unsigned long ownerPpid)
-    : INetSocket(ownerId, ownerPpid)
+UDPSocket::UDPSocket(const UserId& userId)
+  : INetSocket(userId)
 {
   strcpy(m_szID, "UDP");
   m_nSockType = SOCK_DGRAM;
@@ -1342,51 +1334,16 @@ void INetSocket::Unlock()
 //=====CSocketHashTable=========================================================
 CSocketHashTable::CSocketHashTable(unsigned short _nSize) : m_vlTable(_nSize)
 {
-  pthread_rdwr_init_np(&mutex_rw, NULL);
-  pthread_rdwr_set_name(&mutex_rw, __func__);
+  myMutex.setName(__func__);
 }
 
 CSocketHashTable::~CSocketHashTable()
 {
-  pthread_rdwr_destroy_np(&mutex_rw);
-}
-
-void CSocketHashTable::Lock(unsigned short _nLockType)
-{
-  switch (_nLockType)
-  {
-  case LOCK_R:
-    pthread_rdwr_rlock_np (&mutex_rw);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wlock_np(&mutex_rw);
-    break;
-  default:
-    break;
-  }
-  m_nLockType = _nLockType;
-}
-
-void CSocketHashTable::Unlock()
-{
-  unsigned short nLockType = m_nLockType;
-  m_nLockType = LOCK_R;
-  switch (nLockType)
-  {
-  case LOCK_R:
-    pthread_rdwr_runlock_np(&mutex_rw);
-    break;
-  case LOCK_W:
-    pthread_rdwr_wunlock_np(&mutex_rw);
-    break;
-  default:
-    break;
-  }
 }
 
 INetSocket *CSocketHashTable::Retrieve(int _nSd)
 {
-  Lock(LOCK_R);
+  myMutex.lockRead();
 
   INetSocket *s = NULL;
   list <INetSocket *> &l = m_vlTable[HashValue(_nSd)];
@@ -1406,21 +1363,21 @@ INetSocket *CSocketHashTable::Retrieve(int _nSd)
   }
   if (iter == l.end()) s = NULL;
 
-  Unlock();
+  myMutex.unlockRead();
   return s;
 }
 
 void CSocketHashTable::Store(INetSocket *s, int _nSd)
 {
-  Lock(LOCK_W);
+  myMutex.lockWrite();
   list<INetSocket *> &l = m_vlTable[HashValue(_nSd)];
   l.push_front(s);
-  Unlock();
+  myMutex.unlockWrite();
 }
 
 void CSocketHashTable::Remove(int _nSd)
 {
-  Lock(LOCK_W);
+  myMutex.lockWrite();
   list<INetSocket *> &l = m_vlTable[HashValue(_nSd)];
   int nSd;
   list<INetSocket *>::iterator iter;
@@ -1435,7 +1392,7 @@ void CSocketHashTable::Remove(int _nSd)
       break;
     }
   }
-  Unlock();
+  myMutex.unlockWrite();
 }
 
 unsigned short CSocketHashTable::HashValue(int _nSd)
@@ -1504,8 +1461,7 @@ void CSocketManager::CloseSocket (int nSd, bool bClearUser, bool bDelete)
     return;
   }
 
-  char *szOwner = s->OwnerId() ? strdup(s->OwnerId()) : 0;
-  unsigned long nPPID = s->OwnerPPID();
+  UserId userId = s->userId();
   unsigned char nChannel = s->Channel();
   
   // First remove the socket from the hash table so it won't be fetched anymore
@@ -1523,12 +1479,9 @@ void CSocketManager::CloseSocket (int nSd, bool bClearUser, bool bDelete)
   if (bClearUser)
   {
     ICQUser *u = NULL;
-    if (szOwner)
-    {
-      u = gUserManager.FetchUser(szOwner, nPPID, LOCK_W);
-      free(szOwner);
-    }
-    
+    if (USERID_ISVALID(userId))
+      u = gUserManager.fetchUser(userId, LOCK_W);
+
     if (u != NULL)
     {
       u->ClearSocketDesc(nChannel);

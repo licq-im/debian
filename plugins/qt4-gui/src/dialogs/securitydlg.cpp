@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -128,7 +128,7 @@ void SecurityDlg::ok()
     btnUpdate->setEnabled(false);
 
     connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(ICQEvent*)), SLOT(doneUserFcn(ICQEvent*)));
+        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneUserFcn(const LicqEvent*)));
 
     setWindowTitle(title + " [" + tr("Setting...") + "]");
 
@@ -142,7 +142,7 @@ void SecurityDlg::ok()
   close();
 }
 
-void SecurityDlg::doneUserFcn(ICQEvent* e)
+void SecurityDlg::doneUserFcn(const LicqEvent* e)
 {
   if (!e->Equals(eSecurityInfo))
     return;
@@ -152,7 +152,7 @@ void SecurityDlg::doneUserFcn(ICQEvent* e)
   btnUpdate->setEnabled(true);
 
   disconnect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(ICQEvent*)), this, SLOT(doneUserFcn(ICQEvent*)));
+      SIGNAL(doneUserFcn(const LicqEvent*)), this, SLOT(doneUserFcn(const LicqEvent*)));
 
   switch (e->Result())
   {

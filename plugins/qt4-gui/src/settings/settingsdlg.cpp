@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,8 @@
 #include "events.h"
 #include "general.h"
 #include "network.h"
+#include "shortcuts.h"
+#include "skin.h"
 #include "status.h"
 
 using namespace LicqQtGui;
@@ -58,7 +60,7 @@ SettingsDlg::SettingsDlg(QWidget* parent)
   : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint)
 {
   Support::setWidgetProps(this, "SettingsDialog");
-  setWindowTitle(tr("Licq Settings"));
+  setWindowTitle(tr("Licq - Settings"));
   setAttribute(Qt::WA_DeleteOnClose, true);
 
   QVBoxLayout* top_lay = new QVBoxLayout(this);
@@ -83,7 +85,9 @@ SettingsDlg::SettingsDlg(QWidget* parent)
   myChatSettings = new Settings::Chat(this);
   myEventsSettings = new Settings::Events(this);
   myNetworkSettings = new Settings::Network(this);
+  mySkinSettings = new Settings::Skin(this);
   myStatusSettings = new Settings::Status(this);
+  myShortcutsSettings = new Settings::Shortcuts(this);
 
   QDialog::show();
 }
@@ -93,7 +97,7 @@ SettingsDlg::~SettingsDlg()
   myInstance = NULL;
 }
 
-void SettingsDlg::addPage(SettingsPage page, QWidget* widget, QString title, SettingsPage parent)
+void SettingsDlg::addPage(SettingsPage page, QWidget* widget, const QString& title, SettingsPage parent)
 {
   myPages.insert(page, widget);
   myPager->addPage(widget, title, (parent == UnknownPage ? NULL : myPages.value(parent)));
@@ -119,5 +123,7 @@ void SettingsDlg::apply()
   myChatSettings->apply();
   myEventsSettings->apply();
   myNetworkSettings->apply();
+  myShortcutsSettings->apply();
+  mySkinSettings->apply();
   myStatusSettings->apply();
 }

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 
 #include <licq_events.h>
 #include <licq_icqd.h>
+#include <licq_user.h>
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
@@ -48,7 +49,7 @@ RandomChatDlg::RandomChatDlg(QWidget* parent)
 {
   Support::setWidgetProps(this, "RandomChatDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
-  setWindowTitle(tr("Random Chat Search"));
+  setWindowTitle(tr("Licq - Random Chat Search"));
 
   QVBoxLayout* topLayout = new QVBoxLayout(this);
   myGroupsList = new QListWidget(this);
@@ -90,7 +91,7 @@ void RandomChatDlg::okPressed()
 {
   myOkButton->setEnabled(false);
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(ICQEvent*)), SLOT(userEventDone(ICQEvent*)));
+      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(userEventDone(const LicqEvent*)));
   unsigned long nGroup = ICQ_RANDOMxCHATxGROUP_NONE;
   switch(myGroupsList->currentRow())
   {
@@ -109,7 +110,7 @@ void RandomChatDlg::okPressed()
   setWindowTitle(tr("Searching for Random Chat Partner..."));
 }
 
-void RandomChatDlg::userEventDone(ICQEvent* event)
+void RandomChatDlg::userEventDone(const LicqEvent* event)
 {
   if (!event->Equals(myTag))
     return;
@@ -130,8 +131,9 @@ void RandomChatDlg::userEventDone(ICQEvent* event)
       break;
     default:
       //TODO when CSearchAck changes
-      LicqGui::instance()->showEventDialog(ChatEvent, event->SearchAck()->Id(),
-          event->SearchAck()->PPID() );
+      UserId userId = event->SearchAck()->userId();
+      gUserManager.addUser(userId, false);
+      LicqGui::instance()->showEventDialog(ChatEvent, userId);
       close();
       return;
   }
@@ -218,7 +220,7 @@ void SetRandomChatGroupDlg::okPressed()
   myOkButton->setEnabled(false);
   myCancelButton = new QPushButton(tr("&Cancel"), this);
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(ICQEvent*)), SLOT(userEventDone(ICQEvent*)));
+      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(userEventDone(const LicqEvent*)));
   unsigned long nGroup = ICQ_RANDOMxCHATxGROUP_NONE;
   switch(myGroupsList->currentRow())
   {
@@ -238,7 +240,7 @@ void SetRandomChatGroupDlg::okPressed()
   setWindowTitle(tr("Setting Random Chat Group..."));
 }
 
-void SetRandomChatGroupDlg::userEventDone(ICQEvent* event)
+void SetRandomChatGroupDlg::userEventDone(const LicqEvent* event)
 {
   if (!event->Equals(myTag))
     return;

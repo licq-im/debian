@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 #include "contactlist/contactlist.h"
 
 #include "userviewbase.h"
+
+class QTimer;
 
 namespace LicqQtGui
 {
@@ -52,11 +54,9 @@ public:
   /**
    * Get the currently selected user
    *
-   * @param id Return parameter for user id
-   * @param ppid Return parameter for protocol id
-   * @return True if a user is currently selected
+   * @return id of current user
    */
-  bool MainWindowSelectedItemUser(QString& id, unsigned long& ppid) const;
+  UserId currentUserId() const;
 
   /**
    * Set skin colors
@@ -76,6 +76,12 @@ public slots:
    */
   void expandGroups();
 
+  /**
+   * Reset internal state of view
+   * Overloaded to restore group states after QTreeView has lost them
+   */
+  virtual void reset();
+
 protected slots:
   /**
    * Apply new skin
@@ -91,6 +97,16 @@ protected slots:
    * @param end The number of the last inserted row
    */
   virtual void rowsInserted(const QModelIndex& parent, int start, int end);
+
+  /**
+   * Overloaded the base class so we can analyze the rows
+   * which are removed and act accordingly
+   *
+   * @param parent The view index which will loose a child
+   * @param start The number of the first row to be removed
+   * @param end The number of the last row to be removed
+   */
+  virtual void rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end);
 
 private:
   /**
@@ -123,6 +139,9 @@ private:
    */
   void spanRowRange(const QModelIndex& parent, int start, int end);
 
+  UserId myRemovedUser;
+  QTimer* myRemovedUserTimer;
+
 private slots:
   /**
    * Tell proxy to resort list according to current settings
@@ -154,6 +173,11 @@ private slots:
    * Reload config settings
    */
   void configUpdated();
+
+  /**
+   * Forget that we have remembered a removed user
+   */
+  void forgetRemovedUser();
 };
 
 } // namespace LicqQtGui

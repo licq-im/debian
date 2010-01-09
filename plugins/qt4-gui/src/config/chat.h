@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -87,20 +87,27 @@ public:
   bool msgWinSticky() const { return myMsgWinSticky; }
   bool singleLineChatMode() const { return mySingleLineChatMode; }
   bool checkSpelling() const { return myCheckSpelling; }
+#ifdef HAVE_HUNSPELL
+  QString spellingDictionary() const { return mySpellingDictionary; }
+#endif
   bool histVertSpacing() const { return myHistVertSpacing; }
   bool reverseHistory() const { return myReverseHistory; }
+  bool useCustomUrlBrowser() const { return myUseCustomUrlBrowser; }
+  bool noSoundInActiveChat() const { return myNoSoundInActiveChat; }
   unsigned short chatMsgStyle() const { return myChatMsgStyle; }
   unsigned short histMsgStyle() const { return myHistMsgStyle; }
-  QString chatDateFormat() const { return myChatDateFormat; }
-  QString histDateFormat() const { return myHistDateFormat; }
-  QString recvHistoryColor() const { return myRecvHistoryColor; }
-  QString sentHistoryColor() const { return mySentHistoryColor; }
-  QString recvColor() const { return myRecvColor; }
-  QString sentColor() const { return mySentColor; }
-  QString noticeColor() const { return myNoticeColor; }
-  QString tabTypingColor() const { return myTabTypingColor; }
-  QString chatBackColor() const { return myChatBackColor; }
-  QRect dialogRect() const { return myDialogRect; }
+  const QString& chatDateFormat() const { return myChatDateFormat; }
+  const QString& histDateFormat() const { return myHistDateFormat; }
+  const QString& recvHistoryColor() const { return myRecvHistoryColor; }
+  const QString& sentHistoryColor() const { return mySentHistoryColor; }
+  const QString& recvColor() const { return myRecvColor; }
+  const QString& sentColor() const { return mySentColor; }
+  const QString& noticeColor() const { return myNoticeColor; }
+  const QString& tabTypingColor() const { return myTabTypingColor; }
+  const QString& chatBackColor() const { return myChatBackColor; }
+  const QRect& tabDialogRect() const { return myTabDialogRect; }
+  const QSize& sendDialogSize() const { return mySendDialogSize; }
+  const QSize& viewDialogSize() const { return myViewDialogSize; }
 
 public slots:
   /**
@@ -136,20 +143,27 @@ public slots:
   void setMsgWinSticky(bool msgWinSticky);
   void setSingleLineChatMode(bool singleLineChatMode);
   void setCheckSpelling(bool checkSpelling);
+#ifdef HAVE_HUNSPELL
+  void setSpellingDictionary(const QString& spellingDictionary);
+#endif
   void setHistVertSpacing(bool histVertSpacing);
   void setReverseHistory(bool reverseHistory);
+  void setUseCustomUrlBrowser(bool customUrlBrowser);
+  void setNoSoundInActiveChat(bool noSoundInActiveChat);
   void setChatMsgStyle(unsigned short chatMsgStyle);
   void setHistMsgStyle(unsigned short histMsgStyle);
-  void setChatDateFormat(QString chatDateFormat);
-  void setHistDateFormat(QString histDateFormat);
-  void setRecvHistoryColor(QString recvHistoryColor);
-  void setSentHistoryColor(QString sentHistoryColor);
-  void setRecvColor(QString recvColor);
-  void setSentColor(QString sentColor);
-  void setNoticeColor(QString noticeColor);
-  void setTabTypingColor(QString tabTypingColor);
-  void setChatBackColor(QString chatBackColor);
-  void setDialogRect(const QRect& geometry);
+  void setChatDateFormat(const QString& chatDateFormat);
+  void setHistDateFormat(const QString& histDateFormat);
+  void setRecvHistoryColor(const QString& recvHistoryColor);
+  void setSentHistoryColor(const QString& sentHistoryColor);
+  void setRecvColor(const QString& recvColor);
+  void setSentColor(const QString& sentColor);
+  void setNoticeColor(const QString& noticeColor);
+  void setTabTypingColor(const QString& tabTypingColor);
+  void setChatBackColor(const QString& chatBackColor);
+  void setTabDialogRect(const QRect& geometry);
+  void setSendDialogSize(const QSize& geometry);
+  void setViewDialogSize(const QSize& geometry);
 
 signals:
   void chatColorsChanged();
@@ -180,11 +194,16 @@ private:
   bool mySingleLineChatMode;
   bool myFlashTaskbar;
   bool myCheckSpelling;
+#ifdef HAVE_HUNSPELL
+  QString mySpellingDictionary;
+#endif
   bool myHistVertSpacing;
   bool myReverseHistory;
   bool myShowUserPic;
   bool myShowUserPicHidden;
   bool myPopupAutoResponse;
+  bool myUseCustomUrlBrowser;
+  bool myNoSoundInActiveChat;
 
   unsigned short myChatMsgStyle;
   unsigned short myHistMsgStyle;
@@ -200,7 +219,9 @@ private:
   QString myTabTypingColor;
   QString myChatBackColor;
 
-  QRect myDialogRect;
+  QRect myTabDialogRect;
+  QSize mySendDialogSize;
+  QSize myViewDialogSize;
 
   void changeChatColors();
 };

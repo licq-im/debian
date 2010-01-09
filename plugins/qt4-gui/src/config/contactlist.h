@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 
 #include <QObject>
 
-#include <licq_user.h>
+#include <licq_types.h>
 
 #include "core/gui-defines.h"
 
@@ -83,18 +83,19 @@ public:
 
   // Get functions
   int columnCount() const { return myColumnCount; }
-  QString columnHeading(int column) { return myColumnHeading[column]; }
-  QString columnFormat(int column) { return myColumnFormat[column]; }
+  const QString& columnHeading(int column) { return myColumnHeading[column]; }
+  const QString& columnFormat(int column) { return myColumnFormat[column]; }
   unsigned short columnWidth(int column) { return myColumnWidth[column]; }
   AlignmentMode columnAlignment(int column) { return myColumnAlignment[column]; }
 
   bool showOffline() const { return myShowOffline; }
   bool alwaysShowONU() const { return myAlwaysShowONU; }
   bool threadView() const { return myThreadView; }
+  bool mode2View() const { return myMode2View; }
   bool showEmptyGroups() const { return myShowEmptyGroups; }
   GroupType groupType() { return myGroupType; }
-  unsigned long groupId() { return myGroupId; }
-  bool groupState(unsigned short group) const;
+  int groupId() { return myGroupId; }
+  bool groupState(int group, bool online) const;
 
   bool showGridLines() const { return myShowGridLines; }
   bool useFontStyles() const { return myUseFontStyles; }
@@ -139,13 +140,15 @@ public slots:
 
   // Set functions
   void setColumnCount(int columnCount);
-  void setColumn(int column, QString heading, QString format, unsigned short width, AlignmentMode alignment);
+  void setColumn(int column, const QString& heading, const QString& format,
+      unsigned short width, AlignmentMode alignment);
 
   void setShowOffline(bool showOffline);
   void setAlwaysShowONU(bool alwaysShowONU);
   void setThreadView(bool threadView);
+  void setMode2View(bool mode2View);
   void setShowEmptyGroups(bool showEmptyGroups);
-  void setGroup(GroupType groupType, unsigned long groupId);
+  void setGroup(GroupType groupType, int groupId);
 
   void setShowGridLines(bool showGridLines);
   void setUseFontStyles(bool useFontStyles);
@@ -153,7 +156,7 @@ public slots:
   void setShowDividers(bool showDividers);
   void setSortByStatus(unsigned short sortByStatus);
   void setSortColumn(unsigned short column, bool ascending = true);
-  void setGroupState(unsigned short group, bool expanded);
+  void setGroupState(int group, bool online, bool expanded);
   void setShowExtendedIcons(bool showExtendedIcons);
   void setShowPhoneIcons(bool showPhoneIcons);
   void setShowUserIcons(bool showUserIcons);
@@ -180,6 +183,7 @@ public slots:
   // Toggle functions for convenience
   void toggleShowOffline() { setShowOffline(!myShowOffline); }
   void toggleThreadView() { setThreadView(!myThreadView); }
+  void toggleShowHeader() { setShowHeader(!myShowHeader); }
 
 signals:
   /**
@@ -226,9 +230,10 @@ private:
   bool myShowOffline;
   bool myAlwaysShowONU;
   bool myThreadView;
+  bool myMode2View;
   bool myShowEmptyGroups;
   GroupType myGroupType;
-  unsigned long myGroupId;
+  int myGroupId;
 
   // Contact list look
   bool myShowGridLines;
@@ -251,7 +256,7 @@ private:
   // Contact list state
   unsigned short mySortColumn;
   bool mySortColumnAscending;
-  unsigned long myGroupStates;
+  int myGroupStates[2];
 
   // Contact popup information
   bool myPopupPicture;

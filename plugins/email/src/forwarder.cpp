@@ -119,18 +119,10 @@ int CLicqForwarder::Run(CICQDaemon *_licqDaemon)
   if (m_szStatus != NULL)
   {
     unsigned long s = StringToStatus(m_szStatus);
-    ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-    bool b = o->StatusOffline();
-    gUserManager.DropOwner(o);
     if (s == INT_MAX)
       gLog.Warn("%sInvalid startup status.\n", L_FORWARDxSTR);
     else
-    {
-      if (b)
-        licqDaemon->icqLogon(s);
-      else
-        licqDaemon->icqSetStatus(s);
-    }
+      licqDaemon->protoSetStatus(gUserManager.ownerUserId(LICQ_PPID), s);
     free(m_szStatus);
     m_szStatus = NULL;
   }
@@ -188,7 +180,7 @@ void CLicqForwarder::ProcessPipe()
   {
   case 'S':  // A signal is pending
   {
-    CICQSignal *s = licqDaemon->PopPluginSignal();
+      LicqSignal* s = licqDaemon->popPluginSignal();
     if (m_bEnabled) ProcessSignal(s);
     break;
   }
@@ -230,13 +222,13 @@ void CLicqForwarder::ProcessPipe()
 /*---------------------------------------------------------------------------
  * CLicqForwarder::ProcessSignal
  *-------------------------------------------------------------------------*/
-void CLicqForwarder::ProcessSignal(CICQSignal *s)
+void CLicqForwarder::ProcessSignal(LicqSignal* s)
 {
   switch (s->Signal())
   {
   case SIGNAL_UPDATExUSER:
     if (s->SubSignal() == USER_EVENTS && s->Argument() > 0)
-      ProcessUserEvent(s->Id(), s->PPID(), s->Argument());
+        ProcessUserEvent(s->userId(), s->Argument());
     break;
   // We should never get any other signal
   case SIGNAL_UPDATExLIST:
@@ -289,16 +281,16 @@ void CLicqForwarder::ProcessEvent(ICQEvent *e)
 }
 
 
-void CLicqForwarder::ProcessUserEvent(const char *szId, unsigned long nPPID, unsigned long nId)
+void CLicqForwarder::ProcessUserEvent(const UserId& userId, unsigned long nId)
 {
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
   if (u == NULL)
   {
-    gLog.Warn("%sInvalid user received from daemon (%s).\n", L_FORWARDxSTR, szId);
+    gLog.Warn("%sInvalid user received from daemon (%s).\n", L_FORWARDxSTR, USERID_TOSTR(userId));
     return;
   }
 
-  CUserEvent *e = u->EventPeekId(nId);
+  const CUserEvent* e = u->EventPeekId(nId);
 
   if (e == NULL)
   {
@@ -315,7 +307,7 @@ void CLicqForwarder::ProcessUserEvent(const char *szId, unsigned long nPPID, uns
 }
 
 
-bool CLicqForwarder::ForwardEvent(ICQUser *u, CUserEvent *e)
+bool CLicqForwarder::ForwardEvent(const LicqUser* u, const CUserEvent* e)
 {
   if (e == NULL) return false;
 
@@ -333,7 +325,7 @@ bool CLicqForwarder::ForwardEvent(ICQUser *u, CUserEvent *e)
 }
 
 
-bool CLicqForwarder::ForwardEvent_ICQ(ICQUser *u, CUserEvent *e)
+bool CLicqForwarder::ForwardEvent_ICQ(const LicqUser* u, const CUserEvent* e)
 {
   char *szText = new char[strlen(e->Text()) + 256];
   char szTime[64];
@@ -341,7 +333,7 @@ bool CLicqForwarder::ForwardEvent_ICQ(ICQUser *u, CUserEvent *e)
   strftime(szTime, 64, "%a %b %d, %R", localtime(&t));
   sprintf(szText, "[ %s from %s (%s) sent %s ]\n\n%s\n", e->Description(),
           u->GetAlias(), u->IdString(), szTime, e->Text());
-  unsigned long tag = licqDaemon->icqSendMessage(myUserId, szText, false, ICQ_TCPxMSG_NORMAL);
+  unsigned long tag = licqDaemon->sendMessage(LicqUser::makeUserId(myUserId, LICQ_PPID), szText, true, ICQ_TCPxMSG_NORMAL);
   delete []szText;
   if (tag == 0)
   {
@@ -353,7 +345,7 @@ bool CLicqForwarder::ForwardEvent_ICQ(ICQUser *u, CUserEvent *e)
 }
 
 
-bool CLicqForwarder::ForwardEvent_Email(ICQUser *u, CUserEvent *e)
+bool CLicqForwarder::ForwardEvent_Email(const LicqUser* u, const CUserEvent* e)
 {
   char szTo[256],
        szFrom[256],
@@ -378,8 +370,8 @@ bool CLicqForwarder::ForwardEvent_Email(ICQUser *u, CUserEvent *e)
     if (nPPID == LICQ_PPID)
       sprintf (szFrom, "From: \"%s\" <%s@pager.icq.com>", u->GetAlias(), u->IdString());
     else
-      sprintf (szFrom, "From: \"%s\" <%s>", u->GetAlias(), u->GetEmailPrimary());
-    sprintf (szReplyTo, "Reply-To: \"%s %s\" <%s>", u->GetFirstName(), u->GetLastName(), u->GetEmailPrimary());
+      sprintf (szFrom, "From: \"%s\" <%s>", u->GetAlias(), u->getEmail().c_str());
+    sprintf (szReplyTo, "Reply-To: \"%s\" <%s>", u->getFullName().c_str(), u->getEmail().c_str());
   }
   sprintf (szDate, "Date: %s", ctime(&t));
   int l = strlen(szDate);
@@ -416,18 +408,11 @@ bool CLicqForwarder::ForwardEvent_Email(ICQUser *u, CUserEvent *e)
 
 
   // Connect to the SMTP server
-  if (!tcp->DestinationSet() && !tcp->SetRemoteAddr(m_szSMTPHost, m_nSMTPPort))
-  {
-    char buf[128];
-    gLog.Warn("%sUnable to determine SMTP host ip:\n%s%s.\n", L_WARNxSTR, L_BLANKxSTR,
-              tcp->ErrorStr(buf, 128));
-    return false;
-  }
-  if (!tcp->OpenConnection())
+  if (!tcp->DestinationSet() && !tcp->connectTo(m_szSMTPHost, m_nSMTPPort))
   {
     char buf[128];
     gLog.Warn("%sUnable to connect to %s:%d:\n%s%s.\n", L_ERRORxSTR,
-              tcp->RemoteIpStr(buf), tcp->RemotePort(), L_BLANKxSTR,
+        tcp->getRemoteIpString().c_str(), tcp->getRemotePort(), L_BLANKxSTR,
               tcp->ErrorStr(buf, 128));
     return false;
   }

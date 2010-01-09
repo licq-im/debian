@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1699,10 +1699,10 @@ QWidget* OptionsDlg::new_chat_options()
   tabViewer = new CETabWidget(w);
   lay->addWidget(tabViewer);
 
-  msgChatViewer = new CMessageViewWidget(NULL, 0, gMainWindow, tabViewer);
+  msgChatViewer = new CMessageViewWidget(USERID_NONE, gMainWindow, tabViewer);
   tabViewer->insertTab(msgChatViewer, "Marge");
 
-  msgHistViewer = new CMessageViewWidget(NULL, 0, gMainWindow, tabViewer, 0, true);
+  msgHistViewer = new CMessageViewWidget(USERID_NONE, gMainWindow, tabViewer, 0, true);
   tabViewer->insertTab(msgHistViewer, tr("History"));
 
   lay->activate();

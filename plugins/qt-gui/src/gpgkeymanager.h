@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2006 Licq developers
+ * Copyright (C) 2005-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ public:
 
 protected:
   KeyList *lst_keyList;
-  void editUser( ICQUser *u );
+  void editUser(const LicqUser* u);
   void initKeyList();
 
 protected slots:
@@ -74,20 +74,18 @@ class KeyListItem : public QObject, public QListViewItem
 {
   Q_OBJECT
 public:
-  KeyListItem( QListView *parent, ICQUser *u );
+  KeyListItem(QListView* parent, const LicqUser* u);
   ~KeyListItem();
 
   void edit();
   void unsetKey();
 
-  const char* getszId() { return szId; };
-  unsigned long getnPPID() { return nPPID; };
+  const UserId& userId() const { return myUserId; }
 
 protected:
-  char *szId;
-  unsigned long nPPID;
+  UserId myUserId;
   GPGKeySelect *keySelect;
-  void updateText( ICQUser *u );
+  void updateText(const LicqUser* u);
 
 protected slots:
   void slot_done();

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2006 Licq developers
+ * Copyright (C) 2005-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,8 +21,6 @@
 #include "config.h"
 #endif
 
-#ifdef HAVE_LIBGPGME
-
 #include <qheader.h>
 #include <qdragobject.h>
 #include <qgroupbox.h>
@@ -34,8 +32,7 @@
 
 struct luser
 {
-  QString szId;
-  unsigned long nPPID;
+  UserId userId;
   const char *alias;
 };
 
@@ -150,8 +147,7 @@ void GPGKeyManager::slot_add()
     if (strcmp( pUser->GPGKey(), "") == 0)
     {
       luser *tmp = new luser;
-      tmp->szId = pUser->IdString();
-      tmp->nPPID = pUser->PPID();
+      tmp->userId = pUser->id();
       tmp->alias = pUser->GetAlias();
       list.append( tmp );
     }
@@ -168,21 +164,21 @@ void GPGKeyManager::slot_add()
   luser *tmp = list.at( res );
   if ( !tmp ) return;
 
-  ICQUser* u = gUserManager.FetchUser(tmp->szId.latin1(), tmp->nPPID, LOCK_R);
-  if ( u )
+  const LicqUser* u = gUserManager.fetchUser(tmp->userId);
+  if (u != NULL)
   {
     editUser( u );
     gUserManager.DropUser(u);
   }
 }
 
-void GPGKeyManager::editUser( ICQUser *u )
+void GPGKeyManager::editUser(const LicqUser* u)
 {
   QListViewItemIterator it( lst_keyList );
   while ( it.current() )
   {
     KeyListItem* item = (KeyListItem*)it.current();
-    if ( strcmp( item->getszId(), u->IdString() )==0 && item->getnPPID() == u->PPID() )
+    if (item->userId() == u->id())
     {
       item->edit();
       break;
@@ -244,8 +240,9 @@ void KeyList::dropEvent(QDropEvent * de)
 
   char *szId = strdup( text.right(text.length()-4).latin1() );
   unsigned long nPPID = LICQ_PPID; //TODO dropevent needs the ppid
+  UserId userId = LicqUser::makeUserId(szId, nPPID);
 
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(userId);
 
   if ( u )
   {
@@ -253,7 +250,7 @@ void KeyList::dropEvent(QDropEvent * de)
     while ( it.current() )
     {
       KeyListItem* item = (KeyListItem*)it.current();
-      if ( strcmp( item->getszId(), szId )==0 && item->getnPPID() == nPPID )
+      if (item->userId() == u->id())
       {
         item->edit();
         break;
@@ -292,21 +289,19 @@ void KeyList::resizeEvent(QResizeEvent *e)
 }
 
 // KEYLISTITEM
-KeyListItem::KeyListItem( QListView *parent, ICQUser *u )
+KeyListItem::KeyListItem(QListView* parent, const LicqUser* u)
   :QListViewItem( parent )
 {
-  szId = strdup( u->IdString() );
-  nPPID = u->PPID();
+  myUserId = u->id();
   keySelect = NULL;
   updateText( u );
 }
 
 KeyListItem::~KeyListItem()
 {
-  free( szId );
 }
 
-void KeyListItem::updateText( ICQUser *u )
+void KeyListItem::updateText(const LicqUser* u)
 {
   setText( 0, QString::fromUtf8(u->GetAlias()) );
   setText( 1, u->UseGPG() ? tr("Yes") : tr("No") );
@@ -317,14 +312,14 @@ void KeyListItem::edit()
 {
   if ( !keySelect )
   {
-    keySelect = new GPGKeySelect( szId, nPPID );
+    keySelect = new GPGKeySelect(myUserId);
     connect( keySelect, SIGNAL(signal_done()), this, SLOT(slot_done() ));
   }
 }
 
 void KeyListItem::slot_done()
 {
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   keySelect = NULL;
 
   if ( u )
@@ -339,18 +334,15 @@ void KeyListItem::slot_done()
 
 void KeyListItem::unsetKey()
 {
-  ICQUser *u = gUserManager.FetchUser(szId, nPPID, LOCK_W);
+  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
 
   if ( u )
   {
     u->SetUseGPG( false );
     u->SetGPGKey( "" );
     gUserManager.DropUser(u);
-    CICQSignal s(SIGNAL_UPDATExUSER, USER_GENERAL, szId, nPPID);
-    gMainWindow->slot_updatedUser(&s);
+    gMainWindow->slot_updatedUser(myUserId, USER_GENERAL);
   }
 }
 
 #include "gpgkeymanager.moc"
-
-#endif

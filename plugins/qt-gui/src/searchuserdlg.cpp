@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2006 Licq developers
+ * Copyright (C) 1999-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@
 #include "searchuserdlg.h"
 #include "sigman.h"
 
+#include <licq_events.h>
 #include "licq_user.h"
 #include "licq_icqd.h"
 #include "licq_languagecodes.h"
@@ -79,13 +80,12 @@ SearchItem::SearchItem(const CSearchAck* s, const QString& encoding, QListView* 
   QString qsAge;
   QString qsAuth;
 
-  myId = s->Id();
-  myPpid = s->PPID();
+  myUserId = s->userId();
   QTextCodec *codec = QTextCodec::codecForName(encoding);
   if (codec == 0)
     codec = QTextCodec::codecForLocale();
   setText(0, codec->toUnicode(s->Alias()));
-  setText(1, s->Id());
+  setText(1, LicqUser::getUserAccountId(s->userId()).c_str());
   setText(2, codec->toUnicode(s->FirstName()) + QString(" ") + codec->toUnicode(s->LastName()));
   setText(3, s->Email());
 
@@ -249,8 +249,7 @@ SearchUserDlg::SearchUserDlg(CMainWindow *m, CICQDaemon *s, CSignalManager *theS
 
   connect (btnReset, SIGNAL(clicked()), this, SLOT(resetSearch()));
   connect (btnSearch, SIGNAL(clicked()), this, SLOT(startSearch()));
-  connect (sigman, SIGNAL(signal_searchResult(ICQEvent *)),
-           this, SLOT(searchResult(ICQEvent *)));
+  connect(sigman, SIGNAL(signal_searchResult(LicqEvent*)), SLOT(searchResult(LicqEvent*)));
 
    // pseudo Status Bar
   lblSearch = new QLabel(tr("Enter search parameters and select 'Search'"), this);
@@ -437,7 +436,7 @@ void SearchUserDlg::searchResult(ICQEvent *e)
   btnSearch->setEnabled(true);
   btnDone->setEnabled(true);
 
-  if (e->SearchAck() != NULL && e->SearchAck()->Uin() != 0)
+  if (e->SearchAck() != NULL && USERID_ISVALID(e->SearchAck()->userId()))
     searchFound(e->SearchAck());
 
   if (e->Result() == EVENT_SUCCESS)
@@ -506,13 +505,11 @@ void SearchUserDlg::viewInfo()
   {
     if (current->isSelected())
     {
-      ICQUser* u = gUserManager.FetchUser(current->id().latin1(), current->ppid(), LOCK_R);
-      if (!u)
-        server->AddUserToList(current->id().latin1(), current->ppid(), false, true);
-      else
-        gUserManager.DropUser(u);
+      UserId userId = current->userId();
+      if (!gUserManager.userExists(userId))
+        gUserManager.addUser(userId, false);
 
-      mainwin->callInfoTab(mnuUserGeneral, current->id().latin1(), current->ppid(), false, true);
+      mainwin->callInfoTab(mnuUserGeneral, userId, false, true);
       break;
     }
     current = static_cast<SearchItem*>(current->nextSibling());
@@ -527,19 +524,20 @@ void SearchUserDlg::addUser()
   {
     if (current->isSelected())
     {
-      ICQUser* user = gUserManager.FetchUser(current->id().latin1(), current->ppid(), LOCK_R);
+      UserId userId = current->userId();
+      const LicqUser* user = gUserManager.fetchUser(userId);
 
       if (user)
       {
         bool tempUser = user->NotInList();
         gUserManager.DropUser(user);
         if (tempUser)
-          gUserManager.RemoveUser(current->id().latin1(), current->ppid());
+          gUserManager.removeUser(userId);
       }
 
-      if (server->AddUserToList(current->id().latin1(), current->ppid()) &&
+      if (gUserManager.addUser(userId) &&
           qcbAlertUser->isChecked()) // alert the user they were added
-        server->icqAlertUser(current->id().latin1(), current->ppid());
+        server->icqAlertUser(userId);
     }
     current = static_cast<SearchItem*>(current->nextSibling());
   }

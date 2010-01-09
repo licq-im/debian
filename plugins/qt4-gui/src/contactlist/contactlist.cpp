@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,12 +42,16 @@ ContactListModel::ContactListModel(QObject* parent)
     myBlockUpdates(false)
 {
   // Create the system groups
-  for (unsigned long i = 0; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 0; i < NUM_GROUPS_SYSTEM_ALL; ++i)
   {
     mySystemGroups[i] = new ContactGroup(SystemGroupOffset + i,
         LicqStrings::getSystemGroupName(i));
     connectGroup(mySystemGroups[i]);
   }
+
+  // reloadAll will compare column count to old value so must set an initial
+  // value before calling
+  myColumnCount = Config::ContactList::instance()->columnCount();
 
   // Get the entire contact list from the daemon
   reloadAll();
@@ -73,16 +77,20 @@ void ContactListModel::connectGroup(ContactGroup* group)
 ContactListModel::~ContactListModel()
 {
   // Delete all users and groups
-  clear();
+  while (!myUsers.isEmpty())
+    delete myUsers.takeFirst();
+
+  while (!myUserGroups.isEmpty())
+    delete myUserGroups.takeFirst();
 
   // Delete the system groups
-  for (unsigned long i = 0; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 0; i < NUM_GROUPS_SYSTEM_ALL; ++i)
     delete mySystemGroups[i];
 }
 
-void ContactListModel::listUpdated(CICQSignal* sig)
+void ContactListModel::listUpdated(unsigned long subSignal, int argument, const UserId& userId)
 {
-  switch(sig->SubSignal())
+  switch(subSignal)
   {
     case LIST_INVALIDATE:
       reloadAll();
@@ -90,31 +98,29 @@ void ContactListModel::listUpdated(CICQSignal* sig)
 
     case LIST_CONTACT_ADDED:
     {
-      const ICQUser* u = gUserManager.FetchUser(sig->Id(), sig->PPID(), LOCK_R);
-      if (u == NULL)
+      LicqUserReadGuard u(userId);
+      if (!u.isLocked())
       {
-        char* ppidString = PPIDSTRING(sig->PPID());
-        gLog.Warn("%sContactList::listUpdated(): Invalid user received: %s (%s)\n",
-            L_ERRORxSTR, sig->Id(), ppidString);
-        delete[] ppidString;
+        gLog.Warn("%sContactList::listUpdated(): Invalid user received: %s\n",
+            L_ERRORxSTR, USERID_TOSTR(userId));
         break;
       }
-      addUser(u);
-      gUserManager.DropUser(u);
+      addUser(*u);
       break;
     }
     case LIST_CONTACT_REMOVED:
-      removeUser(sig->Id(), sig->PPID());
+      removeUser(userId);
       break;
 
     case LIST_GROUP_ADDED:
     {
-      unsigned short gid = sig->Argument();
+      // argument is group id
 
       // Set inital expanded state for new group
-      Config::ContactList::instance()->setGroupState(gid, true);
+      Config::ContactList::instance()->setGroupState(argument, true, true);
+      Config::ContactList::instance()->setGroupState(argument, false, true);
 
-      ContactGroup* newGroup = new ContactGroup(gid);
+      ContactGroup* newGroup = new ContactGroup(argument);
       connectGroup(newGroup);
       beginInsertRows(QModelIndex(), myUserGroups.size(), myUserGroups.size());
       myUserGroups.append(newGroup);
@@ -124,12 +130,12 @@ void ContactListModel::listUpdated(CICQSignal* sig)
 
     case LIST_GROUP_REMOVED:
     {
-      unsigned short gid = sig->Argument();
+      // argument is group id
 
       for (int i = 0; i < myUserGroups.size(); ++i)
       {
         ContactGroup* group = myUserGroups.at(i);
-        if (group->groupId() == gid)
+        if (group->groupId() == argument)
         {
           beginRemoveRows(QModelIndex(), i, i);
           myUserGroups.removeAll(group);
@@ -142,12 +148,12 @@ void ContactListModel::listUpdated(CICQSignal* sig)
 
     case LIST_GROUP_CHANGED:
     {
-      unsigned short gid = sig->Argument();
+      // argument is group id
 
       for (int i = 0; i < myUserGroups.size(); ++i)
       {
         ContactGroup* group = myUserGroups.at(i);
-        if (group->groupId() == gid)
+        if (group->groupId() == argument)
           group->update();
       }
       break;
@@ -169,39 +175,37 @@ void ContactListModel::listUpdated(CICQSignal* sig)
   }
 }
 
-void ContactListModel::userUpdated(CICQSignal* sig)
+void ContactListModel::userUpdated(const UserId& userId, unsigned long subSignal, int argument)
 {
   // Skip events for owners
-  if (gUserManager.FindOwner(sig->Id(), sig->PPID()) != NULL)
+  if (gUserManager.isOwner(userId))
     return;
 
-  ContactUserData* user = findUser(sig->Id(), sig->PPID());
+  ContactUserData* user = findUser(userId);
   if (user == NULL)
   {
-    char* ppidString = PPIDSTRING(sig->PPID());
-    gLog.Warn("%sContactList::userUpdated(): Invalid user received: %s (%s)\n",
-        L_ERRORxSTR, sig->Id(), ppidString);
-    delete[] ppidString;
+    gLog.Warn("%sContactList::userUpdated(): Invalid user received: %s\n",
+        L_ERRORxSTR, USERID_TOSTR(userId));
     return;
   }
 
   // Forward signal to the ContactUserData object
-  user->update(sig);
+  user->update(subSignal, argument);
 }
 
-void ContactListModel::updateUser(QString id, unsigned long ppid)
+void ContactListModel::updateUser(const UserId& userId)
 {
-  ContactUserData* userData = findUser(id, ppid);
+  ContactUserData* userData = findUser(userId);
   if (userData == NULL)
     return;
 
-  const ICQUser* u = gUserManager.FetchUser(id.toLatin1(), ppid, LOCK_R);
-  if (u == NULL)
+  LicqUserReadGuard u(userId);
+  if (!u.isLocked())
     return;
 
-  userData->updateAll(u);
-  updateUserGroups(userData, u);
-  gUserManager.DropUser(u);
+  userData->updateAll(*u);
+  userDataChanged(userData);
+  updateUserGroups(userData, *u);
 }
 
 void ContactListModel::configUpdated()
@@ -264,21 +268,33 @@ void ContactListModel::barDataChanged(ContactBar* bar, int row)
 
 void ContactListModel::groupBeginInsert(ContactGroup* group, int row)
 {
+  if (myBlockUpdates)
+    return;
+
   beginInsertRows(createIndex(groupRow(group), 0, group), row, row);
 }
 
 void ContactListModel::groupEndInsert()
 {
+  if (myBlockUpdates)
+    return;
+
   endInsertRows();
 }
 
 void ContactListModel::groupBeginRemove(ContactGroup* group, int row)
 {
+  if (myBlockUpdates)
+    return;
+
   beginRemoveRows(createIndex(groupRow(group), 0, group), row, row);
 }
 
 void ContactListModel::groupEndRemove()
 {
+  if (myBlockUpdates)
+    return;
+
   endRemoveRows();
 }
 
@@ -287,22 +303,32 @@ void ContactListModel::reloadAll()
   // Don't send out signals while reloading, the reset at the end will be enough
   myBlockUpdates = true;
 
-  // Clear the list of all old groups and users
-  clear();
-  myColumnCount = Config::ContactList::instance()->columnCount();
+  // Clear all old users
+  while (!myUsers.isEmpty())
+    delete myUsers.takeFirst();
+
+  // Clear all old user groups
+  // System groups and their bars are never removed.
+  while (!myUserGroups.isEmpty())
+    delete myUserGroups.takeFirst();
+
+  // Make sure column count is correct
+  configUpdated();
 
   // Add all groups
   ContactGroup* newGroup = new ContactGroup(0, tr("Other Users"));
   connectGroup(newGroup);
   myUserGroups.append(newGroup);
 
-  FOR_EACH_GROUP_START(LOCK_R)
+  const GroupMap* groups = gUserManager.LockGroupList(LOCK_R);
+  for (GroupMap::const_iterator i = groups->begin(); i != groups->end(); ++i)
   {
-    ContactGroup* group = new ContactGroup(pGroup);
+    LicqGroupReadGuard pGroup(i->second, false);
+    ContactGroup* group = new ContactGroup(*pGroup);
     connectGroup(group);
     myUserGroups.append(group);
   }
-  FOR_EACH_GROUP_END
+  gUserManager.UnlockGroupList();
 
   // Add all users
   FOR_EACH_USER_START(LOCK_R)
@@ -313,14 +339,15 @@ void ContactListModel::reloadAll()
 
   // Tell views that we have done major changes
   myBlockUpdates = false;
+
   reset();
 }
 
-ContactUserData* ContactListModel::findUser(QString id, unsigned long ppid) const
+ContactUserData* ContactListModel::findUser(const UserId& userId) const
 {
   foreach (ContactUserData* user, myUsers)
   {
-    if (user->id() == id && user->ppid() == ppid)
+    if (user->userId() == userId)
       return user;
   }
   return 0;
@@ -328,7 +355,7 @@ ContactUserData* ContactListModel::findUser(QString id, unsigned long ppid) cons
 
 int ContactListModel::groupRow(ContactGroup* group) const
 {
-  unsigned short groupId = group->groupId();
+  int groupId = group->groupId();
 
   if (groupId < SystemGroupOffset)
     return myUserGroups.indexOf(group);
@@ -338,32 +365,32 @@ int ContactListModel::groupRow(ContactGroup* group) const
     return -1;
 }
 
-void ContactListModel::addUser(const ICQUser* licqUser)
+void ContactListModel::addUser(const LicqUser* licqUser)
 {
   ContactUserData* newUser = new ContactUserData(licqUser, this);
   connect(newUser, SIGNAL(dataChanged(const ContactUserData*)),
       SLOT(userDataChanged(const ContactUserData*)));
-  connect(newUser, SIGNAL(updateUserGroups(ContactUserData*, const ICQUser*)),
-      SLOT(updateUserGroups(ContactUserData*, const ICQUser*)));
+  connect(newUser, SIGNAL(updateUserGroups(ContactUserData*, const LicqUser*)),
+      SLOT(updateUserGroups(ContactUserData*, const LicqUser*)));
 
   myUsers.append(newUser);
   updateUserGroups(newUser, licqUser);
 }
 
-void ContactListModel::updateUserGroups(ContactUserData* user, const ICQUser* licqUser)
+void ContactListModel::updateUserGroups(ContactUserData* user, const LicqUser* licqUser)
 {
   // Check which user groups the user should be member of
   for (int i = 0; i < myUserGroups.size(); ++i)
   {
     ContactGroup* group = myUserGroups.at(i);
-    unsigned short gid = group->groupId();
+    int gid = group->groupId();
     bool shouldBeMember = (gid != 0 && licqUser->GetInGroup(GROUPS_USER, gid)) ||
         (gid == 0 && licqUser->GetGroups().empty() && !licqUser->IgnoreList());
     updateUserGroup(user, group, shouldBeMember);
   }
 
   // Check which system groups the user should be member of
-  for (unsigned long i = 0; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 0; i < NUM_GROUPS_SYSTEM_ALL; ++i)
   {
     updateUserGroup(user, mySystemGroups[i], licqUser->GetInGroup(GROUPS_SYSTEM, i));
   }
@@ -384,38 +411,27 @@ void ContactListModel::updateUserGroup(ContactUserData* user, ContactGroup* grou
     delete member;
 }
 
-void ContactListModel::removeUser(QString id, unsigned long ppid)
+void ContactListModel::removeUser(const UserId& userId)
 {
-  ContactUserData* user = findUser(id, ppid);
+  ContactUserData* user = findUser(userId);
   if (user == NULL)
     return;
 
   foreach (ContactUser* u, user->groupList())
   {
-    ContactGroup* group = u->group();
-    int pos = group->indexOf(u);
-    beginRemoveRows(createIndex(groupRow(group), 0, group), pos, pos);
+    // Only delete the contact here, the group will trigger signals to be emitted
     delete u;
-    endRemoveRows();
   }
 
   myUsers.removeAll(user);
   delete user;
 }
 
-void ContactListModel::clear()
-{
-  // Clear all users and user groups.
-  // System groups and their bars are never removed.
-  while (!myUsers.isEmpty())
-    delete myUsers.takeFirst();
-
-  while (!myUserGroups.isEmpty())
-    delete myUserGroups.takeFirst();
-}
-
 QModelIndex ContactListModel::index(int row, int column, const QModelIndex& parent) const
 {
+  if (row < 0 || column < 0 || column >= myColumnCount)
+    return QModelIndex();
+
   // If root item is requested we return a group
   if (!parent.isValid())
   {
@@ -496,7 +512,7 @@ QVariant ContactListModel::data(const QModelIndex& index, int role) const
 Qt::ItemFlags ContactListModel::flags(const QModelIndex& index) const
 {
   if (!index.isValid())
-    return Qt::ItemIsEnabled;
+    return 0;
 
   Qt::ItemFlags f = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
 
@@ -525,9 +541,9 @@ QVariant ContactListModel::headerData(int section, Qt::Orientation orientation, 
   return QVariant();
 }
 
-QModelIndex ContactListModel::userIndex(QString id, unsigned long ppid, int column) const
+QModelIndex ContactListModel::userIndex(const UserId& userId, int column) const
 {
-  ContactUserData* userData = findUser(id, ppid);
+  ContactUserData* userData = findUser(userId);
   if (userData != NULL)
   {
     // Find the user in the "All Users" group, this will not find users on ignore list
@@ -539,7 +555,7 @@ QModelIndex ContactListModel::userIndex(QString id, unsigned long ppid, int colu
   return QModelIndex();
 }
 
-QModelIndex ContactListModel::groupIndex(GroupType type, unsigned long id) const
+QModelIndex ContactListModel::groupIndex(GroupType type, int id) const
 {
   if (type == GROUPS_SYSTEM && id < NUM_GROUPS_SYSTEM_ALL)
   {
@@ -558,7 +574,7 @@ QModelIndex ContactListModel::groupIndex(GroupType type, unsigned long id) const
   return QModelIndex();
 }
 
-QModelIndex ContactListModel::groupIndex(unsigned long id) const
+QModelIndex ContactListModel::groupIndex(int id) const
 {
   if (id >= SystemGroupOffset)
     return groupIndex(GROUPS_SYSTEM, id - SystemGroupOffset);
@@ -568,5 +584,13 @@ QModelIndex ContactListModel::groupIndex(unsigned long id) const
 
 bool ContactListModel::setData(const QModelIndex& index, const QVariant& value, int role)
 {
+  if (!index.isValid() || static_cast<ContactItem*>(index.internalPointer())->itemType() != UserItem)
+    return false;
+
   return static_cast<ContactItem*>(index.internalPointer())->setData(value, role);
+}
+
+uint qHash(const UserId& userId)
+{
+  return qHash(userId.c_str());
 }

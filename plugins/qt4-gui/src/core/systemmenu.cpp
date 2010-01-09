@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #include "config/contactlist.h"
 #include "config/general.h"
 #include "config/iconmanager.h"
+#include "config/shortcuts.h"
 
 #include "contactlist/contactlist.h"
 
@@ -46,10 +47,7 @@
 #include "dialogs/reqauthdlg.h"
 #include "dialogs/searchuserdlg.h"
 #include "dialogs/securitydlg.h"
-#include "dialogs/skinbrowser.h"
-#ifdef HAVE_LIBGPGME
 #include "dialogs/gpgkeymanager.h"
-#endif
 
 #include "helpers/licqstrings.h"
 #include "settings/settingsdlg.h"
@@ -90,7 +88,7 @@ SystemMenu::SystemMenu(QWidget* parent)
   myOwnerAdmMenu->addAction(tr("&View System Messages..."), LicqGui::instance(), SLOT(showAllOwnerEvents()));
   myOwnerAdmMenu->addSeparator();
   myOwnerAdmSeparator = myOwnerAdmMenu->addSeparator();
-  myOwnerAdmMenu->addAction(tr("&Owner Manager..."), this, SLOT(showOwnerManagerDlg()));
+  myAccountManagerAction = myOwnerAdmMenu->addAction(tr("&Account Manager..."), this, SLOT(showOwnerManagerDlg()));
   myOwnerAdmMenu->addAction(tr("ICQ &Security Options..."), this, SLOT(showSecurityDlg()));
   myOwnerAdmMenu->addAction(tr("ICQ &Random Chat Group..."), this, SLOT(showRandomChatGroupDlg()));
   myOwnerAdmMenu->addSeparator();
@@ -104,14 +102,12 @@ SystemMenu::SystemMenu(QWidget* parent)
   myUserReqAutorizeAction = myUserAdmMenu->addAction(tr("Re&quest Authorization..."), this, SLOT(showReqAuthDlg()));
   myUserAdmMenu->addAction(tr("R&andom Chat..."), this, SLOT(showRandomChatSearchDlg()));
   myUserAdmMenu->addSeparator();
-  a = myUserAdmMenu->addAction(tr("&Popup All Messages..."), LicqGui::instance(), SLOT(showAllEvents()));
-  a->setShortcut(Qt::CTRL + Qt::Key_P);
-  myUserAdmMenu->addAction(tr("Edit &Groups..."), this, SLOT(showEditGrpDlg()));
+  myUserPopupAllAction = myUserAdmMenu->addAction(tr("&Popup All Messages..."), LicqGui::instance(), SLOT(showAllEvents()));
+  myEditGroupsAction = myUserAdmMenu->addAction(tr("Edit &Groups..."), this, SLOT(showEditGrpDlg()));
   myUserAdmMenu->addSeparator();
   myUserAdmMenu->addAction(tr("Update All Users"), this, SLOT(updateAllUsers()));
   myUserAdmMenu->addAction(tr("Update Current Group"), this, SLOT(updateAllUsersInGroup()));
-  a = myUserAdmMenu->addAction(tr("&Redraw User Window"), LicqGui::instance()->contactList(), SLOT(reloadAll()));
-  a->setShortcut(Qt::CTRL + Qt::Key_L);
+  myRedrawContactListAction = myUserAdmMenu->addAction(tr("&Redraw User Window"), LicqGui::instance()->contactList(), SLOT(reloadAll()));
   myUserAdmMenu->addAction(tr("&Save All Users"), this, SLOT(saveAllUsers()));
 
   // Sub menu Follow Me
@@ -135,45 +131,36 @@ SystemMenu::SystemMenu(QWidget* parent)
   myStatusSeparator = myStatusMenu->addSeparator();
   myStatusMenu->addMenu(myFollowMeMenu);
   myStatusMenu->addSeparator();
-#define ADD_MAINSTATUS(var, text, data, shortcut) \
+#define ADD_MAINSTATUS(var, text, data) \
     var = myStatusActions->addAction(text); \
     var->setData(data); \
-    var->setShortcut(QKeySequence(shortcut)); \
     myStatusMenu->addAction(var);
   ADD_MAINSTATUS(myStatusOnlineAction,
       LicqStrings::getStatus(ICQ_STATUS_ONLINE, false),
-      ICQ_STATUS_ONLINE,
-      Qt::ALT + Qt::Key_O);
+      ICQ_STATUS_ONLINE)
   ADD_MAINSTATUS(myStatusAwayAction,
       LicqStrings::getStatus(ICQ_STATUS_AWAY, false),
-      ICQ_STATUS_AWAY,
-      Qt::ALT + Qt::Key_A);
+      ICQ_STATUS_AWAY)
   ADD_MAINSTATUS(myStatusNotAvailableAction,
       LicqStrings::getStatus(ICQ_STATUS_NA, false),
-      ICQ_STATUS_NA,
-      Qt::ALT + Qt::Key_N);
+      ICQ_STATUS_NA)
   ADD_MAINSTATUS(myStatusOccupiedAction,
       LicqStrings::getStatus(ICQ_STATUS_OCCUPIED, false),
-      ICQ_STATUS_OCCUPIED,
-      Qt::ALT + Qt::Key_C);
+      ICQ_STATUS_OCCUPIED)
   ADD_MAINSTATUS(myStatusDoNotDisturbAction,
       LicqStrings::getStatus(ICQ_STATUS_DND, false),
-      ICQ_STATUS_DND,
-      Qt::ALT + Qt::Key_D);
-  ADD_MAINSTATUS(myStatusFreeForChaActiont,
+      ICQ_STATUS_DND)
+  ADD_MAINSTATUS(myStatusFreeForChatAction,
       LicqStrings::getStatus(ICQ_STATUS_FREEFORCHAT, false),
-      ICQ_STATUS_FREEFORCHAT,
-      Qt::ALT + Qt::Key_H);
+      ICQ_STATUS_FREEFORCHAT)
   ADD_MAINSTATUS(myStatusOfflineAction,
       LicqStrings::getStatus(ICQ_STATUS_OFFLINE, false),
-      ICQ_STATUS_OFFLINE,
-      Qt::ALT + Qt::Key_F);
+      ICQ_STATUS_OFFLINE)
 #undef ADD_MAINSTATUS
   myStatusMenu->addSeparator();
   myStatusInvisibleAction = myStatusMenu->addAction(
       LicqStrings::getStatus(ICQ_STATUS_FxPRIVATE, false),
       this, SLOT(toggleMainInvisibleStatus()));
-  myStatusInvisibleAction->setShortcut(Qt::ALT + Qt::Key_I);
   myStatusInvisibleAction->setCheckable(true);
 
   // Sub menu Group
@@ -183,13 +170,13 @@ SystemMenu::SystemMenu(QWidget* parent)
   connect(myUserGroupActions, SIGNAL(triggered(QAction*)), SLOT(setCurrentGroup(QAction*)));
 #define ADD_SYSTEMGROUP(group) \
     a = myUserGroupActions->addAction(LicqStrings::getSystemGroupName(group)); \
-    a->setData(static_cast<unsigned int>(ContactListModel::SystemGroupOffset + group)); \
+    a->setData(ContactListModel::SystemGroupOffset + group); \
     a->setCheckable(true); \
     myGroupMenu->addAction(a);
   ADD_SYSTEMGROUP(GROUP_ALL_USERS);
   myGroupMenu->addSeparator();
   myGroupSeparator = myGroupMenu->addSeparator();
-  for (unsigned long i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
   {
     ADD_SYSTEMGROUP(i);
   }
@@ -211,44 +198,40 @@ SystemMenu::SystemMenu(QWidget* parent)
   myLogWinAction = addAction(tr("&Network Window..."), LicqGui::instance()->logWindow(), SLOT(show()));
   myMiniModeAction = addAction(tr("&Mini Mode"), Config::General::instance(), SLOT(setMiniMode(bool)));
   myMiniModeAction->setCheckable(true);
-  myMiniModeAction->setShortcut(Qt::CTRL + Qt::Key_M);
   myShowOfflineAction = addAction(tr("Show Offline &Users"), Config::ContactList::instance(), SLOT(setShowOffline(bool)));
   myShowOfflineAction->setCheckable(true);
-  myShowOfflineAction->setShortcut(Qt::CTRL + Qt::Key_O);
   myThreadViewAction = addAction(tr("&Thread Group View"), Config::ContactList::instance(), SLOT(setThreadView(bool)));
   myThreadViewAction->setCheckable(true);
-  myThreadViewAction->setShortcut(Qt::CTRL + Qt::Key_T);
   myShowEmptyGroupsAction = addAction(tr("Sh&ow Empty Groups"), Config::ContactList::instance(), SLOT(setShowEmptyGroups(bool)));
   myShowEmptyGroupsAction->setCheckable(true);
   myOptionsAction = addAction(tr("S&ettings..."), this, SLOT(showSettingsDlg()));
-  mySkinBrowserAction = addAction(tr("Sk&in Browser..."), this, SLOT(showSkinBrowser()));
   myPluginManagerAction = addAction(tr("&Plugin Manager..."), this, SLOT(showPluginDlg()));
-#ifdef HAVE_LIBGPGME
   myKeyManagerAction = addAction(tr("GPG &Key Manager..."), this, SLOT(showGPGKeyManager()));
-#endif
+  if (!gLicqDaemon->haveGpgSupport())
+    myKeyManagerAction->setVisible(false);
   addSeparator();
   mySaveOptionsAction = addAction(tr("Sa&ve Settings"), LicqGui::instance(), SLOT(saveConfig()));
   addMenu(myHelpMenu);
   myShutdownAction = addAction(tr("E&xit"), gMainWindow, SLOT(slot_shutdown()));
-  QList<QKeySequence> shutdownShortcuts;
-  shutdownShortcuts << (Qt::CTRL + Qt::Key_Q) << (Qt::CTRL + Qt::Key_X);
-  myShutdownAction->setShortcuts(shutdownShortcuts);
 
   // The following shortcuts aren't shown in the menu but were
   // placed here to be groupped with other system actions.
-  a = new QAction("Popup Next Message", gMainWindow);
-  a->setShortcut(Qt::CTRL + Qt::Key_I);
-  gMainWindow->addAction(a);
-  connect(a, SIGNAL(triggered()), LicqGui::instance(), SLOT(showNextEvent()));
-  a = new QAction("Hide Mainwinow", gMainWindow);
-  a->setShortcut(Qt::CTRL + Qt::Key_H);
-  gMainWindow->addAction(a);
-  connect(a, SIGNAL(triggered()), gMainWindow, SLOT(hide()));
+  myPopupMessageAction = new QAction("Popup Next Message", gMainWindow);
+  gMainWindow->addAction(myPopupMessageAction);
+  connect(myPopupMessageAction, SIGNAL(triggered()), LicqGui::instance(), SLOT(showNextEvent()));
+  myHideMainwinAction = new QAction("Hide Mainwindow", gMainWindow);
+  gMainWindow->addAction(myHideMainwinAction);
+  connect(myHideMainwinAction, SIGNAL(triggered()), gMainWindow, SLOT(hide()));
+  myShowHeaderAction = new QAction("Show Column Headers", gMainWindow);
+  gMainWindow->addAction(myShowHeaderAction);
+  connect(myShowHeaderAction, SIGNAL(triggered()), Config::ContactList::instance(), SLOT(toggleShowHeader()));
 
   updateGroups();
   updateIcons();
+  updateShortcuts();
 
   connect(IconManager::instance(), SIGNAL(iconsChanged()), SLOT(updateIcons()));
+  connect(Config::Shortcuts::instance(), SIGNAL(shortcutsChanged()), SLOT(updateShortcuts()));
 
   connect(this, SIGNAL(aboutToShow()), SLOT(aboutToShowMenu()));
   connect(myFollowMeMenu, SIGNAL(aboutToShow()), SLOT(aboutToShowFollowMeMenu()));
@@ -271,9 +254,7 @@ void SystemMenu::updateIcons()
 {
   IconManager* iconman = IconManager::instance();
 
-#ifdef HAVE_LIBGPGME
   myKeyManagerAction->setIcon(iconman->getIcon(IconManager::GpgKeyIcon));
-#endif
 
   myUserSearchAction->setIcon(iconman->getIcon(IconManager::SearchIcon));
   myUserAutorizeAction->setIcon(iconman->getIcon(IconManager::AuthorizeMessageIcon));
@@ -284,7 +265,7 @@ void SystemMenu::updateIcons()
   myStatusNotAvailableAction->setIcon(iconman->iconForStatus(ICQ_STATUS_NA));
   myStatusOccupiedAction->setIcon(iconman->iconForStatus(ICQ_STATUS_OCCUPIED));
   myStatusDoNotDisturbAction->setIcon(iconman->iconForStatus(ICQ_STATUS_DND));
-  myStatusFreeForChaActiont->setIcon(iconman->iconForStatus(ICQ_STATUS_FREEFORCHAT));
+  myStatusFreeForChatAction->setIcon(iconman->iconForStatus(ICQ_STATUS_FREEFORCHAT));
   myStatusOfflineAction->setIcon(iconman->iconForStatus(ICQ_STATUS_OFFLINE));
   myStatusInvisibleAction->setIcon(iconman->iconForStatus(ICQ_STATUS_FxPRIVATE));
 
@@ -312,6 +293,37 @@ void SystemMenu::updateGroups()
     myGroupMenu->insertAction(myGroupSeparator, a);
   }
   FOR_EACH_GROUP_END
+}
+
+void SystemMenu::updateShortcuts()
+{
+  Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+
+  mySetArAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinSetAutoResponse));
+  myLogWinAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinNetworkLog));
+  myMiniModeAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinToggleMiniMode));
+  myShowOfflineAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinToggleShowOffline));
+  myThreadViewAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinToggleThreadView));
+  myShowEmptyGroupsAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinToggleEmptyGroups));
+  myOptionsAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinSettings));
+  myShutdownAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinExit));
+  myHideMainwinAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinHide));
+
+  myStatusOnlineAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusOnline));
+  myStatusAwayAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusAway));
+  myStatusNotAvailableAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusNotAvailable));
+  myStatusOccupiedAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusOccupied));
+  myStatusDoNotDisturbAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusDoNotDisturb));
+  myStatusFreeForChatAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusFreeForChat));
+  myStatusOfflineAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusOffline));
+  myStatusInvisibleAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinStatusInvisible));
+
+  myAccountManagerAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinAccountManager));
+  myPopupMessageAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinPopupMessage));
+  myUserPopupAllAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinPopupAllMessages));
+  myEditGroupsAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinEditGroups));
+  myRedrawContactListAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinRedrawContactList));
+  myShowHeaderAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinToggleShowHeader));
 }
 
 void SystemMenu::addOwner(unsigned long ppid)
@@ -503,7 +515,7 @@ void SystemMenu::showSearchUserDlg()
 
 void SystemMenu::showAuthUserDlg()
 {
-  new AuthUserDlg(0, 0, true);
+  new AuthUserDlg(USERID_NONE, true);
 }
 
 void SystemMenu::showReqAuthDlg()
@@ -526,11 +538,6 @@ void SystemMenu::showSettingsDlg()
   SettingsDlg::show();
 }
 
-void SystemMenu::showSkinBrowser()
-{
-  SkinBrowserDlg::showSkinBrowserDlg();
-}
-
 void SystemMenu::showPluginDlg()
 {
   PluginDlg::showPluginDlg();
@@ -538,9 +545,7 @@ void SystemMenu::showPluginDlg()
 
 void SystemMenu::showGPGKeyManager()
 {
-#ifdef HAVE_LIBGPGME
   new GPGKeyManager();
-#endif
 }
 
 
@@ -674,24 +679,12 @@ void OwnerData::aboutToShowStatusMenu()
 
 void OwnerData::viewInfo()
 {
-  const ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_R);
-  if (o == NULL)
-    return;
-
-  QString userid = o->IdString();
-  gUserManager.DropOwner(o);
-  LicqGui::instance()->showInfoDialog(mnuUserGeneral, userid, myPpid);
+  LicqGui::instance()->showInfoDialog(mnuUserGeneral, gUserManager.ownerUserId(myPpid));
 }
 
 void OwnerData::viewHistory()
 {
-  const ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_R);
-  if (o == NULL)
-    return;
-
-  QString userid = o->IdString();
-  gUserManager.DropOwner(o);
-  new HistoryDlg(userid, myPpid);
+  new HistoryDlg(gUserManager.ownerUserId(myPpid));
 }
 
 void OwnerData::setStatus(QAction* action)

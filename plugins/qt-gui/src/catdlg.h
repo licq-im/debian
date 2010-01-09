@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2006 Licq developers
+ * Copyright (C) 2004-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,17 +32,16 @@ class EditCategoryDlg : public QDialog
 {
   Q_OBJECT
 public:
-  EditCategoryDlg(QWidget *parent, ICQUserCategory *uCat);
+  EditCategoryDlg(QWidget* parent, UserCat cat, const UserCategoryMap& category);
 
 protected:
-  static const unsigned MAX_CAT = ICQUserCategory::MAX_CATEGORIES;
-  QComboBox *cbCat[MAX_CAT];
-  QLineEdit *leDescr[MAX_CAT];
+  QComboBox* cbCat[MAX_CATEGORIES];
+  QLineEdit* leDescr[MAX_CATEGORIES];
   const struct SCategory *(*m_fGetEntry)(unsigned short);
-  UserCat m_uc;
+  UserCat myUserCat;
   unsigned short m_nCats;
 signals:
-  void updated(ICQUserCategory *);
+  void updated(UserCat cat, const UserCategoryMap& category);
 
 protected slots:
   void ok();

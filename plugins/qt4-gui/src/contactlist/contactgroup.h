@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007 Licq developers
+ * Copyright (C) 2007-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,7 +51,7 @@ public:
    * @param id Group id
    * @param name Group name
    */
-  ContactGroup(unsigned short id, QString name = QString());
+  ContactGroup(int id, const QString& name = QString());
 
   /**
    * Constructor, creates an empty group
@@ -73,7 +73,7 @@ public:
   /**
    * Get the Licq id for this group
    */
-  unsigned short groupId() const
+  int groupId() const
   { return myGroupId; }
 
   /**
@@ -144,8 +144,9 @@ public:
    * Update visibility counter
    *
    * @param increase True if counter should be increased
+   * @param subGroup Current subgroup for user that also should be updated
    */
-  void updateVisibility(bool increase);
+  void updateVisibility(bool increase, ContactListModel::SubGroupType subGroup);
 
   /**
    * Get data for this group
@@ -208,9 +209,9 @@ signals:
   void endRemove();
 
 private:
-  unsigned short myGroupId;
+  int myGroupId;
   QString myName;
-  unsigned short mySortKey;
+  int mySortKey;
   int myEvents;
   QList<ContactUser*> myUsers;
   ContactBar* myBars[3];

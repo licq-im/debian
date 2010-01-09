@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2006 Licq developers
+ * Copyright (C) 2000-2009 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <licq_events.h>
 #include <licq_icqd.h>
 
 #include "core/licqgui.h"
@@ -39,16 +40,15 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::KeyRequestDlg */
 
-KeyRequestDlg::KeyRequestDlg(QString id, unsigned long ppid, QWidget* parent)
+KeyRequestDlg::KeyRequestDlg(const UserId& userId, QWidget* parent)
   : QDialog(parent),
-    myId(id),
-    myPpid(ppid),
+    myUserId(userId),
     myIcqEventTag(0)
 {
   Support::setWidgetProps(this, "KeyRequestDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
 
-  const ICQUser* u = gUserManager.FetchUser(myId.toLatin1(), myPpid, LOCK_R);
+  const LicqUser* u = gUserManager.fetchUser(myUserId);
   setWindowTitle(tr("Licq - Secure Channel with %1")
       .arg(QString::fromUtf8(u->GetAlias())));
 
@@ -130,7 +130,7 @@ KeyRequestDlg::~KeyRequestDlg()
 void KeyRequestDlg::startSend()
 {
   connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(ICQEvent*)), SLOT(doneEvent(ICQEvent*)));
+      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneEvent(const LicqEvent*)));
   btnSend->setEnabled(false);
 
   if (myOpen)
@@ -147,17 +147,15 @@ void KeyRequestDlg::startSend()
 
 void KeyRequestDlg::openConnection()
 {
-  if (myPpid == LICQ_PPID)
-    myIcqEventTag = gLicqDaemon->icqOpenSecureChannel(myId.toLatin1().data());
+  myIcqEventTag = gLicqDaemon->secureChannelOpen(myUserId);
 }
 
 void KeyRequestDlg::closeConnection()
 {
-  if (myPpid == LICQ_PPID)
-    myIcqEventTag = gLicqDaemon->icqCloseSecureChannel(myId.toLatin1().data());
+  myIcqEventTag = gLicqDaemon->secureChannelClose(myUserId);
 }
 
-void KeyRequestDlg::doneEvent(ICQEvent* e)
+void KeyRequestDlg::doneEvent(const LicqEvent* e)
 {
   if (!e->Equals(myIcqEventTag))
     return;
