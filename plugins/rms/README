@@ -1,0 +1,45 @@
+Licq ICQ Remote Management Service Plugin
+___________________________
+
+
+QUICK INSTALLATION
+
+To get up and running quickly (assuming you are familiar with loading
+plugins for Licq), simple run
+
+configure
+make
+make install
+
+And then move licq_rms.conf to ~/.licq/licq_rms.conf and edit this
+file appropriately.
+
+
+DESCRIPTION
+
+This program is a remote management server for Licq.
+
+
+RUNNING
+
+Loading and running the plugin is simply a matter of adding a "-p rms"
+to your Licq command line arguments.  Remember that if any plugins are
+loaded from the command line then all plugins must be specified.  In other
+words if you are using the qt-gui plugin and also wish to start the forwarder 
+plugin, run:
+licq [options] -p qt-gui -p forwarder -- [ qt-gui options ] -- [ rms options ]
+
+
+CONFIGURING
+
+The plugin uses a small configuration file (~/.licq/licq_rms.conf) which must
+be set up by hand.  A sample is included with the source, and includes help on
+the various settings.
+
+
+PROBLEMS
+
+If there are any problems, report them to jon@licq.org.
+
+
+

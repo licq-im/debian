@@ -1,0 +1,4385 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR Licq Developers
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: licq-dev@googlegroups.com\n"
+"POT-Creation-Date: 2008-09-13 11:46+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/buffer.cpp:506
+#, c-format
+msgid "%sPackUnsignedLong(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:519
+#, c-format
+msgid ""
+"%sPackUnsignedLongBE(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:532
+#, c-format
+msgid "%sPackChar(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:545 src/buffer.cpp:559
+#, c-format
+msgid "%sPack(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:583
+#, c-format
+msgid "%sPackString(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:603
+#, c-format
+msgid ""
+"%sPackUnsignedShort(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:616
+#, c-format
+msgid ""
+"%sPackUnsignedShortBE(): Trying to pack more data than CBuffer can hold!\n"
+msgstr ""
+
+#: src/buffer.cpp:670
+#, c-format
+msgid "%sRead too much TLV data!\n"
+msgstr ""
+
+#: src/buffer.cpp:678
+#, c-format
+msgid "%sUnable to read requested amount of TLV data!\n"
+msgstr ""
+
+#: src/countrycodes.c:23 src/languagecodes.c:23
+msgid "Unspecified"
+msgstr ""
+
+#: src/countrycodes.c:24
+msgid "Afghanistan"
+msgstr ""
+
+#: src/countrycodes.c:25
+msgid "Albania"
+msgstr ""
+
+#: src/countrycodes.c:26
+msgid "Algeria"
+msgstr ""
+
+#: src/countrycodes.c:27
+msgid "American Samoa"
+msgstr ""
+
+#: src/countrycodes.c:28
+msgid "Andorra"
+msgstr ""
+
+#: src/countrycodes.c:29
+msgid "Angola"
+msgstr ""
+
+#: src/countrycodes.c:30
+msgid "Anguilla"
+msgstr ""
+
+#: src/countrycodes.c:31
+msgid "Antigua and Barbuda"
+msgstr ""
+
+#: src/countrycodes.c:32
+msgid "Antigua"
+msgstr ""
+
+#: src/countrycodes.c:33
+msgid "Antilles"
+msgstr ""
+
+#: src/countrycodes.c:34
+msgid "Argentina"
+msgstr ""
+
+#: src/countrycodes.c:35
+msgid "Armenia"
+msgstr ""
+
+#: src/countrycodes.c:36
+msgid "Aruba"
+msgstr ""
+
+#: src/countrycodes.c:37
+msgid "Ascension Island"
+msgstr ""
+
+#: src/countrycodes.c:38
+msgid "Australia"
+msgstr ""
+
+#: src/countrycodes.c:39
+msgid "Austria"
+msgstr ""
+
+#: src/countrycodes.c:40
+msgid "Azerbaijan"
+msgstr ""
+
+#: src/countrycodes.c:41
+msgid "Bahamas"
+msgstr ""
+
+#: src/countrycodes.c:42
+msgid "Bahrain"
+msgstr ""
+
+#: src/countrycodes.c:43
+msgid "Bangladesh"
+msgstr ""
+
+#: src/countrycodes.c:44
+msgid "Barbados"
+msgstr ""
+
+#: src/countrycodes.c:45
+msgid "Barbuda"
+msgstr ""
+
+#: src/countrycodes.c:46
+msgid "Belarus"
+msgstr ""
+
+#: src/countrycodes.c:47
+msgid "Belgium"
+msgstr ""
+
+#: src/countrycodes.c:48
+msgid "Belize"
+msgstr ""
+
+#: src/countrycodes.c:49
+msgid "Benin"
+msgstr ""
+
+#: src/countrycodes.c:50
+msgid "Bermuda"
+msgstr ""
+
+#: src/countrycodes.c:51
+msgid "Bhutan"
+msgstr ""
+
+#: src/countrycodes.c:52
+msgid "Bolivia"
+msgstr ""
+
+#: src/countrycodes.c:53
+msgid "Bosnia and Herzegovina"
+msgstr ""
+
+#: src/countrycodes.c:54
+msgid "Botswana"
+msgstr ""
+
+#: src/countrycodes.c:55
+msgid "Brazil"
+msgstr ""
+
+#: src/countrycodes.c:56
+msgid "British Virgin Islands"
+msgstr ""
+
+#: src/countrycodes.c:57
+msgid "Brunei"
+msgstr ""
+
+#: src/countrycodes.c:58
+msgid "Bulgaria"
+msgstr ""
+
+#: src/countrycodes.c:59
+msgid "Burkina Faso"
+msgstr ""
+
+#: src/countrycodes.c:60
+msgid "Burundi"
+msgstr ""
+
+#: src/countrycodes.c:61
+msgid "Cambodia"
+msgstr ""
+
+#: src/countrycodes.c:62
+msgid "Cameroon"
+msgstr ""
+
+#: src/countrycodes.c:63
+msgid "Canada"
+msgstr ""
+
+#: src/countrycodes.c:64
+msgid "Canary Islands"
+msgstr ""
+
+#: src/countrycodes.c:65
+msgid "Cape Verde Islands"
+msgstr ""
+
+#: src/countrycodes.c:66
+msgid "Cayman Islands"
+msgstr ""
+
+#: src/countrycodes.c:67
+msgid "Central African Republic"
+msgstr ""
+
+#: src/countrycodes.c:68
+msgid "Chad"
+msgstr ""
+
+#: src/countrycodes.c:69
+msgid "Chile, Republic of"
+msgstr ""
+
+#: src/countrycodes.c:70
+msgid "China"
+msgstr ""
+
+#: src/countrycodes.c:71
+msgid "Christmas Island"
+msgstr ""
+
+#: src/countrycodes.c:72
+msgid "Cocos (Keeling) Islands"
+msgstr ""
+
+#: src/countrycodes.c:73
+msgid "Cocos-Keeling Islands"
+msgstr ""
+
+#: src/countrycodes.c:74
+msgid "Colombia"
+msgstr ""
+
+#: src/countrycodes.c:75
+msgid "Comoros"
+msgstr ""
+
+#: src/countrycodes.c:76
+msgid "Congo, (Republic of the)"
+msgstr ""
+
+#: src/countrycodes.c:77
+msgid "Congo, Democratic Republic of (Zaire)"
+msgstr ""
+
+#: src/countrycodes.c:78
+msgid "Cook Islands"
+msgstr ""
+
+#: src/countrycodes.c:79
+msgid "Costa Rica"
+msgstr ""
+
+#: src/countrycodes.c:80
+msgid "Cote d'Ivoire"
+msgstr ""
+
+#: src/countrycodes.c:81
+msgid "Croatia"
+msgstr ""
+
+#: src/countrycodes.c:82
+msgid "Cuba"
+msgstr ""
+
+#: src/countrycodes.c:83
+msgid "Cyprus"
+msgstr ""
+
+#: src/countrycodes.c:84
+msgid "Czech Republic"
+msgstr ""
+
+#: src/countrycodes.c:85
+msgid "Denmark"
+msgstr ""
+
+#: src/countrycodes.c:86
+msgid "Diego Garcia"
+msgstr ""
+
+#: src/countrycodes.c:87
+msgid "Djibouti"
+msgstr ""
+
+#: src/countrycodes.c:88
+msgid "Dominica"
+msgstr ""
+
+#: src/countrycodes.c:89
+msgid "Dominican Republic"
+msgstr ""
+
+#: src/countrycodes.c:90
+msgid "Ecuador"
+msgstr ""
+
+#: src/countrycodes.c:91
+msgid "Egypt"
+msgstr ""
+
+#: src/countrycodes.c:92
+msgid "El Salvador"
+msgstr ""
+
+#: src/countrycodes.c:93
+msgid "Equatorial Guinea"
+msgstr ""
+
+#: src/countrycodes.c:94
+msgid "Eritrea"
+msgstr ""
+
+#: src/countrycodes.c:95
+msgid "Estonia"
+msgstr ""
+
+#: src/countrycodes.c:96
+msgid "Ethiopia"
+msgstr ""
+
+#: src/countrycodes.c:97
+msgid "Faeroe Islands"
+msgstr ""
+
+#: src/countrycodes.c:98
+msgid "Falkland Islands"
+msgstr ""
+
+#: src/countrycodes.c:99
+msgid "Fiji"
+msgstr ""
+
+#: src/countrycodes.c:100
+msgid "Finland"
+msgstr ""
+
+#: src/countrycodes.c:101
+msgid "France"
+msgstr ""
+
+#: src/countrycodes.c:102
+msgid "French Antilles"
+msgstr ""
+
+#: src/countrycodes.c:103
+msgid "French Guiana"
+msgstr ""
+
+#: src/countrycodes.c:104
+msgid "French Polynesia"
+msgstr ""
+
+#: src/countrycodes.c:105
+msgid "Gabon"
+msgstr ""
+
+#: src/countrycodes.c:106
+msgid "Gambia"
+msgstr ""
+
+#: src/countrycodes.c:107
+msgid "Georgia"
+msgstr ""
+
+#: src/countrycodes.c:108
+msgid "Germany"
+msgstr ""
+
+#: src/countrycodes.c:109
+msgid "Ghana"
+msgstr ""
+
+#: src/countrycodes.c:110
+msgid "Gibraltar"
+msgstr ""
+
+#: src/countrycodes.c:111
+msgid "Greece"
+msgstr ""
+
+#: src/countrycodes.c:112
+msgid "Greenland"
+msgstr ""
+
+#: src/countrycodes.c:113
+msgid "Grenada"
+msgstr ""
+
+#: src/countrycodes.c:114
+msgid "Guadeloupe"
+msgstr ""
+
+#: src/countrycodes.c:115
+msgid "Guam, US Territory of"
+msgstr ""
+
+#: src/countrycodes.c:116
+msgid "Guatemala"
+msgstr ""
+
+#: src/countrycodes.c:117
+msgid "Guinea"
+msgstr ""
+
+#: src/countrycodes.c:118
+msgid "Guinea-Bissau"
+msgstr ""
+
+#: src/countrycodes.c:119
+msgid "Guyana"
+msgstr ""
+
+#: src/countrycodes.c:120
+msgid "Haiti"
+msgstr ""
+
+#: src/countrycodes.c:121
+msgid "Honduras"
+msgstr ""
+
+#: src/countrycodes.c:122
+msgid "Hong Kong"
+msgstr ""
+
+#: src/countrycodes.c:123
+msgid "Hungary"
+msgstr ""
+
+#: src/countrycodes.c:124
+msgid "Iceland"
+msgstr ""
+
+#: src/countrycodes.c:125
+msgid "India"
+msgstr ""
+
+#: src/countrycodes.c:126
+msgid "Indonesia"
+msgstr ""
+
+#: src/countrycodes.c:127
+msgid "Iran (Islamic Republic of)"
+msgstr ""
+
+#: src/countrycodes.c:128
+msgid "Iraq"
+msgstr ""
+
+#: src/countrycodes.c:129
+msgid "Ireland"
+msgstr ""
+
+#: src/countrycodes.c:130
+msgid "Israel"
+msgstr ""
+
+#: src/countrycodes.c:131
+msgid "Italy"
+msgstr ""
+
+#: src/countrycodes.c:132
+msgid "Jamaica"
+msgstr ""
+
+#: src/countrycodes.c:133
+msgid "Japan"
+msgstr ""
+
+#: src/countrycodes.c:134
+msgid "Jordan"
+msgstr ""
+
+#: src/countrycodes.c:135
+msgid "Kazakhstan"
+msgstr ""
+
+#: src/countrycodes.c:136
+msgid "Kenya"
+msgstr ""
+
+#: src/countrycodes.c:137
+msgid "Kiribati"
+msgstr ""
+
+#: src/countrycodes.c:138
+msgid "Korea (North Korea), Democratic People's Republic of"
+msgstr ""
+
+#: src/countrycodes.c:139
+msgid "Korea (South Korea), Republic of"
+msgstr ""
+
+#: src/countrycodes.c:140
+msgid "Kuwait"
+msgstr ""
+
+#: src/countrycodes.c:141
+msgid "Kyrgyzstan"
+msgstr ""
+
+#: src/countrycodes.c:142
+msgid "Lao People's Democratic Republic"
+msgstr ""
+
+#: src/countrycodes.c:143
+msgid "Latvia"
+msgstr ""
+
+#: src/countrycodes.c:144
+msgid "Lebanon"
+msgstr ""
+
+#: src/countrycodes.c:145
+msgid "Lesotho"
+msgstr ""
+
+#: src/countrycodes.c:146
+msgid "Liberia"
+msgstr ""
+
+#: src/countrycodes.c:147
+msgid "Libyan Arab Jamahiriya"
+msgstr ""
+
+#: src/countrycodes.c:148
+msgid "Liechtenstein"
+msgstr ""
+
+#: src/countrycodes.c:149
+msgid "Lithuania"
+msgstr ""
+
+#: src/countrycodes.c:150
+msgid "Luxembourg"
+msgstr ""
+
+#: src/countrycodes.c:151
+msgid "Macau"
+msgstr ""
+
+#: src/countrycodes.c:152
+msgid "Macedonia (F.Y.R.O.M.)"
+msgstr ""
+
+#: src/countrycodes.c:153
+msgid "Madagascar"
+msgstr ""
+
+#: src/countrycodes.c:154
+msgid "Malawi"
+msgstr ""
+
+#: src/countrycodes.c:155
+msgid "Malaysia"
+msgstr ""
+
+#: src/countrycodes.c:156
+msgid "Maldives"
+msgstr ""
+
+#: src/countrycodes.c:157
+msgid "Mali"
+msgstr ""
+
+#: src/countrycodes.c:158
+msgid "Malta"
+msgstr ""
+
+#: src/countrycodes.c:159
+msgid "Marshall Islands"
+msgstr ""
+
+#: src/countrycodes.c:160
+msgid "Martinique"
+msgstr ""
+
+#: src/countrycodes.c:161
+msgid "Mauritania"
+msgstr ""
+
+#: src/countrycodes.c:162
+msgid "Mauritius"
+msgstr ""
+
+#: src/countrycodes.c:163
+msgid "Mayotte Island"
+msgstr ""
+
+#: src/countrycodes.c:164
+msgid "Mexico"
+msgstr ""
+
+#: src/countrycodes.c:165
+msgid "Micronesia, Federated States of"
+msgstr ""
+
+#: src/countrycodes.c:166
+msgid "Moldova, Republic of"
+msgstr ""
+
+#: src/countrycodes.c:167
+msgid "Monaco"
+msgstr ""
+
+#: src/countrycodes.c:168
+msgid "Mongolia"
+msgstr ""
+
+#: src/countrycodes.c:169
+msgid "Montserrat"
+msgstr ""
+
+#: src/countrycodes.c:170
+msgid "Morocco"
+msgstr ""
+
+#: src/countrycodes.c:171
+msgid "Mozambique"
+msgstr ""
+
+#: src/countrycodes.c:172
+msgid "Myanmar"
+msgstr ""
+
+#: src/countrycodes.c:173
+msgid "Namibia"
+msgstr ""
+
+#: src/countrycodes.c:174
+msgid "Nauru"
+msgstr ""
+
+#: src/countrycodes.c:175
+msgid "Nepal"
+msgstr ""
+
+#: src/countrycodes.c:176
+msgid "Netherlands Antilles"
+msgstr ""
+
+#: src/countrycodes.c:177
+msgid "Netherlands"
+msgstr ""
+
+#: src/countrycodes.c:178
+msgid "Nevis"
+msgstr ""
+
+#: src/countrycodes.c:179
+msgid "New Caledonia"
+msgstr ""
+
+#: src/countrycodes.c:180
+msgid "New Zealand"
+msgstr ""
+
+#: src/countrycodes.c:181
+msgid "Nicaragua"
+msgstr ""
+
+#: src/countrycodes.c:182
+msgid "Niger"
+msgstr ""
+
+#: src/countrycodes.c:183
+msgid "Nigeria"
+msgstr ""
+
+#: src/countrycodes.c:184
+msgid "Niue"
+msgstr ""
+
+#: src/countrycodes.c:185
+msgid "Norfolk Island"
+msgstr ""
+
+#: src/countrycodes.c:186
+msgid "Norway"
+msgstr ""
+
+#: src/countrycodes.c:187
+msgid "Oman"
+msgstr ""
+
+#: src/countrycodes.c:188
+msgid "Pakistan"
+msgstr ""
+
+#: src/countrycodes.c:189
+msgid "Palau"
+msgstr ""
+
+#: src/countrycodes.c:190
+msgid "Panama"
+msgstr ""
+
+#: src/countrycodes.c:191
+msgid "Papua New Guinea"
+msgstr ""
+
+#: src/countrycodes.c:192
+msgid "Paraguay"
+msgstr ""
+
+#: src/countrycodes.c:193
+msgid "Peru"
+msgstr ""
+
+#: src/countrycodes.c:194
+msgid "Philippines"
+msgstr ""
+
+#: src/countrycodes.c:195
+msgid "Poland"
+msgstr ""
+
+#: src/countrycodes.c:196
+msgid "Portugal"
+msgstr ""
+
+#: src/countrycodes.c:197
+msgid "Puerto Rico, Common Wealth of"
+msgstr ""
+
+#: src/countrycodes.c:198
+msgid "Qatar"
+msgstr ""
+
+#: src/countrycodes.c:199
+msgid "Reunion Island"
+msgstr ""
+
+#: src/countrycodes.c:200
+msgid "Romania"
+msgstr ""
+
+#: src/countrycodes.c:201
+msgid "Rota Island"
+msgstr ""
+
+#: src/countrycodes.c:202
+msgid "Russia"
+msgstr ""
+
+#: src/countrycodes.c:203
+msgid "Rwanda"
+msgstr ""
+
+#: src/countrycodes.c:204
+msgid "Saint Kitts and Nevis"
+msgstr ""
+
+#: src/countrycodes.c:205
+msgid "Saint Lucia"
+msgstr ""
+
+#: src/countrycodes.c:206
+msgid "Saipan Island"
+msgstr ""
+
+#: src/countrycodes.c:207
+msgid "San Marino"
+msgstr ""
+
+#: src/countrycodes.c:208
+msgid "Sao Tome & Principe"
+msgstr ""
+
+#: src/countrycodes.c:209
+msgid "Saudi Arabia"
+msgstr ""
+
+#: src/countrycodes.c:210
+msgid "Scotland"
+msgstr ""
+
+#: src/countrycodes.c:211
+msgid "Senegal"
+msgstr ""
+
+#: src/countrycodes.c:212
+msgid "Seychelles"
+msgstr ""
+
+#: src/countrycodes.c:213
+msgid "Sierra Leone"
+msgstr ""
+
+#: src/countrycodes.c:214
+msgid "Singapore"
+msgstr ""
+
+#: src/countrycodes.c:215
+msgid "Slovakia"
+msgstr ""
+
+#: src/countrycodes.c:216
+msgid "Slovenia"
+msgstr ""
+
+#: src/countrycodes.c:217
+msgid "Solomon Islands"
+msgstr ""
+
+#: src/countrycodes.c:218
+msgid "Somalia"
+msgstr ""
+
+#: src/countrycodes.c:219
+msgid "South Africa"
+msgstr ""
+
+#: src/countrycodes.c:220
+msgid "Spain"
+msgstr ""
+
+#: src/countrycodes.c:221
+msgid "Sri Lanka"
+msgstr ""
+
+#: src/countrycodes.c:222
+msgid "St. Helena"
+msgstr ""
+
+#: src/countrycodes.c:223
+msgid "St. Kitts"
+msgstr ""
+
+#: src/countrycodes.c:224
+msgid "St. Pierre and Miquelon"
+msgstr ""
+
+#: src/countrycodes.c:225
+msgid "St. Vincent and the Grenadines"
+msgstr ""
+
+#: src/countrycodes.c:226
+msgid "Sudan"
+msgstr ""
+
+#: src/countrycodes.c:227
+msgid "Suriname"
+msgstr ""
+
+#: src/countrycodes.c:228
+msgid "Swaziland"
+msgstr ""
+
+#: src/countrycodes.c:229
+msgid "Sweden"
+msgstr ""
+
+#: src/countrycodes.c:230
+msgid "Switzerland"
+msgstr ""
+
+#: src/countrycodes.c:231
+msgid "Syrian Arab Republic"
+msgstr ""
+
+#: src/countrycodes.c:232
+msgid "Taiwan"
+msgstr ""
+
+#: src/countrycodes.c:233
+msgid "Tajikistan"
+msgstr ""
+
+#: src/countrycodes.c:234
+msgid "Tanzania, United Republic of"
+msgstr ""
+
+#: src/countrycodes.c:235
+msgid "Thailand"
+msgstr ""
+
+#: src/countrycodes.c:236
+msgid "Tinian Island"
+msgstr ""
+
+#: src/countrycodes.c:237
+msgid "Togo"
+msgstr ""
+
+#: src/countrycodes.c:238
+msgid "Tokelau"
+msgstr ""
+
+#: src/countrycodes.c:239
+msgid "Tonga"
+msgstr ""
+
+#: src/countrycodes.c:240
+msgid "Trinidad and Tobago"
+msgstr ""
+
+#: src/countrycodes.c:241
+msgid "Tunisia"
+msgstr ""
+
+#: src/countrycodes.c:242
+msgid "Turkey"
+msgstr ""
+
+#: src/countrycodes.c:243
+msgid "Turkmenistan"
+msgstr ""
+
+#: src/countrycodes.c:244
+msgid "Turks and Caicos Islands"
+msgstr ""
+
+#: src/countrycodes.c:245
+msgid "Tuvalu"
+msgstr ""
+
+#: src/countrycodes.c:246
+msgid "Uganda"
+msgstr ""
+
+#: src/countrycodes.c:247
+msgid "Ukraine"
+msgstr ""
+
+#: src/countrycodes.c:248
+msgid "United Arab Emirates"
+msgstr ""
+
+#: src/countrycodes.c:249
+msgid "United Kingdom of Great Britain"
+msgstr ""
+
+#: src/countrycodes.c:250
+msgid "Uruguay"
+msgstr ""
+
+#: src/countrycodes.c:251
+msgid "USA"
+msgstr ""
+
+#: src/countrycodes.c:252
+msgid "Uzbekistan"
+msgstr ""
+
+#: src/countrycodes.c:253
+msgid "Vanuatu"
+msgstr ""
+
+#: src/countrycodes.c:254
+msgid "Vatican City"
+msgstr ""
+
+#: src/countrycodes.c:255
+msgid "Venezuela"
+msgstr ""
+
+#: src/countrycodes.c:256
+msgid "Viet Nam"
+msgstr ""
+
+#: src/countrycodes.c:257
+msgid "Virgin Islands of the United States"
+msgstr ""
+
+#: src/countrycodes.c:258
+msgid "Wales"
+msgstr ""
+
+#: src/countrycodes.c:259
+msgid "Wallis and Futuna Islands"
+msgstr ""
+
+#: src/countrycodes.c:260
+msgid "Western Samoa"
+msgstr ""
+
+#: src/countrycodes.c:261
+msgid "Yemen"
+msgstr ""
+
+#: src/countrycodes.c:262
+msgid "Yugoslavia - Montenegro"
+msgstr ""
+
+#: src/countrycodes.c:263
+msgid "Yugoslavia - Serbia"
+msgstr ""
+
+#: src/countrycodes.c:264
+msgid "Yugoslavia"
+msgstr ""
+
+#: src/countrycodes.c:265
+msgid "Zambia"
+msgstr ""
+
+#: src/countrycodes.c:266
+msgid "Zimbabwe"
+msgstr ""
+
+#: src/fifo.cpp:69
+msgid ""
+"\tstatus <[*]<status>> <auto response>\n"
+"\t\tstatus: online, offline, na, away, occupied, dnd, ffc\n"
+"\n"
+"\t\tSets the status of the current Licq session\n"
+"\t\tto that given (precede the status by a\n"
+"\t\t\"*\" for invisible mode)\n"
+msgstr ""
+
+#: src/fifo.cpp:75
+msgid ""
+"\tauto_response <auto response>\n"
+"\t\tSets the auto response message without\n"
+"\t\tchanging the current status.\n"
+msgstr ""
+
+#: src/fifo.cpp:79
+msgid ""
+"\tmessage <buddy> <message>\n"
+"\t\tSend a message to the given buddy.\n"
+msgstr ""
+
+#: src/fifo.cpp:82
+msgid ""
+"\turl <buddy> <url> [<description>]\n"
+"\t\tSend a url to the given buddy.\n"
+msgstr ""
+
+#: src/fifo.cpp:85
+msgid ""
+"\tsms <buddy> <message>\n"
+"\tSend a SMS to the given buddy.\n"
+msgstr ""
+
+#: src/fifo.cpp:88
+msgid ""
+"\tsms <number> <message>\n"
+"\tSend a SMS to the given cellular number.\n"
+msgstr ""
+
+#: src/fifo.cpp:91
+msgid ""
+"\tredirect <file>\n"
+"\t\tRedirects stderr for\n"
+"\t\tLicq to the given file.\n"
+msgstr ""
+
+#: src/fifo.cpp:95
+msgid ""
+"\tdebuglvl <level>\n"
+"\t\tSet what information is logged.\n"
+"\t\tSee <level> in licq -h\n"
+msgstr ""
+
+#: src/fifo.cpp:99
+msgid ""
+"\tadduser <uin>\n"
+"\t\tAdd user with <uin> to your contact list.\n"
+msgstr ""
+
+#: src/fifo.cpp:102
+msgid ""
+"\tuserinfo <buddy>\n"
+"\t\tUpdates a buddy's user information.\n"
+msgstr ""
+
+#: src/fifo.cpp:105
+msgid ""
+"\texit\n"
+"\t\tCauses the Licq session to shutdown.\n"
+msgstr ""
+
+#: src/fifo.cpp:108
+msgid ""
+"\tui_viewevent [<buddy>]\n"
+"\t\tShows the oldest pending event.\n"
+msgstr ""
+
+#: src/fifo.cpp:111
+msgid ""
+"\tui_message <buddy>\n"
+"\t\tOpen the plugin message composer to <buddy>\n"
+msgstr ""
+
+#: src/fifo.cpp:114
+msgid ""
+"\tlist_plugins\n"
+"\t\tLists the loaded UI plugins\n"
+msgstr ""
+
+#: src/fifo.cpp:117
+msgid ""
+"\tload_plugin <plugin>\n"
+"\t\tLoads the UI plugin called <plugin>\n"
+msgstr ""
+
+#: src/fifo.cpp:120
+msgid ""
+"\tunload_plugin <plugin>\n"
+"\t\tUnloads the UI plugin called <plugin>.\n"
+"\t\tUse list_plugins to see currently loaded UI plugins.\n"
+msgstr ""
+
+#: src/fifo.cpp:124
+msgid ""
+"\tlist_proto_plugins\n"
+"\t\tLists the loaded protocol plugins\n"
+msgstr ""
+
+#: src/fifo.cpp:127
+msgid ""
+"\tload_proto_plugin <protoplugin>\n"
+"\t\tLoads the protocol plugin called <protoplugin>\n"
+msgstr ""
+
+#: src/fifo.cpp:130
+msgid ""
+"\tunload_proto_plugin <protoplugin>\n"
+"\t\tUnloads the protocol plugin called <protoplugin>.\n"
+"\t\tUse list_proto_plugins to see currently loaded protocol plugins.\n"
+msgstr ""
+
+#: src/fifo.cpp:134
+msgid ""
+"\thelp <<command> | all>\n"
+"\t\tPrint help information for <command> or for all commands.\n"
+msgstr ""
+
+#: src/fifo.cpp:356
+#, c-format
+msgid "%s%s %s: command with invalid status \"%s\".\n"
+msgstr ""
+
+#: src/fifo.cpp:481 src/fifo.cpp:576
+#, c-format
+msgid "%s `%s': bad protol. ICQ only alowed\n"
+msgstr ""
+
+#: src/fifo.cpp:518
+#, c-format
+msgid "%s %s: redirection to \"%s\" failed: %s.\n"
+msgstr ""
+
+#: src/fifo.cpp:522
+#, c-format
+msgid "%s %s: output redirected to \"%s\".\n"
+msgstr ""
+
+#: src/fifo.cpp:581
+#, c-format
+msgid "%s %s: user %s not on contact list, not retrieving info.\n"
+msgstr ""
+
+#: src/fifo.cpp:779
+#, c-format
+msgid "%sFifo commands:\n"
+msgstr ""
+
+#: src/fifo.cpp:782
+#, c-format
+msgid "%s: Type `help command'\n"
+msgstr ""
+
+#: src/fifo.cpp:794 src/fifo.cpp:804
+#, c-format
+msgid ""
+"%s %s: help for `%s'\n"
+"%s\n"
+msgstr ""
+
+#: src/fifo.cpp:807
+#, c-format
+msgid "%s %s: unknown command `%s'\n"
+msgstr ""
+
+#: src/fifo.cpp:929
+#, c-format
+msgid "%sReceived string: %s"
+msgstr ""
+
+#: src/fifo.cpp:936
+#, c-format
+msgid "%s: '%s' Unknown fifo command. Try 'help'\n"
+msgstr ""
+
+#: src/file.cpp:379 src/file.cpp:384
+#, c-format
+msgid ""
+"%sIniFile: Warning, failed to find key.\n"
+"%sFile    = %s\n"
+"%sSection = [%s]\n"
+"%sKey     = \"%s\"\n"
+msgstr ""
+
+#: src/file.cpp:392
+#, c-format
+msgid ""
+"%sIniFile: Warning, failed to find section.\n"
+"%sFile    = %s\n"
+"%sSection = [%s]\n"
+msgstr ""
+
+#: src/file.cpp:402
+#, c-format
+msgid ""
+"%sIniFile: Warning, invalid file format.\n"
+"%sFile = %s\n"
+"%sLine = %s\n"
+msgstr ""
+
+#: src/file.cpp:411
+#, c-format
+msgid ""
+"%sIniFile: Warning, I/O read error.\n"
+"%sFile  = %s\n"
+"%sError = %s\n"
+msgstr ""
+
+#: src/file.cpp:422
+#, c-format
+msgid ""
+"%sIniFile: Warning, I/O write error.\n"
+"%sFile  = %s\n"
+"%sError = %s\n"
+msgstr ""
+
+#: src/history.cpp:166
+#, c-format
+msgid ""
+"%sUnable to open history file (%s):\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/history.cpp:389
+#, c-format
+msgid "%sCorrupt history file (%s): Unknown sub-command 0x%04X.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:724 src/icqd-filetransfer.cpp:234
+#, c-format
+msgid "%sNo more ports available, add more or close open chat/file sessions.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:848
+#, c-format
+msgid "%sChat: Shaking hands [v%d].\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:861
+#, c-format
+msgid "%sChat: Waiting for color/font response.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:901
+#, c-format
+msgid "%sChat: Received reverse connection.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:927 src/icqd-chat.cpp:1197
+#, c-format
+msgid "%sChat: Remote end disconnected.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:929 src/icqd-chat.cpp:1199
+#, c-format
+msgid ""
+"%sChat: Lost remote end:\n"
+"%s%s\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:966
+#, c-format
+msgid "%sChat: Received handshake from %s [v%ld].\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:1014
+#, c-format
+msgid "%sChat: Received color packet.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:1062
+#, c-format
+msgid "%sChat: Received font packet.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:1081
+#, c-format
+msgid "%sChat: Received color/font packet.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:1112
+#, c-format
+msgid "%sChat: Joined multiparty (%d people).\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:1937 src/icqd-chat.cpp:1968
+#, c-format
+msgid ""
+"%sChat: Send error:\n"
+"%s%s\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:2389
+#, c-format
+msgid "%sToo many connected clients, rejecting new connection.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:2403
+#, c-format
+msgid "%sChat: Received connection.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:2407
+#, c-format
+msgid "%sChat: Unable to receive new connection.\n"
+msgstr ""
+
+#: src/icqd-chat.cpp:2418
+#, c-format
+msgid "%sChat: No user owns socket %d.\n"
+msgstr ""
+
+#: src/icqd.cpp:391
+#, c-format
+msgid "%sUnable to allocate TCP port for local server (%s)!\n"
+msgstr ""
+
+#: src/icqd.cpp:392
+msgid "No ports available"
+msgstr ""
+
+#: src/icqd.cpp:411
+#, c-format
+msgid "%sOpening fifo.\n"
+msgstr ""
+
+#: src/icqd.cpp:416
+#, c-format
+msgid ""
+"%sUnable to create fifo:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd.cpp:421
+#, c-format
+msgid ""
+"%sUnable to open fifo:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd.cpp:431
+#, c-format
+msgid "%s%s is not a FIFO, disabling fifo support.\n"
+msgstr ""
+
+#: src/icqd.cpp:443
+#, c-format
+msgid "%sSpawning daemon threads.\n"
+msgstr ""
+
+#: src/icqd.cpp:471 src/icqd.cpp:1158
+#, c-format
+msgid ""
+"%sUnable to start BART service thread:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd.cpp:964
+#, c-format
+msgid "%sLocal TCP server started on port %d.\n"
+msgstr ""
+
+#: src/icqd.cpp:968
+#, c-format
+msgid "%sNo ports available for local TCP server.\n"
+msgstr ""
+
+#: src/icqd.cpp:972
+#, c-format
+msgid ""
+"%sFailed to start local TCP server:\n"
+"%s%s\n"
+msgstr ""
+
+#: src/icqd.cpp:986
+#, c-format
+msgid "%sTCP high port (%d) is lower then TCP low port (%d).\n"
+msgstr ""
+
+#: src/icqd.cpp:1023
+#, c-format
+msgid "%sResolving proxy: %s:%d...\n"
+msgstr ""
+
+#: src/icqd.cpp:1028
+#, c-format
+msgid ""
+"%sUnable to resolve proxy server %s:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd.cpp:1060
+#, c-format
+msgid "%sInvalid TCP version %d.  Attempting v%d.\n"
+msgstr ""
+
+#: src/icqd.cpp:1177 src/icqd.cpp:1232
+#, c-format
+msgid "%sUser %s already on contact list.\n"
+msgstr ""
+
+#: src/icqd.cpp:1368
+#, c-format
+msgid "%sUnable to open \"%s\" for writing.\n"
+msgstr ""
+
+#: src/icqd.cpp:2211
+#, c-format
+msgid "%sCancelled event not found.\n"
+msgstr ""
+
+#: src/icqd.cpp:2458 src/icqd-srv.cpp:3561 src/icqd-srv.cpp:4809
+#: src/message.cpp:1187
+msgid "Message"
+msgstr ""
+
+#: src/icqd.cpp:2487
+msgid "Chat request"
+msgstr ""
+
+#: src/icqd.cpp:2524
+msgid "File transfer request through server"
+msgstr ""
+
+#: src/icqd.cpp:2537 src/icqd-srv.cpp:3576 src/icqd-srv.cpp:4825
+#: src/message.cpp:1190
+msgid "URL"
+msgstr ""
+
+#: src/icqd.cpp:2553
+msgid "Contact list"
+msgstr ""
+
+#: src/icqd.cpp:2571 src/icqd-srv.cpp:4037
+#, c-format
+msgid "%sAuto response from %s (#%lu).\n"
+msgstr ""
+
+#: src/icqd.cpp:2582 src/icqd.cpp:2679 src/icqd-srv.cpp:3984
+#: src/icqd-srv.cpp:4072 src/icqd-tcp.cpp:2965
+#, c-format
+msgid "%sAck for unknown event.\n"
+msgstr ""
+
+#: src/icqd.cpp:2586 src/icqd-tcp.cpp:2034
+#, c-format
+msgid "%s%s (%s) requested auto response.\n"
+msgstr ""
+
+#: src/icqd.cpp:2633 src/icqd-tcp.cpp:2322
+#, c-format
+msgid "%sUnknown ICBM plugin type: %s\n"
+msgstr ""
+
+#: src/icqd.cpp:2659
+msgid "unknown event"
+msgstr ""
+
+#: src/icqd.cpp:2671
+#, c-format
+msgid "%s%s accepted from %s (%s).\n"
+msgstr ""
+
+#: src/icqd.cpp:2692 src/icqd-srv.cpp:3814
+#, c-format
+msgid "%s%s from new user (%s), ignoring.\n"
+msgstr ""
+
+#: src/icqd.cpp:2699 src/icqd-srv.cpp:3823
+#, c-format
+msgid "%s%s from new user (%s).\n"
+msgstr ""
+
+#: src/icqd.cpp:2705
+#, c-format
+msgid "%s%s from %s (%s).\n"
+msgstr ""
+
+#: src/icqd.cpp:2714
+#, c-format
+msgid ""
+"%sInvalid %s:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:258
+#, c-format
+msgid "%sUnable to create directory %s for file transfer.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:274
+#, c-format
+msgid "%sPath %s is not a directory.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:311
+#, c-format
+msgid ""
+"%sFile Transfer: File access error %s:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:391
+#, c-format
+msgid "%sFile Transfer: Shaking hands.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:404
+#, c-format
+msgid "%sFile Transfer: Waiting for server to respond.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:420
+#, c-format
+msgid "%sFile Transfer: Attempted reverse connection when already connected.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:434
+#, c-format
+msgid "%sFile Transfer: Received reverse connection.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:445
+#, c-format
+msgid "%sFile Transfer: Remote end disconnected.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:447
+#, c-format
+msgid ""
+"%sFile Transfer: Lost remote end:\n"
+"%s%s\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:468
+#, c-format
+msgid "%sFile Transfer: Received handshake.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:524 src/icqd-filetransfer.cpp:574
+#: src/icqd-filetransfer.cpp:651 src/icqd-filetransfer.cpp:722
+#: src/icqd-filetransfer.cpp:771 src/icqd-filetransfer.cpp:816
+#, c-format
+msgid "%sFile Transfer: Speed set to %ld%%.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:563
+#, c-format
+msgid "%sFile Transfer: Waiting for file info.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:579
+#, c-format
+msgid "%sFile Transfer: Ignoring a possible erroneous packet.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:618
+msgid "File Transfer: Waiting for plugin to confirm file receive.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:628
+msgid "File Transfer: Still waiting for the plugin to confirm file receive..."
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:639
+#, c-format
+msgid "%sFile Transfer: Receiving %s (%ld bytes).\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:657
+#, c-format
+msgid "%sFile Transfer: Invalid data (%c) ignoring packet.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:697
+#, c-format
+msgid "%sFile Transfer: %s received.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:702
+#, c-format
+msgid "%sFile Transfer: %s received %d too many bytes.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:741 src/icqd-filetransfer.cpp:991
+#, c-format
+msgid ""
+"%sFile Transfer: Read error for %s:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:820
+#, c-format
+msgid ""
+"%sFile Transfer: Unknown packet received during file send:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:845
+#, c-format
+msgid "%sFile Transfer: Received plugin confirmation.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:914
+#, c-format
+msgid "%sFile Transfer: Sending %s (%ld bytes).\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:969
+#, c-format
+msgid "%sFile Transfer: Sent %s.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:973
+#, c-format
+msgid "%sFile Transfer: Sent %s, %d too many bytes.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:1052
+#, c-format
+msgid ""
+"%sFile Transfer: Send error:\n"
+"%s%s\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:1064
+#, c-format
+msgid "%sInvalid file transfer speed: %d%%.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:1193
+#, c-format
+msgid "%sFile Transfer: Receiving repeat incoming connection.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:1203
+#, c-format
+msgid "%sFile Transfer: Received connection.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:1207
+#, c-format
+msgid "%sFile Transfer: Unable to receive new connection.\n"
+msgstr ""
+
+#: src/icqd-filetransfer.cpp:1227
+#, c-format
+msgid "%sFile Transfer: No such socket.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:61
+#, c-format
+msgid "%sAlerting server to new user (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:100
+#, c-format
+msgid "%sAdding %s to server list...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:204
+#, c-format
+msgid "%sExporting users to server contact list...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:221 src/icqd-srv.cpp:4507
+#, c-format
+msgid "%sUpdating top level group.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:231 src/icqd-srv.cpp:4513
+#, c-format
+msgid "%sUpdating group %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:250
+#, c-format
+msgid "%sAdding group %s (%d) to server list ...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:276
+#, c-format
+msgid ""
+"%sProtocol prohibits for users to be in the root group.\n"
+"%sAborting group change attempt for %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:288
+#, c-format
+msgid "%sChanging group on server list for %s (%s)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:322
+#, c-format
+msgid "%sExporting groups to server contact list...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:338
+#, c-format
+msgid "%sAdding privacy information to server side list...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:412
+#, c-format
+msgid "%sAlerting server to remove user (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:436
+#, c-format
+msgid "%sRemoving group from server side list (%s)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:448
+#, c-format
+msgid "%sRenaming group with id %d to %s...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:482
+#, c-format
+msgid "%sRenaming %s to %s...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:505
+#, c-format
+msgid "%sAlerting user they were added (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:553
+#, c-format
+msgid "%sRequesting auto response from %s (%hu).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:575
+#, c-format
+msgid "%sSetting random chat group (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:588
+#, c-format
+msgid "%sSearching for random chat user (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:621
+#, c-format
+msgid "%sRegistering a new user...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:634
+#, c-format
+msgid "%sRequesting verification image...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:645
+#, c-format
+msgid "%sSending verification for registration.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:695
+#, c-format
+msgid "%sRequesting meta info for %s (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:744
+#, c-format
+msgid "%sRequesting service socket for FAM 0x%02X (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:811
+#, c-format
+msgid "%sChanging status to %s (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:830
+#, c-format
+msgid "%sUpdating password (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:879
+#, c-format
+msgid "%sUpdating general info (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:895
+#, c-format
+msgid "%sUpdating additional E-Mail info (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:916
+#, c-format
+msgid "%sUpdating more info (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:966
+#, c-format
+msgid "%sUpdating work info (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:981
+#, c-format
+msgid "%sUpdating about (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1016
+#, c-format
+msgid "%sAuthorizing user %s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1053
+#, c-format
+msgid "%sRefusing authorization to user %s (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1096
+#, c-format
+msgid "%sUpdating security info (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1117
+#, c-format
+msgid "%sStarting white pages search (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1129
+#, c-format
+msgid "%sStarting search by UIN for user (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1146
+#, c-format
+msgid "%sRequesting user info (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1232 src/icqd-srv.cpp:1244
+#, c-format
+msgid "%sUpdating contact list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1279
+#, c-format
+msgid "%sSending visible list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1296
+#, c-format
+msgid "%sSending invisible list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1422
+#, c-format
+msgid "%sAdding user %s to visible list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1453
+#, c-format
+msgid "%sRemoving user %s from visible list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1490
+#, c-format
+msgid "%sAdding user %s to invisible list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1521
+#, c-format
+msgid "%sRemoving user %s from invisible list (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1594 src/icqd-srv.cpp:1605
+#, c-format
+msgid "%sDeleting server list users (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1628 src/icqd-srv.cpp:1641
+#, c-format
+msgid "%sDeleting server list invisible list users (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1662 src/icqd-srv.cpp:1675
+#, c-format
+msgid "%sDeleting server list visible list users (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1696
+#, c-format
+msgid "%sSending message through server (#%hu).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1699
+#, c-format
+msgid "%sSending url through server (#%hu).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1702
+#, c-format
+msgid "%sSending contact list through server (#%hu).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1705
+#, c-format
+msgid "%sSending misc through server (#%hu).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1742
+#, c-format
+msgid "%sSending SMS through server (#%hu/#%d)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1859
+#, c-format
+msgid ""
+"%sAttempt to logon while already logged or logging on, logoff and try "
+"again.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1872
+#, c-format
+msgid ""
+"%sNo password set.  Edit ~/.licq/owner.Licq and fill in the password field.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1898
+#, c-format
+msgid "%sRequesting logon salt (#%hu)...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1924
+#, c-format
+msgid "%sAttempt to logoff while not logged on.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:1930
+#, c-format
+msgid "%sLogging off.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2009
+#, c-format
+msgid "Event #%hu is still on queue!\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2103
+#, c-format
+msgid "%sProxy server not properly configured.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2125
+#, c-format
+msgid "%sConnection to server already exists, aborting.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2158
+#, c-format
+msgid "%sResponse to unknown %s info request for unknown user (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2177
+#, c-format
+msgid "%sReceived %s information for %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2219 src/icqd-srv.cpp:2456 src/icqd-srv.cpp:4748
+#: src/icqd-srv.cpp:4758 src/icqd-srv.cpp:6292
+#, c-format
+msgid ""
+"%sUnknown server response:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2257
+#, c-format
+msgid "%sPacket on unhandled Channel 'Error' received!\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2265
+#, c-format
+msgid "%sServer send unknown channel: %02x\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2287 src/icqd-srv.cpp:4138
+#, c-format
+msgid "%sError parsing SNAC header\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2298
+#, c-format
+msgid "%sServer says he's ready.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2300
+#, c-format
+msgid "%sSending our channel capability list...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2304
+#, c-format
+msgid "%sRequesting rate info...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2321
+#, c-format
+msgid "%sError during parsing service redirect packet!\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2327
+#, c-format
+msgid "%sRedirect for service 0x%02X received.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2334
+#, c-format
+msgid "%sInvalid servername (%s) or cookie (%s) in service redirect packet!\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2364
+#, c-format
+msgid "%sService redirect packet for unallocated BART service.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2370
+#, c-format
+msgid "%sService redirect packet for unhandled service 0x%02X.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2386
+#, c-format
+msgid "%sServer sent us channel capability list (ignoring).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2388
+#, c-format
+msgid "%sRequesting self info.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2392
+#, c-format
+msgid "%sRequesting list rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2396
+#, c-format
+msgid "%sRequesting roster rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2400
+#, c-format
+msgid "%sRequesting location rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2404
+#, c-format
+msgid "%sRequesting contact list rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2408
+#, c-format
+msgid "%sRequesting Instant Messaging rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2412
+#, c-format
+msgid "%sRequesting BOS rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2421
+#, c-format
+msgid "%sServer sent us rate information.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2425
+#, c-format
+msgid "%sSetting ICQ Instant Messaging Mode.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2433
+#, c-format
+msgid "%sSending capability settings (?)\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2446
+#, c-format
+msgid "%sGot Name Info from Server\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2481
+#, c-format
+msgid "%sServer says we are at %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2497
+#, c-format
+msgid "%sServer says we're now: %s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2515
+#, c-format
+msgid "%sServer is going to disconnect/pause. Lets reconnect to another one.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2535
+#, c-format
+msgid "%sReceived rights for Location Services.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2553
+#, c-format
+msgid "%sReceived away message for %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2570
+#, c-format
+msgid "%sReceived user information for %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2636
+#, c-format
+msgid "%sUnknown user (%s) changed status.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2755
+#, c-format
+msgid "%s%s (%s) changed status: %s (v%d)%s"
+msgstr ""
+
+#: src/icqd-srv.cpp:2804
+#, c-format
+msgid "%s%s changed status: %s (AIM).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2945
+#, c-format
+msgid "%s%s changed Phone \"Follow Me\" status to %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2951
+#, c-format
+msgid "%s%s changed Shared Files Directory status to %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2957
+#, c-format
+msgid "%s%s changed ICQphone status to %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:2976
+#, c-format
+msgid "%sUnknown index %d from %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3008
+#, c-format
+msgid "%sUnsupported type 0x%02X of buddy icon for %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3061
+#, c-format
+msgid "%sUnknown user (%s) has gone offline.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3067
+#, c-format
+msgid "%s%s went offline.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3078
+#, c-format
+msgid "%sReceived rights for Contact List..\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3107
+#, c-format
+msgid "%sUser is offline.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3110
+#, c-format
+msgid "%sClient does not understand type-2 messages.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3113
+#, c-format
+msgid "%sPacket was malformed.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3116
+#, c-format
+msgid "%sList overflow.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3119
+#, c-format
+msgid "%sUnknown ICBM error: 0x%04x.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3218
+#, c-format
+msgid "%sMessage from new user (%s), ignoring.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3224
+#, c-format
+msgid "%sMessage from new user (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3231
+#, c-format
+msgid "%sMessage through server from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3432 src/icqd-tcp.cpp:1940
+#, c-format
+msgid "%s%s (%s) is %s to us.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3485
+#, c-format
+msgid "%sReceived SMS receipt indicating success.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3489
+#, c-format
+msgid "%sReceived SMS receipt indicating failure.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3505
+#, c-format
+msgid "%sInvalid tag in SMS message."
+msgstr ""
+
+#: src/icqd-srv.cpp:3516
+#, c-format
+msgid ""
+"%sUnknown tag in SMS message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3530
+#, c-format
+msgid "%sSMS message packet was too large (claimed size: %lu bytes)\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3572 src/icqd-tcp.cpp:2079 src/icqd-tcp.cpp:2411
+#, c-format
+msgid ""
+"%sInvalid URL message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3583 src/icqd-srv.cpp:4584
+#, c-format
+msgid "%sAuthorization request from %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3589
+#, c-format
+msgid ""
+"%sInvalid authorization request system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3615
+#, c-format
+msgid "%sAuthorization refused by %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3628
+#, c-format
+msgid "%sAuthorization granted by %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3647
+#, c-format
+msgid "%sServer message.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3655 src/icqd-srv.cpp:4900
+#, c-format
+msgid ""
+"%sInvalid Server Message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3665 src/icqd-srv.cpp:4665
+#, c-format
+msgid "%sUser %s added you to their contact list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3672
+#, c-format
+msgid ""
+"%sInvalid added to list system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3693
+#, c-format
+msgid "%sMessage through web panel.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3700
+#, c-format
+msgid ""
+"%sInvalid web panel system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3712 src/icqd-srv.cpp:3741 src/icqd-srv.cpp:4958
+#: src/icqd-srv.cpp:4987
+#, c-format
+msgid "%sFrom %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3722
+#, c-format
+msgid "%sEmail pager message.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3729
+#, c-format
+msgid ""
+"%sInvalid email pager system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3756
+#, c-format
+msgid ""
+"%sInvalid Contact List message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3762 src/icqd-srv.cpp:5006
+msgid "Contacts"
+msgstr ""
+
+#: src/icqd-srv.cpp:3774 src/icqd-srv.cpp:5018
+#, c-format
+msgid ""
+"%sInvalid SMS message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3788
+#, c-format
+msgid ""
+"%sUnknown system message (0x%04x):\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3828
+#, c-format
+msgid "%s%s through server from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3880
+#, c-format
+msgid "%sSMS from %s - %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3889
+#, c-format
+msgid "%sSMS from %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3910
+#, c-format
+msgid ""
+"%sMessage through server with unknown format: %04hx\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3935
+#, c-format
+msgid "%sUnexpected new user in subtype 0x%04x.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:3972
+#, c-format
+msgid "%s%s doesn't have a manager for this event.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4027
+#, c-format
+msgid "%sRefusal from %s (#%lu).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4080
+#, c-format
+msgid "%sReceived rights for Instant Messaging..\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4092
+#, c-format
+msgid ""
+"%sMessage was sent to an offline user. It will be delivered when the user "
+"logs on.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4108
+#, c-format
+msgid "%sTyping status received for unknown user (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4121
+#, c-format
+msgid "%sUnknown Message Family Subtype: %04hx\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4147
+#, c-format
+msgid "%sServer granted contact list rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4276
+#, c-format
+msgid "%sGot Master Group record.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4287
+#, c-format
+msgid "%sGot Privacy Setting.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4317
+#, c-format
+msgid "%sContact list without request.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4319
+#, c-format
+msgid "%sReceived contact list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4326
+#, c-format
+msgid "%sReceived end of contact list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4330
+#, c-format
+msgid "%sActivating server contact list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4340
+#, c-format
+msgid "%sReceived updated contact information from server.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4345
+#, c-format
+msgid "%sDid not receive user ID.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4357
+#, c-format
+msgid "%sError during parsing packet!\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4394
+#, c-format
+msgid "%sContact list is synchronized.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4398
+#, c-format
+msgid "%sActivate server contact list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4413
+#, c-format
+msgid "%sServer list update ack without request.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4434
+#, c-format
+msgid "%sSkipping invalid server side list ack (%ld).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4447
+#, c-format
+msgid "%s%s added to awaiting authorization group on server list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4452
+#, c-format
+msgid "%sUser/Group %s not found on server list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4457
+#, c-format
+msgid "%sUnknown error modifying server list: 0x%02X (ID: %s)\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4548
+#, c-format
+msgid "%sUpdated %s successfully.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4549
+msgid "top level"
+msgstr ""
+
+#: src/icqd-srv.cpp:4624
+#, c-format
+msgid "%sAuthorization %s by %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4693
+#, c-format
+msgid "%sUnknown List Family Subtype: %04hx\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4705
+#, c-format
+msgid "%sReceived BOS rights.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4709
+#, c-format
+msgid "%sSending client ready...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4713
+#, c-format
+msgid "%sSending offline message request...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4728
+#, c-format
+msgid "%sUnknown BOS Family Subtype: %04hx\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4821
+#, c-format
+msgid ""
+"%sInvalid offline URL message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4832
+#, c-format
+msgid "%sOffline authorization request from %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4840
+#, c-format
+msgid ""
+"%sInvalid offline authorization request system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4862
+#, c-format
+msgid "%sOffline authorization refused by %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4874
+#, c-format
+msgid "%sOffline authorization granted by %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4893
+#, c-format
+msgid "%sOffline server message.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4909
+#, c-format
+msgid "%sUser %s added you to their contact list (offline).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4917
+#, c-format
+msgid ""
+"%sInvalid offline added to list system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4938
+#, c-format
+msgid "%sOffline message through web panel.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4946
+#, c-format
+msgid ""
+"%sInvalid offline web panel system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4967
+#, c-format
+msgid "%sEmail pager offline message.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:4975
+#, c-format
+msgid ""
+"%sInvalid offline email pager system message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5001
+#, c-format
+msgid ""
+"%sInvalid offline Contact List message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5056
+#, c-format
+msgid "%sOffline %s from new user (%s), ignoring.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5062
+#, c-format
+msgid "%sOffline %s from new user (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5067
+#, c-format
+msgid "%sOffline %s through server from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5118
+#, c-format
+msgid "%sOffline SMS from %s - %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5127
+#, c-format
+msgid "%sOffline SMS from %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5146
+#, c-format
+msgid "%sEnd of Offline messages (nId: %04hx).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5164
+msgid "Password change"
+msgstr ""
+
+#: src/icqd-srv.cpp:5179
+msgid "Security info"
+msgstr ""
+
+#: src/icqd-srv.cpp:5185
+msgid "General info"
+msgstr ""
+
+#: src/icqd-srv.cpp:5230
+msgid "E-mail info"
+msgstr ""
+
+#: src/icqd-srv.cpp:5254
+msgid "More info"
+msgstr ""
+
+#: src/icqd-srv.cpp:5311
+msgid "Work info"
+msgstr ""
+
+#: src/icqd-srv.cpp:5353
+msgid "About"
+msgstr ""
+
+#: src/icqd-srv.cpp:5438
+#, c-format
+msgid "%sSMS delivered.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5451
+#, c-format
+msgid "%sSMS not delivered, error #%s, param: %s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5469
+#, c-format
+msgid "%sSending SMS via SMTP not supported yet.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5474
+#, c-format
+msgid "%sFrom: %s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5480
+#, c-format
+msgid "%sTo: %s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5486
+#, c-format
+msgid "%sSubject: %s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5499
+#, c-format
+msgid ""
+"%sUnknown SMS response:\n"
+"%s"
+msgstr ""
+
+#: src/icqd-srv.cpp:5515
+#, c-format
+msgid "%sUndeliverable SMS.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5532
+msgid "Random chat group"
+msgstr ""
+
+#: src/icqd-srv.cpp:5555
+#, c-format
+msgid "%sRandom chat user found (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5590
+#, c-format
+msgid "%sNo random chat user found.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5599
+#, c-format
+msgid "%sReceived info update ack, without updating info.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5603
+#, c-format
+msgid "%sUpdated information successfully.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5610
+#, c-format
+msgid "%sSMS failed to send.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5622
+#, c-format
+msgid "%sWhitePages search found no users.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5707
+#, c-format
+msgid "%sFailed to update user info: %x.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5731
+#, c-format
+msgid "%scan't find user for updating!\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5740
+#, c-format
+msgid "%sGeneral info on %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5821
+#, c-format
+msgid "%sMore info on %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5875
+#, c-format
+msgid "%sEmail info on %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5949
+#, c-format
+msgid "%sWork info on %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:5998
+#, c-format
+msgid "%sAbout info on %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6114
+#, c-format
+msgid ""
+"%sunknown info: %04hx\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6125
+#, c-format
+msgid "%sResponse to unknown extended info request for %s (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6139
+#, c-format
+msgid "%s%s updated.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6141
+#, c-format
+msgid "%s%s update failed.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6145
+#, c-format
+msgid "%sUnexpected result for %s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6163
+#, c-format
+msgid ""
+"%sUnknown Various Family Subtype: %04hx\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6182
+#, c-format
+msgid "%sVerification required. Reconnecting...\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6205
+#, c-format
+msgid ""
+"%sUnknown logon error. There appears to be an issue with the ICQ servers. "
+"Please try again later.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6231
+#, c-format
+msgid "%sReceived new uin (%lu) when already have a uin (%s).\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6236
+#, c-format
+msgid "%sReceived new uin: %lu\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6270
+#, c-format
+msgid "%sSending md5 hashed password.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6306
+#, c-format
+msgid ""
+"%sUnable to open file (%s):\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6345
+#, c-format
+msgid "%sEmpty User ID was received in the contact list.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6355
+#, c-format
+msgid "%sAdded %s (%s) to list from server.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6473
+#, c-format
+msgid "%sWe're logging off..\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6488
+#, c-format
+msgid "%sRate limit exceeded.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6495
+#, c-format
+msgid "%sInvalid UIN and password combination.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6508
+#, c-format
+msgid ""
+"%sThe requested network service is temporarily unavailable.\n"
+"Please try again later.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6532
+#, c-format
+msgid "%sYour ICQ number is used from another location.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6537
+#, c-format
+msgid ""
+"%sYour ICQ number is used from another location.\n"
+"Automatic reconnect is disabled.\n"
+msgstr ""
+
+#: src/icqd-srv.cpp:6576
+#, c-format
+msgid "%sAuthenticated. Connecting to %s port %s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:146
+#, c-format
+msgid "%sTruncating message to %d characters to send through server.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:162
+#, c-format
+msgid "%sSending %smessage to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:163 src/icqd-tcp.cpp:318 src/icqd-tcp.cpp:425
+#: src/icqd-tcp.cpp:511 src/icqd-tcp.cpp:968
+msgid "urgent "
+msgstr ""
+
+#: src/icqd-tcp.cpp:226
+#, c-format
+msgid "%sRequesting auto response from %s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:233
+#, c-format
+msgid "%sRequesting auto response from %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:317
+#, c-format
+msgid "%sSending %sURL to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:400
+#, c-format
+msgid "%sSending file transfer to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:424
+#, c-format
+msgid "%sSending %sfile transfer to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:480
+#, c-format
+msgid "%sContact list too large to send through server.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:510
+#, c-format
+msgid "%sSending %scontact list to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:765
+#, c-format
+msgid "%sCancelling file transfer to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:806
+#, c-format
+msgid "%sAccepting file transfer from %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:861
+#, c-format
+msgid "%sRefusing file transfer from %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:953
+#, c-format
+msgid "%sSending chat request to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:967
+#, c-format
+msgid "%sSending %schat request to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:997
+#, c-format
+msgid "%sCancelling chat request with %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1020
+#, c-format
+msgid "%sRefusing chat request with %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1062
+#, c-format
+msgid "%sAccepting chat request with %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1106 src/icqd-tcp.cpp:1171
+#, c-format
+msgid "%sCannot send secure channel request to user not on list (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1114
+#, c-format
+msgid "%s%s (%s) already has a secure channel.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1121
+#, c-format
+msgid "%sSending request for secure channel to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1179
+#, c-format
+msgid "%s%s (%s) does not have a secure channel.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1186
+#, c-format
+msgid "%sClosing secure channel with %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1231
+#, c-format
+msgid "%sCancelling secure channel request to %s (#%hu).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1296 src/icqd-tcp.cpp:1337 src/icqd-tcp.cpp:3829
+#: src/icqd-tcp.cpp:3917
+#, c-format
+msgid "%sBad handshake ack: %ld.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1309
+#, c-format
+msgid "%sBad handshake session id: received %ld, expecting %ld.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1350
+#, c-format
+msgid "%sBad handshake cookie: received %ld, expecting %ld.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1391 src/icqd-tcp.cpp:4053 src/icqd-tcp.cpp:4123
+#, c-format
+msgid "%sHandshake error, remote side closed connection.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1393 src/icqd-tcp.cpp:4055 src/icqd-tcp.cpp:4125
+#, c-format
+msgid ""
+"%sHandshake socket error:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1415
+#, c-format
+msgid "%sConnection attempted to already connected user (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1451
+#, c-format
+msgid "%sShaking hands with %s (%s) [v%d].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1517 src/icqd-tcp.cpp:1531 src/icqd-tcp.cpp:1553
+#, c-format
+msgid "%sConnecting to %s at %s:%d.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1524
+#, c-format
+msgid ""
+"%sConnect to %s failed:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1538 src/icqd-tcp.cpp:1559
+#, c-format
+msgid ""
+"%sConnect to %s real ip failed:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1599
+#, c-format
+msgid "%sReverse connecting to %s at %s:%d.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1608
+#, c-format
+msgid ""
+"%sReverse connect to %s failed:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1617
+#, c-format
+msgid "%sReverse shaking hands with %s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1794
+#, c-format
+msgid "%sUnknown TCP version %d from socket.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1813
+#, c-format
+msgid ""
+"%sTCP message from self (probable spoof):\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1815
+#, c-format
+msgid ""
+"%sTCP message from invalid UIN (%s, expect %s):\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1928
+#, c-format
+msgid "%sUnknown TCP status: %04X\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1972
+#, c-format
+msgid "%sMessage from %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:1975
+#, c-format
+msgid "%sMessage from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2031
+#, c-format
+msgid "%s%s (%s) requested auto response [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2070
+#, c-format
+msgid "%sURL from %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2073 src/icqd-tcp.cpp:2405
+#, c-format
+msgid "%sURL from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2139
+#, c-format
+msgid "%sContact list from %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2142 src/icqd-tcp.cpp:2435
+#, c-format
+msgid "%sContact list from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2149 src/icqd-tcp.cpp:2443
+#, c-format
+msgid ""
+"%sInvalid contact list message:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2206
+#, c-format
+msgid "%sChat request from %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2209 src/icqd-tcp.cpp:2381
+#, c-format
+msgid "%sChat request from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2260
+#, c-format
+msgid "%sFile transfer request from %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2263 src/icqd-tcp.cpp:2346
+#, c-format
+msgid "%sFile transfer request from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2473
+#, c-format
+msgid ""
+"%sReceived old-style key request from %s (%s) but we do not support it.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2498
+#, c-format
+msgid "%sSecure channel request from %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2501
+#, c-format
+msgid "%sSecure channel request from %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2526 src/icqd-tcp.cpp:2824
+#, c-format
+msgid "%sSecure channel established with %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2532
+#, c-format
+msgid ""
+"%sReceived secure channel request from %s (%s) but we do not support "
+"OpenSSL.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2559
+#, c-format
+msgid "%sSecure channel closed by %s (%s) [Licq %s].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2562
+#, c-format
+msgid "%sSecure channel closed by %s (%s).\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2575
+#, c-format
+msgid ""
+"%sReceived secure channel close from %s (%s) but we do not support OpenSSL.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2712
+#, c-format
+msgid "%sUnknown direct ack ICBM plugin type: %s\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2785
+#, c-format
+msgid "%sSecure channel response from %s (%s)%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2793
+#, c-format
+msgid "%s%s (%s) does not support OpenSSL.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2808
+#, c-format
+msgid "%sSecure channel response from %s (%s) when no request in progress.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2857
+#, c-format
+msgid "%sSecure channel with %s (%s) closed %s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2906
+#, c-format
+msgid "%sRefusal from %s (#%hu)%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2916
+#, c-format
+msgid "%sAuto response from %s (#%hu)%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2923 src/icqd-tcp.cpp:2932
+#, c-format
+msgid "%sAck from %s (#%hu)%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2937
+#, c-format
+msgid "%sReturned from %s (#%hu)%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2942
+#, c-format
+msgid "%sCustom %s response from %s (#%hu)%s.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2943
+msgid "DnD"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2943 src/user.cpp:2744
+msgid "Occupied"
+msgstr ""
+
+#: src/icqd-tcp.cpp:2981
+#, c-format
+msgid "%sChat request from %s (%s) cancelled.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:3007
+#, c-format
+msgid "%sFile transfer request from %s (%s) cancelled.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:4146
+#, c-format
+msgid "%sConnection from %s (%s) [v%ld].\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:4152
+#, c-format
+msgid "%sUser %s (%s) already has an associated socket.\n"
+msgstr ""
+
+#: src/icqd-tcp.cpp:4165
+#, c-format
+msgid "%sConnection from new user (%s) [v%ld].\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:182
+#, c-format
+msgid "%sConnecting to login server.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:206
+#, c-format
+msgid "%sConnecting to login server failed, failing event\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:230
+#, c-format
+msgid "%sNot connected to server, failing event\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:255
+#, c-format
+msgid "%sSocket not connected or invalid (#%hu).\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:318 src/icqd-threads.cpp:565
+#, c-format
+msgid ""
+"%sError sending event (#%hu):\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:514
+#, c-format
+msgid "%sSocket %d does not exist (#%hu).\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:753
+#, c-format
+msgid "%sInvalid server socket in set.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:793
+#, c-format
+msgid "%sCan't process packet for service 0x%02X.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:802
+#, c-format
+msgid "%sCan't receive packet for service 0x%02X.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:819
+#, c-format
+msgid "%sInvalid server TCP socket in set.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:833
+#, c-format
+msgid "%sToo many connected sockets, rejecting connection from %s.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:863
+#, c-format
+msgid "%sConnection to %s was closed.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:868
+#, c-format
+msgid ""
+"%sConnection to %s lost:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:905
+#, c-format
+msgid "%sClosing connection to %s.\n"
+msgstr ""
+
+#: src/icqd-threads.cpp:948
+#, c-format
+msgid "%sShutting down daemon.\n"
+msgstr ""
+
+#: src/icqpacket.cpp:146
+#, c-format
+msgid ""
+"%sUnencrypted Packet:\n"
+"%s\n"
+msgstr ""
+
+#: src/icqpacket.cpp:206
+#, c-format
+msgid ""
+"%sUnencrypted Packet (%lu bytes):\n"
+"%s\n"
+msgstr ""
+
+#: src/icqpacket.cpp:367
+#, c-format
+msgid ""
+"%sUnencrypted (ICQ) TCP Packet (%lu bytes):\n"
+"%s\n"
+msgstr ""
+
+#: src/icqpacket.cpp:507
+#, c-format
+msgid ""
+"%sDecrypted (ICQ) TCP Packet (%lu bytes):\n"
+"%s\n"
+msgstr ""
+
+#: src/icqpacket.cpp:827 src/icqpacket.cpp:882
+#, c-format
+msgid "%sPassword too long, truncated to 8 Characters!\n"
+msgstr ""
+
+#: src/icqpacket.cpp:5125
+#, c-format
+msgid "%sCould not execute \"%s\" for auto-response.\n"
+msgstr ""
+
+#: src/icqpacket.cpp:5140
+#, c-format
+msgid "%s%s returned abnormally: exit code %d\n"
+msgstr ""
+
+#: src/languagecodes.c:24
+msgid "Afrikaans"
+msgstr ""
+
+#: src/languagecodes.c:25
+msgid "Albanian"
+msgstr ""
+
+#: src/languagecodes.c:26
+msgid "Arabic"
+msgstr ""
+
+#: src/languagecodes.c:27
+msgid "Armenian"
+msgstr ""
+
+#: src/languagecodes.c:28
+msgid "Azerbaijani"
+msgstr ""
+
+#: src/languagecodes.c:29
+msgid "Belorussian"
+msgstr ""
+
+#: src/languagecodes.c:30
+msgid "Bhojpuri"
+msgstr ""
+
+#: src/languagecodes.c:31
+msgid "Bosnian"
+msgstr ""
+
+#: src/languagecodes.c:32
+msgid "Bulgarian"
+msgstr ""
+
+#: src/languagecodes.c:33
+msgid "Burmese"
+msgstr ""
+
+#: src/languagecodes.c:34
+msgid "Cantonese"
+msgstr ""
+
+#: src/languagecodes.c:35
+msgid "Catalan"
+msgstr ""
+
+#: src/languagecodes.c:36
+msgid "Chamorro"
+msgstr ""
+
+#: src/languagecodes.c:37
+msgid "Chinese"
+msgstr ""
+
+#: src/languagecodes.c:38
+msgid "Croatian"
+msgstr ""
+
+#: src/languagecodes.c:39
+msgid "Czech"
+msgstr ""
+
+#: src/languagecodes.c:40
+msgid "Danish"
+msgstr ""
+
+#: src/languagecodes.c:41
+msgid "Dutch"
+msgstr ""
+
+#: src/languagecodes.c:42
+msgid "English"
+msgstr ""
+
+#: src/languagecodes.c:43
+msgid "Esperanto"
+msgstr ""
+
+#: src/languagecodes.c:44
+msgid "Estonian"
+msgstr ""
+
+#: src/languagecodes.c:45
+msgid "Farsi"
+msgstr ""
+
+#: src/languagecodes.c:46
+msgid "Finnish"
+msgstr ""
+
+#: src/languagecodes.c:47
+msgid "French"
+msgstr ""
+
+#: src/languagecodes.c:48
+msgid "Gaelic"
+msgstr ""
+
+#: src/languagecodes.c:49
+msgid "German"
+msgstr ""
+
+#: src/languagecodes.c:50
+msgid "Greek"
+msgstr ""
+
+#: src/languagecodes.c:51
+msgid "Gujarati"
+msgstr ""
+
+#: src/languagecodes.c:52
+msgid "Hebrew"
+msgstr ""
+
+#: src/languagecodes.c:53
+msgid "Hindi"
+msgstr ""
+
+#: src/languagecodes.c:54
+msgid "Hungarian"
+msgstr ""
+
+#: src/languagecodes.c:55
+msgid "Icelandic"
+msgstr ""
+
+#: src/languagecodes.c:56
+msgid "Indonesian"
+msgstr ""
+
+#: src/languagecodes.c:57
+msgid "Italian"
+msgstr ""
+
+#: src/languagecodes.c:58
+msgid "Japanese"
+msgstr ""
+
+#: src/languagecodes.c:59
+msgid "Khmer"
+msgstr ""
+
+#: src/languagecodes.c:60
+msgid "Korean"
+msgstr ""
+
+#: src/languagecodes.c:61
+msgid "Kurdish"
+msgstr ""
+
+#: src/languagecodes.c:62
+msgid "Lao"
+msgstr ""
+
+#: src/languagecodes.c:63
+msgid "Latvian"
+msgstr ""
+
+#: src/languagecodes.c:64
+msgid "Lithuanian"
+msgstr ""
+
+#: src/languagecodes.c:65
+msgid "Macedonian"
+msgstr ""
+
+#: src/languagecodes.c:66
+msgid "Malay"
+msgstr ""
+
+#: src/languagecodes.c:67
+msgid "Mandarin"
+msgstr ""
+
+#: src/languagecodes.c:68
+msgid "Mongolian"
+msgstr ""
+
+#: src/languagecodes.c:69
+msgid "Norwegian"
+msgstr ""
+
+#: src/languagecodes.c:70
+msgid "Persian"
+msgstr ""
+
+#: src/languagecodes.c:71
+msgid "Polish"
+msgstr ""
+
+#: src/languagecodes.c:72
+msgid "Portuguese"
+msgstr ""
+
+#: src/languagecodes.c:73
+msgid "Punjabi"
+msgstr ""
+
+#: src/languagecodes.c:74
+msgid "Romanian"
+msgstr ""
+
+#: src/languagecodes.c:75
+msgid "Russian"
+msgstr ""
+
+#: src/languagecodes.c:76
+msgid "Serbian"
+msgstr ""
+
+#: src/languagecodes.c:77
+msgid "Sindhi"
+msgstr ""
+
+#: src/languagecodes.c:78
+msgid "Slovak"
+msgstr ""
+
+#: src/languagecodes.c:79
+msgid "Slovenian"
+msgstr ""
+
+#: src/languagecodes.c:80
+msgid "Somali"
+msgstr ""
+
+#: src/languagecodes.c:81
+msgid "Spanish"
+msgstr ""
+
+#: src/languagecodes.c:82
+msgid "Swahili"
+msgstr ""
+
+#: src/languagecodes.c:83
+msgid "Swedish"
+msgstr ""
+
+#: src/languagecodes.c:84
+msgid "Tagalog"
+msgstr ""
+
+#: src/languagecodes.c:85
+msgid "Taiwanese"
+msgstr ""
+
+#: src/languagecodes.c:86
+msgid "Tamil"
+msgstr ""
+
+#: src/languagecodes.c:87
+msgid "Tatar"
+msgstr ""
+
+#: src/languagecodes.c:88
+msgid "Thai"
+msgstr ""
+
+#: src/languagecodes.c:89
+msgid "Turkish"
+msgstr ""
+
+#: src/languagecodes.c:90
+msgid "Ukrainian"
+msgstr ""
+
+#: src/languagecodes.c:91
+msgid "Urdu"
+msgstr ""
+
+#: src/languagecodes.c:92
+msgid "Vietnamese"
+msgstr ""
+
+#: src/languagecodes.c:93
+msgid "Welsh"
+msgstr ""
+
+#: src/languagecodes.c:94
+msgid "Yiddish"
+msgstr ""
+
+#: src/languagecodes.c:95
+msgid "Yoruba"
+msgstr ""
+
+#: src/licq.cpp:240
+msgid "Session management is not supported by Licq.\n"
+msgstr ""
+
+#: src/licq.cpp:286
+#, c-format
+msgid "%s version %s, compiled on %s\n"
+msgstr ""
+
+#: src/licq.cpp:315
+#, c-format
+msgid "%sOutput redirected to \"%s\".\n"
+msgstr ""
+
+#: src/licq.cpp:317
+#, c-format
+msgid ""
+"%sRedirection to \"%s\" failed:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/licq.cpp:395
+#, c-format
+msgid ""
+"%sLicq: %s cannot be opened for writing.\n"
+"%s      skipping lockfile protection.\n"
+msgstr ""
+
+#: src/licq.cpp:412
+#, c-format
+msgid ""
+"%sLicq: Already running at pid %d.\n"
+"%s      Kill process or remove %s.\n"
+msgstr ""
+
+#: src/licq.cpp:420 src/licq.cpp:447
+#, c-format
+msgid "%sLicq: Unable to determine pid of running Licq instance.\n"
+msgstr ""
+
+#: src/licq.cpp:453
+#, c-format
+msgid "%sLicq: Already running at pid %d.\n"
+msgstr ""
+
+#: src/licq.cpp:928
+#, c-format
+msgid "%sStarting plugin %s (version %s).\n"
+msgstr ""
+
+#: src/licq.cpp:1078
+#, c-format
+msgid "%sStarting protocol plugin %s (version %s).\n"
+msgstr ""
+
+#: src/licq.cpp:1106
+#, c-format
+msgid ""
+"%sNo plugins specified on the command-line (-p option).\n"
+"%sSee the README for more information.\n"
+msgstr ""
+
+#: src/licq.cpp:1204 src/licq.cpp:1218
+#, c-format
+msgid "%sPlugin %s exited with code %d.\n"
+msgstr ""
+
+#: src/licq.cpp:1231 src/licq.cpp:1245
+#, c-format
+msgid "%sPlugin %s failed to exit.\n"
+msgstr ""
+
+#: src/licq.cpp:1260
+#, c-format
+msgid ""
+"%s version %s.\n"
+"Usage:  Licq [-h] [-d #] [-b configdir] [-I] [-p plugin] [-l protoplugin] [-"
+"o file] [-- <plugin #1 parameters>] [-- <plugin #2 parameters>...]\n"
+"\n"
+" -h : this help screen (and any plugin help screens as well)\n"
+" -d : set what information is logged to standard output:\n"
+"        1  status information\n"
+"        2  unknown packets\n"
+"        4  errors\n"
+"        8  warnings\n"
+"       16  all packets\n"
+"      add values together for multiple options\n"
+" -c : disable color at standard output\n"
+" -b : set the base directory for the config and data files (~/.licq by "
+"default)\n"
+" -I : force initialization of the given base directory\n"
+" -p : load the given plugin library\n"
+" -l : load the given protocol plugin library\n"
+" -o : redirect stderr to <file>, which can be a device (ie /dev/ttyp4)\n"
+msgstr ""
+
+#: src/message.cpp:235
+#, c-format
+msgid ""
+"File: %s (%lu bytes)\n"
+"Description:\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:284
+#, c-format
+msgid ""
+"Url: %s\n"
+"Description:\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:374
+#, c-format
+msgid ""
+"%s\n"
+"--------------------\n"
+"Multiparty:\n"
+"%s"
+msgstr ""
+
+#: src/message.cpp:442 src/message.cpp:526
+#, c-format
+msgid ""
+"Alias: %s\n"
+"User: %s (%s)\n"
+"Name: %s %s\n"
+"Email: %s\n"
+msgstr ""
+
+#: src/message.cpp:531
+#, c-format
+msgid ""
+"Authorization Request:\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:602
+#, c-format
+msgid "User %s (%s) authorized you"
+msgstr ""
+
+#: src/message.cpp:671
+#, c-format
+msgid "User %s (%s) refused to authorize you"
+msgstr ""
+
+#: src/message.cpp:726
+#, c-format
+msgid ""
+"Message from %s (%s) through web panel:\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:774
+#, c-format
+msgid ""
+"Message from %s (%s) through email pager:\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:844
+#, c-format
+msgid "Contact list (%d contacts):\n"
+msgstr ""
+
+#: src/message.cpp:925
+#, c-format
+msgid ""
+"Phone: %s\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:996
+#, c-format
+msgid ""
+"System Server Message from %s (%s):\n"
+"%s\n"
+msgstr ""
+
+#: src/message.cpp:1077
+#, c-format
+msgid ""
+"New Email from %s (%s):\n"
+"Subject: %s\n"
+msgstr ""
+
+#: src/message.cpp:1186
+msgid "Plugin Event"
+msgstr ""
+
+#: src/message.cpp:1188
+msgid "Chat Request"
+msgstr ""
+
+#: src/message.cpp:1189
+msgid "File Transfer"
+msgstr ""
+
+#: src/message.cpp:1192
+msgid "Authorization Request"
+msgstr ""
+
+#: src/message.cpp:1193
+msgid "AUthorization Refused"
+msgstr ""
+
+#: src/message.cpp:1194
+msgid "Authorization Granted"
+msgstr ""
+
+#: src/message.cpp:1195
+msgid "Server Message"
+msgstr ""
+
+#: src/message.cpp:1198
+msgid "Added to Contact List"
+msgstr ""
+
+#: src/message.cpp:1199
+msgid "Web Panel"
+msgstr ""
+
+#: src/message.cpp:1200
+msgid "Email Pager"
+msgstr ""
+
+#: src/message.cpp:1205
+msgid "Contact List"
+msgstr ""
+
+#: src/message.cpp:1212
+msgid "SMS"
+msgstr ""
+
+#: src/message.cpp:1223
+msgid "Unknown Event"
+msgstr ""
+
+#: src/message.cpp:1228
+msgid " (cancelled)"
+msgstr ""
+
+#: src/proxy.cpp:97
+#, c-format
+msgid "proxy hostname resolution failure (%d)"
+msgstr ""
+
+#: src/proxy.cpp:103
+msgid "No proxy error detected"
+msgstr ""
+
+#: src/proxy.cpp:108
+msgid "Internal proxy error"
+msgstr ""
+
+#: src/proxy.cpp:113
+msgid "Unknown proxy error"
+msgstr ""
+
+#: src/proxy.cpp:353
+#, c-format
+msgid "%sCould not parse HTTP status line from proxy\n"
+msgstr ""
+
+#: src/proxy.cpp:361
+#, c-format
+msgid ""
+"%sHTTPS proxy return error code: %d, error string:\n"
+"%s\n"
+msgstr ""
+
+#: src/sar.cpp:75
+#, c-format
+msgid "%sLoading saved auto-responses.\n"
+msgstr ""
+
+#: src/sighandler.c:73 src/sighandler.c:90 src/sighandler.c:230
+msgid "Unknown signal.\n"
+msgstr ""
+
+#: src/sighandler.c:77
+msgid "Licq Segmentation Violation Detected.\n"
+msgstr ""
+
+#: src/sighandler.c:164
+#, c-format
+msgid "Backtrace (saved in %s):\n"
+msgstr ""
+
+#: src/sighandler.c:172
+msgid "Failed to retrive backtrace symbols"
+msgstr ""
+
+#: src/sighandler.c:185
+msgid "Attempting to generate core file.\n"
+msgstr ""
+
+#: src/socket.cpp:215
+#, c-format
+msgid "hostname resolution failure (%d)"
+msgstr ""
+
+#: src/socket.cpp:223
+msgid "DesX encryption/decryption failure"
+msgstr ""
+
+#: src/socket.cpp:228
+msgid "No error detected"
+msgstr ""
+
+#: src/socket.cpp:233
+msgid "Internal error"
+msgstr ""
+
+#: src/socket.cpp:360
+#, c-format
+msgid ""
+"%sYour IP stack or SOCKS client is a piece of crap.\n"
+"%sAttempting to guess local IP.\n"
+msgstr ""
+
+#: src/socket.cpp:672
+msgid "server socket was closed!!!\n"
+msgstr ""
+
+#: src/socket.cpp:676
+#, c-format
+msgid ""
+"%serror during receiving from server socket :-((\n"
+"%s%s\n"
+msgstr ""
+
+#: src/socket.cpp:745
+#, c-format
+msgid "%sResolving %s port %d...\n"
+msgstr ""
+
+#: src/socket.cpp:748
+#, c-format
+msgid ""
+"%sUnable to resolve %s:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/socket.cpp:752
+#, c-format
+msgid "%sICQ server found at %s:%d.\n"
+msgstr ""
+
+#: src/socket.cpp:763
+#, c-format
+msgid "%sOpening socket to server.\n"
+msgstr ""
+
+#: src/socket.cpp:765
+#, c-format
+msgid "%sOpening socket to server %s:%d via proxy.\n"
+msgstr ""
+
+#: src/socket.cpp:770
+#, c-format
+msgid ""
+"%sUnable to connect to %s:%d:\n"
+"%s%s.\n"
+msgstr ""
+
+#: src/socket.cpp:825
+#, c-format
+msgid "%sCannot accept new connection, too many descriptors in use.\n"
+msgstr ""
+
+#: src/user.cpp:554
+#, c-format
+msgid "%sUser configuration.\n"
+msgstr ""
+
+#: src/user.cpp:645
+#, c-format
+msgid "%sLoading %d users.\n"
+msgstr ""
+
+#: src/user.cpp:660
+#, c-format
+msgid "%sSkipping user %i, empty key.\n"
+msgstr ""
+
+#: src/user.cpp:668
+#, c-format
+msgid ""
+"%sFatal error reading protocol information for User%d with ID '%s'.\n"
+"%sPlease check \"%s/users.conf\".\n"
+msgstr ""
+
+#: src/user.cpp:910
+#, c-format
+msgid "%sGroup %s is already in list.\n"
+msgstr ""
+
+#: src/user.cpp:934
+#, c-format
+msgid "%sAdded group %s (%u) to list from server.\n"
+msgstr ""
+
+#: src/user.cpp:1052
+#, c-format
+msgid "%sGroup name %s is already in list.\n"
+msgstr ""
+
+#: src/user.cpp:1059
+#, c-format
+msgid "%sRenaming request for invalid group %u.\n"
+msgstr ""
+
+#: src/user.cpp:1815
+#, c-format
+msgid ""
+"%sFailed to rename old history file (%s):\n"
+"%s%s\n"
+msgstr ""
+
+#: src/user.cpp:1851 src/user.cpp:2773 src/user.cpp:2983 src/user.cpp:2994
+#: src/user.cpp:3009 src/user.cpp:3034
+msgid "Unknown"
+msgstr ""
+
+#: src/user.cpp:1878
+msgid "<none>"
+msgstr ""
+
+#: src/user.cpp:2205
+#, c-format
+msgid ""
+"%sFailed to rename history file (%s):\n"
+"%s%s\n"
+msgstr ""
+
+#: src/user.cpp:2742
+msgid "(Offline)"
+msgstr ""
+
+#: src/user.cpp:2742
+msgid "Offline"
+msgstr ""
+
+#: src/user.cpp:2743
+msgid "(Do Not Disturb)"
+msgstr ""
+
+#: src/user.cpp:2743
+msgid "Do Not Disturb"
+msgstr ""
+
+#: src/user.cpp:2744
+msgid "(Occupied)"
+msgstr ""
+
+#: src/user.cpp:2745
+msgid "(Not Available)"
+msgstr ""
+
+#: src/user.cpp:2745
+msgid "Not Available"
+msgstr ""
+
+#: src/user.cpp:2746 src/user.cpp:2759
+msgid "(Away)"
+msgstr ""
+
+#: src/user.cpp:2746 src/user.cpp:2759
+msgid "Away"
+msgstr ""
+
+#: src/user.cpp:2747
+msgid "(Free for Chat)"
+msgstr ""
+
+#: src/user.cpp:2747
+msgid "Free for Chat"
+msgstr ""
+
+#: src/user.cpp:2748
+msgid "(Online)"
+msgstr ""
+
+#: src/user.cpp:2748
+msgid "Online"
+msgstr ""
+
+#: src/user.cpp:2755
+msgid "(Off)"
+msgstr ""
+
+#: src/user.cpp:2755
+msgid "Off"
+msgstr ""
+
+#: src/user.cpp:2756
+msgid "(DND)"
+msgstr ""
+
+#: src/user.cpp:2756
+msgid "DND"
+msgstr ""
+
+#: src/user.cpp:2757
+msgid "(Occ)"
+msgstr ""
+
+#: src/user.cpp:2757
+msgid "Occ"
+msgstr ""
+
+#: src/user.cpp:2758
+msgid "(N/A)"
+msgstr ""
+
+#: src/user.cpp:2758
+msgid "N/A"
+msgstr ""
+
+#: src/user.cpp:2760
+msgid "(FFC)"
+msgstr ""
+
+#: src/user.cpp:2760
+msgid "FFC"
+msgstr ""
+
+#: src/user.cpp:2761
+msgid "(On)"
+msgstr ""
+
+#: src/user.cpp:2761
+msgid "On"
+msgstr ""
+
+#: src/user.cpp:2813
+msgid "Invalid"
+msgstr ""
+
+#: src/user.cpp:2985
+#, c-format
+msgid "GMT%c%i%c0"
+msgstr ""
+
+#: src/user.cpp:3024
+msgid "Never"
+msgstr ""
+
+#: src/user.cpp:3058
+#, c-format
+msgid "%d days "
+msgstr ""
+
+#: src/user.cpp:3060
+#, c-format
+msgid "%d day "
+msgstr ""
+
+#: src/user.cpp:3067
+#, c-format
+msgid "%d hours "
+msgstr ""
+
+#: src/user.cpp:3069
+#, c-format
+msgid "%d hour "
+msgstr ""
+
+#: src/user.cpp:3076
+#, c-format
+msgid "%d minutes"
+msgstr ""
+
+#: src/user.cpp:3078
+#, c-format
+msgid "%d minute"
+msgstr ""
+
+#: src/user.cpp:3083
+msgid "Active"
+msgstr ""
+
+#: src/user.cpp:3902
+#, c-format
+msgid "%sUnable to set %s to mode 0600.  Your ICQ password is vulnerable.\n"
+msgstr ""
+
+#: src/user.cpp:3937
+#, c-format
+msgid "%sOwner configuration for %s.\n"
+msgstr ""
+
+#: src/user.cpp:3945
+#, c-format
+msgid ""
+"%sCurrent Licq GMT offset (%d) does not match system GMT offset (%d).\n"
+"%sUpdate general info on server to fix.\n"
+msgstr ""
+
+#: src/utility.cpp:70
+#, c-format
+msgid "%sLoading utilities.\n"
+msgstr ""
+
+#: src/utility.cpp:89
+#, c-format
+msgid "%sWarning: unable to load utility \"%s\".\n"
+msgstr ""
+
+#: src/utility.cpp:125
+#, c-format
+msgid ""
+"%sWarning: Invalid entry in plugin \"%s\":\n"
+"Window = %s\n"
+msgstr ""
+
+#: src/utility.cpp:138
+msgid "none"
+msgstr ""

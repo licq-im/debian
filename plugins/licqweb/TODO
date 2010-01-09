@@ -1,0 +1,18 @@
+For v0.2
+* fix plaintext passwords
+* fix invisible status images
+* messages from offline users
+* focus issues
+
+Other:
+* logging in/rms connectivity errors (display error to user if xml connection or rms connection is lost)
+* logging off
+* sort by groups
+* options window:
+	* sort by group
+	* show offline users
+	* transparent windows
+	* colours
+* history viewing
+* resize windows
+* make/use generic php xml functions instead of creating xml everywhere messily
