@@ -1,0 +1,19 @@
+Index: branches/1.3-stable/licq/src/socket.cpp
+===================================================================
+--- licq/src/socket.cpp (revision 6819)
++++ licq/src/socket.cpp (revision 7023)
+@@ -489,4 +489,14 @@
+   {
+     // IPv6 socket created
++
++    // Make sure we can accept connections for IPv4 as well
++    int i = 0;
++    if (setsockopt(m_nDescriptor, IPPROTO_IPV6, IPV6_V6ONLY, &i, sizeof(i)) < 0)
++    {
++      m_nErrorType = SOCK_ERROR_errno;
++      ::close(m_nDescriptor);
++      m_nDescriptor = -1;
++      return false;
++    }
+ 
+ #ifdef IPV6_PORTRANGE
