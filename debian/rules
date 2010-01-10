@@ -21,8 +21,15 @@ export AUTOHEADER = : autoheader
 # #474425)
 export ac_cv_header_vector_h = yes
 
+# cmake settings
+CMAKE = cmake
+CMAKE_BUILDDIR = obj-$(DEB_BUILD_GNU_TYPE)
+CMAKE_INSTALL_PREFIX = /usr
+CMAKE_NORMAL_ARGS = -DCMAKE_INSTALL_PREFIX="$(CMAKE_INSTALL_PREFIX)" -DCMAKE_C_COMPILER:FILEPATH="$(CC)" -DCMAKE_CXX_COMPILER:FILEPATH="$(CXX)" -DCMAKE_C_FLAGS="$(CFLAGS)" -DCMAKE_CXX_FLAGS="$(CXXFLAGS)" -DCMAKE_SKIP_RPATH=ON -DCMAKE_VERBOSE_MAKEFILE=ON
+
 # plugin packages
-PLUGINS := $(patsubst licq-plugin-%,%,$(filter licq-plugin-%,$(shell dh_listpackages)))
+CMAKE_PLUGINS := qt4
+PLUGINS := $(filter-out $(CMAKE_PLUGINS),$(patsubst licq-plugin-%,%,$(filter licq-plugin-%,$(shell dh_listpackages))))
 
 # directories of plugin packages in source tree
 src/autoreply = auto-reply
@@ -32,6 +39,7 @@ src/kde       = kde-gui
 src/msn       = msn
 src/osd       = osd
 src/qt        = qt-gui
+src/qt4       = qt4-gui
 src/rms       = rms
 
 
@@ -81,6 +89,7 @@ clean::
 	[ ! -f Makefile ] || $(MAKE) distclean
 
 
+# autotools plugins
 define build-plugin
 configure/licq-plugin-$(1):: plugins/$$(src/$(1))/config.status
 plugins/$$(src/$(1))/config.status:
@@ -103,6 +112,28 @@ configure/licq-plugin-kde:: extra_confflags = --with-kde
 
 $(foreach X,$(PLUGINS),$(eval $(call build-plugin,$(X))))
 
+# cmake plugins
+define build-cmake-plugin
+configure/licq-plugin-$(1):: plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)/CMakeCache.txt
+plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)/CMakeCache.txt:
+	mkdir -p $$(@D)
+	cd $$(@D) && $$(CMAKE) $(CURDIR)/plugins/$$(src/$(1)) $$(CMAKE_NORMAL_ARGS) $$(CMAKE_EXTRA_ARGS)
+
+build/licq-plugin-$(1):: debian/stamp-$(1)-build
+debian/stamp-$(1)-build:
+	$$(DEB_MAKE_ENVVARS) $$(MAKE) -C plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)
+	touch $$@
+
+install/licq-plugin-$(1)::
+	$$(DEB_MAKE_ENVVARS) $$(MAKE) -C plugins/$$(src/$(1))/$(CMAKE_BUILDDIR) install DESTDIR=$(CURDIR)/debian/licq-plugin-$(1)
+
+clean::
+	rm -f debian/stamp-$(1)-build
+	rm -rf plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)
+endef
+
+$(foreach X,$(CMAKE_PLUGINS),$(eval $(call build-cmake-plugin,$(X))))
+
 
 # Install rules
 
@@ -120,6 +151,11 @@ binary-post-install/licq-plugin-kde::
 
 binary-post-install/licq-plugin-qt::
 	rm debian/$(cdbs_curpkg)/usr/share/licq/qt-gui/emoticons/FeltTip4/LICENSE
+	mv debian/$(cdbs_curpkg)/usr/share/applications/licq.desktop debian/$(cdbs_curpkg)/usr/share/applications/licq-qt3.desktop
+
+binary-post-install/licq-plugin-qt4::
+	rm debian/$(cdbs_curpkg)/usr/share/licq/qt4-gui/emoticons/FeltTip4/LICENSE
+	mv debian/$(cdbs_curpkg)/usr/share/applications/licq.desktop debian/$(cdbs_curpkg)/usr/share/applications/licq-qt4.desktop
 
 
 # These are upstream packaging bugs.

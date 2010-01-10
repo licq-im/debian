@@ -1,0 +1,25 @@
+This Debian package was created by Zed Pobre <zed@debian.org> on
+6 Sep 1998.  Since 28 May 2004 it has been maintained by Peter
+Eisentraut <petere@debian.org>.
+
+The upstream sources were obtained from the Licq home page at
+<http://www.licq.org/>.
+
+Copyright:
+
+  Copyright (C) 1999-2006 Licq developers
+
+  This program is licensed under the terms of the GNU GPL, with the
+  exception that it may be compiled and linked with the TrollTech QT
+  library without implying that any of the rights or restrictions
+  associated with the GPL are applied to the QT library.
+
+On Debian systems, the complete text of the GNU GPL can be found in the
+file /usr/share/common-licenses/GPL.
+
+The following applies to /usr/share/licq/qt4-gui/emoticons/FeltTip4/:
+
+  This work is licensed under the Creative Commons Attribution-ShareAlike
+  License. To view a copy of this license, visit
+  http://creativecommons.org/licenses/by-sa/2.5/ or send a letter to
+  Creative Commons, 559 Nathan Abbott Way, Stanford, California 94305, USA.
