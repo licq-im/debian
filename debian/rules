@@ -17,10 +17,6 @@ export AUTOCONF   = : autoconf
 export AUTOMAKE	  = : automake
 export AUTOHEADER = : autoheader
 
-# workaround for auto-reply configure script incompatibility with gcc-4.3 (bug
-# #474425)
-export ac_cv_header_vector_h = yes
-
 # cmake settings
 CMAKE = cmake
 CMAKE_BUILDDIR = obj-$(DEB_BUILD_GNU_TYPE)
@@ -156,11 +152,3 @@ binary-post-install/licq-plugin-qt::
 binary-post-install/licq-plugin-qt4::
 	rm debian/$(cdbs_curpkg)/usr/share/licq/qt4-gui/emoticons/FeltTip4/LICENSE
 	mv debian/$(cdbs_curpkg)/usr/share/applications/licq.desktop debian/$(cdbs_curpkg)/usr/share/applications/licq-qt4.desktop
-
-
-# These are upstream packaging bugs.
-clean::
-	rm -f po/stamp-po
-	rm -f po/*.gmo
-	rm -f plugins/osd/po/stamp-po
-	rm -f plugins/osd/po/*.gmo
