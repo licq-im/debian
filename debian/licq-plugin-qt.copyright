@@ -1,13 +1,14 @@
-This Debian package was created by Zed Pobre <zed@debian.org> on
-6 Sep 1998.  Since 28 May 2004 it has been maintained by Peter
-Eisentraut <petere@debian.org>.
+This Debian package was created by Zed Pobre <zed@debian.org> on 6 Sep 1998.
+Between 28 May 2004 and 20 Mar 2008 it was maintained by Peter Eisentraut
+<petere@debian.org>.  Since 9 Jan 2010 it has been maintained by Erik Johansson
+<debian@ejohansson.se>.
 
 The upstream sources were obtained from the Licq home page at
 <http://www.licq.org/>.
 
 Copyright:
 
-  Copyright (C) 1999-2006 Licq developers
+  Copyright (C) 1999-2010 Licq developers
 
   This program is licensed under the terms of the GNU GPL, with the
   exception that it may be compiled and linked with the TrollTech QT

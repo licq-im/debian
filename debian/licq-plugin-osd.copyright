@@ -1,9 +1,10 @@
-This Debian package was created by Thibaut VARENE <varenet@debian.org>
-on 4 Jul 2004.  On 01 Oct 2004, it was integrated into the licq package,
-which is maintained by Peter Eisentraut <petere@debian.org>.
+This Debian package was created by Thibaut VARENE <varenet@debian.org> on 4 Jul
+2004.  On 01 Oct 2004, it was integrated into the licq package by Peter
+Eisentraut <petere@debian.org>.  Since 9 Jan 2010 it has been maintained by
+Erik Johansson <debian@ejohansson.se>.
 
 The upstream sources were obtained from the Licq home page at
-<http://www.licq.org/download.php>.
+<http://www.licq.org/>.
 
 Upstream author: Martin Maurer <martin.maurer@email.de>
 
