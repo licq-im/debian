@@ -1,10 +1,3 @@
-licq (1.3.8-2) unstable; urgency=low
-
-  * Backport r7000, r6978 and r7023 from upstream, fixing potential bugs.
-  * Bumped Standards Version to 3.8.3 with no changes.
-
- -- Erik Johansson <debian@ejohansson.se>  Sun, 10 Jan 2010 15:42:23 +0100
-
 licq (1.3.8-1) unstable; urgency=low
 
   * New maintainer (closes: #471819)
@@ -12,6 +5,8 @@ licq (1.3.8-1) unstable; urgency=low
   * Removed fix-const.patch, merged upstream
   * debian/licq.docs
     - Dropped docs no longer shipped upstream
+  * Backport r7000, r6978 and r7023 from upstream, fixing potential bugs.
+  * Bumped Standards Version to 3.8.3 with no changes.
 
  -- Erik Johansson <debian@ejohansson.se>  Sat, 09 Jan 2010 17:27:46 +0100
 
