@@ -1,1 +1,1 @@
-licq-plugin-qt: desktop-command-not-in-package /usr/share/applications/licq.desktop licq
+licq-plugin-qt: desktop-command-not-in-package /usr/share/applications/licq-qt3.desktop licq
