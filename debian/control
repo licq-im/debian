@@ -32,7 +32,7 @@ Description: ICQ client (base files)
 
 Package: licq-dev
 Architecture: all
-Section: libdevel
+Section: devel
 Depends: ${misc:Depends}
 Description: Licq development and header files
  This package contains files required to compile Licq plug-ins that are
