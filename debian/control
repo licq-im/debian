@@ -1,5 +1,5 @@
 Source: licq
-Build-Depends: cdbs (>= 0.4.52), debhelper (>= 6.0.7), imagemagick, kdebase-data (>= 4:3.97.0), kdelibs4-dev, libcdk5-dev, libgpgme11-dev (>= 0.4.2), libncurses5-dev, libqt3-mt-dev, libqt4-dev, qt4-dev-tools, libssl-dev, libxosd-dev (>= 2.1.0), libxss-dev, libboost-dev (>= 1.13.1)
+Build-Depends: cdbs (>= 0.4.52), cmake (>= 2.4.2), debhelper (>= 6.0.7), imagemagick, kdebase-data (>= 4:3.97.0), kdelibs4-dev, libcdk5-dev, libgpgme11-dev (>= 0.4.2), libncurses5-dev, libqt3-mt-dev, libqt4-dev (>= 4.3.0), qt4-dev-tools, libssl-dev, libxosd-dev (>= 2.1.0), libxss-dev, libboost-dev (>= 1.33.1)
 Section: net
 Priority: optional
 Maintainer: Erik Johansson <debian@ejohansson.se>
