@@ -16,7 +16,7 @@ Suggests: bind9-host | host, ping, traceroute
 Description: multi-protocol instant messaging client (base files)
  This is an instant messaging client daemon that supports a number of
  interfaces via plug-ins, primarily KDE or Qt, but also console, and several
- utility plug-ins.  Include in this package is support for AIM and ICQ.
+ utility plug-ins.  Included in this package is support for AIM and ICQ.
  Support for MSN is available as a separate plug-in.
  .
  Implemented features include messaging, chat, file transfer, whitepages,
@@ -24,8 +24,7 @@ Description: multi-protocol instant messaging client (base files)
  notification, phone book, user pictures, proxy support, user groups,
  network monitor window, themed docking skin and icon pack support,
  FIFO support for remote control, international support with Unicode and
- translations, user floaty windows, auto-raise and auto-popup incoming
- messages, per-user customized auto responses, SSL secure client to
+ translations, per-user customized auto responses, SSL secure client to
  client connections, GPG encrypted messages.
  .
  At least one plug-in is required for Licq to function.  The plug-ins
