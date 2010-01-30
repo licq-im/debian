@@ -140,7 +140,7 @@ install-licq-common::
 	convert /usr/share/icons/oxygen/32x32/apps/licq.png debian/licq/usr/share/pixmaps/licq.xpm
 	mkdir -p debian/licq-dev/usr
 	mv debian/licq/usr/include debian/licq-dev/usr/include
-
+	rm -r debian/licq/usr/lib
 
 binary-post-install/licq-plugin-kde::
 	rm debian/$(cdbs_curpkg)/usr/share/licq/kde-gui/emoticons/FeltTip4/LICENSE
