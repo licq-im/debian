@@ -12,7 +12,7 @@ Package: licq
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4 | licq-plugin
 Recommends: sox
-Suggests: bind9-host | host, kmail, ping, traceroute
+Suggests: bind9-host | host, ping, traceroute
 Description: multi-protocol instant messaging client (base files)
  This is an instant messaging client daemon that supports a number of
  interfaces via plug-ins, primarily KDE or Qt, but also console, and several
