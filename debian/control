@@ -56,9 +56,9 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: console user interface plug-in for Licq
  This is a console user interface plug-in for the Licq instant messaging
- client.  It is considered beta at this point and does not have all the
- features that the Qt GUI supports, however does offer a number of really cool
- text-mode things such as multiple windows, contact list pane, log window.
+ client.  It does not have all the features that the Qt GUI supports, however
+ does offer a number of really cool text-mode things such as multiple windows,
+ contact list pane, log window.
 
 Package: licq-plugin-forwarder
 Architecture: any
