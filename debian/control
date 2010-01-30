@@ -36,8 +36,8 @@ Section: devel
 Depends: ${misc:Depends}
 Description: Licq development and header files
  This package contains files required to compile Licq plug-ins that are not
- included in the main Licq package.  If you aren't going to be compiling those
- plug-ins, you don't need this package.
+ included in the main Licq package.  If you aren't going to compile plug-ins,
+ you don't need this package.
 
 Package: licq-plugin-autoreply
 Architecture: any
