@@ -100,7 +100,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: graphical user interface plug-in for Licq using Qt3
  This package provides the Qt-based graphical user interface to the Licq
- instant messaging client.  This version is not linked against the KDE
+ instant messaging client.  This version is not linked against the KDE3
  libraries; see licq-plugin-kde for that.  The Qt plug-in has docking support
  for Window Maker, AfterStep, and Enlightenment among others.
 
@@ -114,7 +114,8 @@ Description: graphical user interface plug-in for Licq using Qt4
  has docking support for Window Maker, AfterStep, and Enlightenment among
  others.
  .
- The difference to licq-plugin-qt is that this plugin uses Qt4 instead of Qt3.
+ This plugin, besides using Qt4 instead of Qt3, is muched improved and has many
+ features that the old licq-plugin-qt lacks.
 
 Package: licq-plugin-rms
 Architecture: any
