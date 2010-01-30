@@ -109,13 +109,24 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: graphical user interface plug-in for Licq using Qt4
- This package provides the Qt-based graphical user interface to the Licq
- instant messaging client and is the default plug-in selected.  The Qt plug-in
- has docking support for Window Maker, AfterStep, and Enlightenment among
- others.
+ This package provides a Qt-based graphical user interface to the Licq instant
+ messaging client.  The GUI provides access to all features available in Licq
+ and is the default plug-in for Licq.
  .
- This plugin, besides using Qt4 instead of Qt3, is muched improved and has many
- features that the old licq-plugin-qt lacks.
+ The GUI contains a wide range of configurable options as well as skin support
+ allowing behaviour and appearance to be customized in many ways.  Features
+ include spell checking, auto-raise and auto-popup incoming messages, tray icon
+ and a searchable history.
+ .
+ By taking advantage of the desktop integration features of Qt4, the GUI can
+ adapt to standard desktops with regards to look and feel.  Docking support is
+ also available for Window Maker, AfterStep, and Enlightment among others.
+ .
+ Qt4-GUI is based on the old Qt-GUI (licq-plugin-qt) but uses Qt4 and includes
+ new features such as spell checking and configurable keyboard shortcuts as
+ well as entirely new dialogs for messaging, history and settings.  Note that
+ spell checking and tray icon are available even though this version is not
+ linked with KDE libraries.
 
 Package: licq-plugin-rms
 Architecture: any
