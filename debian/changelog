@@ -1,3 +1,15 @@
+licq (1.3.8-3) unstable; urgency=low
+
+  * Don't ship empty usr/lib/licq/ in licq package.
+  * Changed source package format to '3.0 (quilt)'.
+  * Bumped Standards Version to 3.8.4 with no changes.
+  * Updated package descriptions.
+  * New description for the qt4 plugin. - thanks to flynd
+  * Changed licq to recommend licq-plugin to break circular dependency
+    (Closes: #567989)
+
+ -- Erik Johansson <debian@ejohansson.se>  Sun, 21 Feb 2010 11:21:09 +0100
+
 licq (1.3.8-2) unstable; urgency=low
 
   * Packaged qt4-gui plugin (closes: #516672).
