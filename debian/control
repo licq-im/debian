@@ -14,7 +14,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}
 Recommends: licq-plugin-qt4 | licq-plugin, sox
 Suggests: bind9-host | host, ping, traceroute
 Description: multi-protocol instant messaging client (base files)
- This is an instant messaging client daemon that supports a number of
+ Licq is an instant messaging client daemon that supports a number of
  interfaces via plug-ins, primarily KDE or Qt, but also console, and several
  utility plug-ins.  Included in this package is support for AIM and ICQ.
  Support for MSN is available as a separate plug-in.
@@ -25,7 +25,7 @@ Description: multi-protocol instant messaging client (base files)
  network monitor window, themed docking skin and icon pack support,
  FIFO support for remote control, international support with Unicode and
  translations, per-user customized auto responses, SSL secure client to
- client connections, GPG encrypted messages.
+ client connections and GPG encrypted messages.
  .
  At least one plug-in is required for Licq to function.  The plug-ins
  are distributed in separate packages named "licq-plugin-*".
@@ -55,9 +55,9 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: console user interface plug-in for Licq
  This is a console user interface plug-in for the Licq instant messaging
- client.  It does not have all the features that the Qt GUI supports, however
+ client.  It does not have all the features that the Qt GUI supports, but it
  does offer a number of really cool text-mode things such as multiple windows,
- contact list pane, log window.
+ contact list pane and log window.
 
 Package: licq-plugin-forwarder
 Architecture: any
@@ -83,7 +83,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: MSN plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
- communicating over the MSN Messenger instant messaging network.
+ communication over the MSN Messenger instant messaging network.
 
 Package: licq-plugin-osd
 Architecture: any
@@ -102,7 +102,7 @@ Description: graphical user interface plug-in for Licq using Qt3
  This package provides the Qt-based graphical user interface to the Licq
  instant messaging client.  This version is not linked against the KDE3
  libraries; see licq-plugin-kde for that.  The Qt plug-in has docking support
- for Window Maker, AfterStep, and Enlightenment among others.
+ for Window Maker, AfterStep and Enlightenment among others.
 
 Package: licq-plugin-qt4
 Architecture: any
@@ -120,7 +120,7 @@ Description: graphical user interface plug-in for Licq using Qt4
  .
  By taking advantage of the desktop integration features of Qt4, the GUI can
  adapt to standard desktops with regards to look and feel.  Docking support is
- also available for Window Maker, AfterStep, and Enlightment among others.
+ also available for Window Maker, AfterStep and Enlightment among others.
  .
  Qt4-GUI is based on the old Qt-GUI (licq-plugin-qt) but uses Qt4 and includes
  new features such as spell checking and configurable keyboard shortcuts as
@@ -134,5 +134,5 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: remote management server plug-in for telnet Licq access
  This package provides the means to manage Licq instant messaging sessions
- remotely by means of a telnet connection.  For obvious reasons, if you don't
+ remotely through a telnet connection.  For obvious reasons, if you don't
  need this plug-in, you probably shouldn't install it.
