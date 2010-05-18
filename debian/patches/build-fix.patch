@@ -1,0 +1,11 @@
+--- licq-1.3.9/plugins/qt-gui/configure~	2010-05-16 19:43:59.000000000 +0200
++++ licq-1.3.9/plugins/qt-gui/configure	2010-05-18 21:53:27.000000000 +0200
+@@ -18768,7 +18768,7 @@
+ 
+ 
+ 
+-  if test "$have_kde" == "yes"; then
++  if test "$have_kde" = "yes"; then
+     # Extract the first word of "dcopidl", so it can be a program name with args.
+ set dummy dcopidl; ac_word=$2
+ { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
