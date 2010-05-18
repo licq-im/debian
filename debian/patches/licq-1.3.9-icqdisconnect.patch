@@ -1,0 +1,13 @@
+Index: licq/src/buffer.cpp
+===================================================================
+--- licq/src/buffer.cpp	(revision 7352)
++++ licq/src/buffer.cpp	(working copy)
+@@ -446,6 +446,8 @@
+   PackUnsignedShort(size);
+   if (data != NULL)
+     Pack(data, size);
++  else
++    PackChar('\0');
+   return getDataPosWrite() - size;
+ }
+ 
