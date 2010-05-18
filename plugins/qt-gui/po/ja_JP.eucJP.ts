@@ -115,7 +115,7 @@ You can leave me a message.
     </message>
     <message>
         <source>&amp;Done</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">終了</translation>
     </message>
     <message>
         <source>&amp;Up</source>
@@ -3046,7 +3046,7 @@ This might not work.</source>
         <translation>配置</translation>
     </message>
     <message>
-        <source>Auto close the user function window after a succesful event</source>
+        <source>Auto close the user function window after a successful event</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3612,7 +3612,7 @@ The following parameters can be used:</source>
     </message>
     <message>
         <source>&amp;Done</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">終了</translation>
     </message>
     <message>
         <source>From the Account Manager dialog you are able to add and register your accounts.

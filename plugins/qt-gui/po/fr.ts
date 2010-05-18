@@ -2921,7 +2921,7 @@ Rebuild Licq with OpenSSL support.</source>
         <translation type="unfinished">Général</translation>
     </message>
     <message>
-        <source>Auto close the user function window after a succesful event</source>
+        <source>Auto close the user function window after a successful event</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4448,7 +4448,7 @@ Extended Iconset &apos;%2&apos; has been disabled.</source>
     <name>UserEventCommon</name>
     <message>
         <source>Status:</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">État:</translation>
     </message>
     <message>
         <source>Time:</source>
@@ -4527,7 +4527,7 @@ Extended Iconset &apos;%2&apos; has been disabled.</source>
     </message>
     <message>
         <source>Status:</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">État:</translation>
     </message>
     <message>
         <source>Timezone:</source>

@@ -26,33 +26,25 @@ $uin = $_SESSION['uin'];
 $password = $_SESSION['password'];
 session_write_close();
 
-if (!rmsLogin("$uin\r\n", "$password\r\n")) {
-	$message = "<response><method>loginFailed</method><result>Couldn't log in to rms plugin!</result></response>";
-	push($message);
-	exit;
+if (!rmsLogin("$uin\r\n", "$password\r\n"))
+{
+  header('Content-Type: text/xml');
+  echo "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
+  echo "<response><method>loginFailed</method><result>Couldn't log in to rms plugin!</result></response>";
+  exit;
 }
 
-$statusMap = array(
-	"Online" => "online",
-	"FreeForChat" => "ffc",
-	"Away" => "away",
-	"Occupied" => "occupied",
-	"NotAvailable" => "na",
-	"DoNotDisturb" => "dnd",
-	"Offline" => "offline"
-);
+$messagesXML="";
 
-$ret = rmsChangeStatus($_POST['pp'], $statusMap[$_POST['status']]);
+$messages = rmsViewHistory($_GET['id'], $_GET['pp'], $_GET["lenght"], $_GET["offset"]);
+foreach ($messages as $message)
+  $messagesXML .= "<message>" . xmlentities($message['msg']) . "</message><from>".$message['from']."</from><time>" . $message['time'] . "</time>";
 
 header('Content-Type: text/xml');
 echo "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
 echo "
 <response>
-  <method>ackChangeStatus</method>
-  <result>$ret</result>
+  <method>viewHistory</method>
+  <result><id>" . $_GET['id'] . "</id><pp>" . $_GET['pp'] . "</pp><messages>$messagesXML</messages></result>
 </response>
 ";
-
-socket_shutdown($sock);
-socket_close($sock);
-?>

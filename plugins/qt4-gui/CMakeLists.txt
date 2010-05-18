@@ -1,5 +1,7 @@
 project(Qt4-GUI)
 cmake_minimum_required(VERSION 2.4.2)
+cmake_policy(SET CMP0003 NEW)
+
 include(CheckIncludeFile)
 include(TestCXXAcceptsFlag)
 include(CheckLibraryExists)
@@ -9,7 +11,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 # Qt-GUI version
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 3)
-set(VERSION_RELEASE 8)
+set(VERSION_RELEASE 9)
 
 # Use KDE support
 option(WITH_KDE "Compile with KDE support" OFF)
