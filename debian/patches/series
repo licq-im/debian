@@ -1,6 +1,2 @@
-10_licq-hebrev-r7000.patch
-11_licq-empty-user-id-r6978.patch
-12_licq-ipv6-r7023.patch
-13_licq-ipv6-build-fix.patch
 30_licq-debian-config.patch
 50_licq-qt-wmaker-docking-fix.patch
