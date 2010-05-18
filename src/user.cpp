@@ -576,6 +576,42 @@ bool CUserManager::addUser(const UserId& uid,
   return true;
 }
 
+bool CUserManager::makeUserPermanent(const UserId& userId, bool addToServer,
+    int groupId)
+{
+  if (!USERID_ISVALID(userId))
+    return false;
+
+  if (isOwner(userId))
+    return false;
+
+  string accountId;
+  unsigned long protocolId;
+  {
+    LicqUserWriteGuard user(userId);
+    if (!user.isLocked())
+      return false;
+
+    // Check if user is already permanent
+    if (!user->NotInList())
+      return false;
+
+    accountId = user->accountId();
+    protocolId = user->ppid();
+    user->SetPermanent();
+  }
+
+  // Add user to server side list
+  if (addToServer)
+    gLicqDaemon->protoAddUser(accountId.c_str(), protocolId, groupId);
+
+  // Set initial group membership, also sets server group for user
+  if (groupId != 0)
+    setUserInGroup(userId, GROUPS_USER, groupId, true, addToServer);
+
+  return true;
+}
+
 void CUserManager::removeUser(const UserId& userId)
 {
   // Remove the user from the server side list first
@@ -2982,7 +3018,7 @@ string LicqUser::normalizeId(const string& accountId, unsigned long ppid)
 
   // TODO Make the protocol plugin normalize the accountId
   // For AIM, account id is case insensitive and spaces should be ignored
-  if (ppid == LICQ_PPID && !isdigit(accountId[0]))
+  if (ppid == LICQ_PPID && !accountId.empty() && !isdigit(accountId[0]))
   {
     boost::erase_all(realId, " ");
     boost::to_lower(realId);
@@ -3478,6 +3514,8 @@ LicqOwner::LicqOwner(const string& accountId, unsigned long ppid)
   m_fConf.SetFileName(filename);
   m_fConf.SetFlags(INI_FxWARN | INI_FxALLOWxCREATE);
   m_fConf.ReloadFile();
+  m_fConf.CreateSection("user");
+  m_fConf.FlushFile();
   m_fConf.SetFlags(0);
 
   // And finally our favorite function
@@ -3640,6 +3678,7 @@ void ICQOwner::SetPicture(const char *f)
     {
       gLog.Error("%sUnable to open picture file (%s):\n%s%s.\n", L_ERRORxSTR,
                                      szFilename, L_BLANKxSTR, strerror(errno));
+      close(source);
       return;
     }
 

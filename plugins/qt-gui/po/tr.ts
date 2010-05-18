@@ -1803,7 +1803,7 @@ Bana söyleyeceğin varsa dönünce bakacağım...</translation>
     </message>
     <message>
         <source>&amp;OK</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">&amp;Ok</translation>
     </message>
     <message>
         <source>&amp;Cancel</source>
@@ -1992,7 +1992,7 @@ istiyor musun?</translation>
     </message>
     <message>
         <source>&amp;OK</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">&amp;Ok</translation>
     </message>
     <message>
         <source>&amp;Cancel</source>
@@ -2177,7 +2177,7 @@ istiyor musun?</translation>
     </message>
     <message>
         <source>&amp;OK</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">&amp;Ok</translation>
     </message>
     <message>
         <source>&amp;No Key</source>
@@ -2998,7 +2998,7 @@ This probably won&apos;t work.</source>
         <translation>Ausrichtung</translation>
     </message>
     <message>
-        <source>Auto close the user function window after a succesful event</source>
+        <source>Auto close the user function window after a successful event</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5366,7 +5366,7 @@ You will need to start the browser and open the URL manually.</source>
     </message>
     <message>
         <source>&amp;OK</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">&amp;Ok</translation>
     </message>
     <message>
         <source>Licq - New Account Verification</source>

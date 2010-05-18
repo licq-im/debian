@@ -1,4 +1,31 @@
 /*
+ * Copyright (C) 2008-2010 Anders Olofsson
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
  * This header attempts to find endian for the local system and define byte
  * swap functions.
  * As far as possible it uses system headers as these should know best.
@@ -51,7 +78,33 @@
 
 // BSD header for endian and byte swap
 // Compiler gives us __*BSD__ variables to check for
-#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
+# include <sys/endian.h>
+
+// BSD defines endian by setting _BYTE_ORDER to _BIG_ENDIAN or _LITTLE_ENDIAN
+# if _BYTE_ORDER == _LITTLE_ENDIAN
+#  define IS_LITTLE_ENDIAN
+# endif
+# if _BYTE_ORDER == _BIG_ENDIAN
+#  define IS_BIG_ENDIAN
+# endif
+
+// BSD defines bswap functions: bswap16, bswap32, bswap64
+# define BSWAP_16(x) bswap16(x)
+# define BSWAP_32(x) bswap32(x)
+# define BSWAP_64(x) bswap64(x)
+
+// BSD defines conversion functions: be16toh, be32toh, be64toh, le16toh, le32toh, le64toh
+# define BE_16(x) be16toh(x)
+# define BE_32(x) be32toh(x)
+# define BE_64(x) be64toh(x)
+# define LE_16(x) le16toh(x)
+# define LE_32(x) le32toh(x)
+# define LE_64(x) le64toh(x)
+
+
+// OpenBSD differs from the other BSD systems
+#elif defined(__OpenBSD__)
 # include <machine/endian.h>
 
 // BSD defines endian by setting _BYTE_ORDER to _BIG_ENDIAN or _LITTLE_ENDIAN
@@ -62,12 +115,12 @@
 #  define IS_BIG_ENDIAN
 # endif
 
-// BSD defines bswap functions: swap16, swap32, swap64
+// OpenBSD defines bswap functions: swap16, swap32, swap64
 # define BSWAP_16(x) swap16(x)
 # define BSWAP_32(x) swap32(x)
 # define BSWAP_64(x) swap64(x)
 
-// BSD defines conversion functions: betoh16, betoh32, betoh64, letoh16, letoh32, letoh64
+// OpenBSD defines conversion functions: betoh16, betoh32, betoh64, letoh16, letoh32, letoh64
 # define BE_16(x) betoh16(x)
 # define BE_32(x) betoh32(x)
 # define BE_64(x) betoh64(x)

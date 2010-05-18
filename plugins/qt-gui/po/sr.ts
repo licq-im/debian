@@ -2420,7 +2420,7 @@ Ova opcija neće raditi.</translation>
     <name>KeyView</name>
     <message>
         <source>Name</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Ime</translation>
     </message>
 </context>
 <context>
@@ -3007,7 +3007,7 @@ Ova opcija neće raditi.</translation>
         <translation>Auto-zatvori Prozor Funkcija</translation>
     </message>
     <message>
-        <source>Auto close the user function window after a succesful event</source>
+        <source>Auto close the user function window after a successful event</source>
         <translation>Auto-zatvori prozor korisničkih funkcijaposle uspešnog događaja</translation>
     </message>
     <message>
@@ -3461,7 +3461,7 @@ changes here require a Restart to take effect!
     </message>
     <message>
         <source>Name</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Ime</translation>
     </message>
     <message>
         <source>Date Format:</source>

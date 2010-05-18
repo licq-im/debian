@@ -306,13 +306,13 @@ void CICQDaemon::protoRemoveUser(const UserId& userId)
   bool tempUser = u->NotInList();
   gUserManager.DropUser(u);
 
-  if (ppid == LICQ_PPID && tempUser)
+  if (ppid == LICQ_PPID && !tempUser)
     icqRemoveUser(accountId.c_str());
   else if(ppid != LICQ_PPID)
     PushProtoSignal(new CRemoveUserSignal(accountId.c_str()), ppid);
 }
 
-void CICQDaemon::icqRemoveUser(const char *_szId)
+void CICQDaemon::icqRemoveUser(const char *_szId, bool ignored)
 {
   UserId userId = LicqUser::makeUserId(_szId, LICQ_PPID);
   // Remove from the SSList and update groups
@@ -329,7 +329,7 @@ void CICQDaemon::icqRemoveUser(const char *_szId)
     unsigned short nSID = u->GetSID();
     unsigned short nVisibleSID = u->GetVisibleSID();
     unsigned short nInvisibleSID = u->GetInvisibleSID();
-    bool bIgnored = u->IgnoreList();
+    bool bIgnored = (u->IgnoreList() | ignored);
     u->SetGSID(0);
     u->SetVisibleSID(0);
     u->SetInvisibleSID(0);
@@ -1452,7 +1452,7 @@ void CICQDaemon::icqRemoveFromIgnoreList(const UserId& userId)
 
   string accountId = LicqUser::getUserAccountId(userId);
   const char* _szId = accountId.c_str();
-  icqRemoveUser(_szId);
+  icqRemoveUser(_szId, true);
   icqAddUser(_szId, false);
 }
 
@@ -1898,7 +1898,7 @@ void CICQDaemon::postLogoff(int nSD, ICQEvent *cancelledEvent)
     m_szRegisterPasswd = 0;
   }
 
-  pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, 0, USERID_NONE, LICQ_PPID));
+  pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, 0, gUserManager.ownerUserId(LICQ_PPID), LICQ_PPID));
 
   // Mark all users as offline, this also updates the last seen
   // online field
@@ -6287,13 +6287,13 @@ bool CICQDaemon::ProcessCloseChannel(CBuffer &packet)
   case 0x1D:
   case 0x18:
     gLog.Error(tr("%sRate limit exceeded.\n"), L_ERRORxSTR);
-      pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_RATE, USERID_NONE, LICQ_PPID));
+      pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_RATE, gUserManager.ownerUserId(LICQ_PPID), LICQ_PPID));
       break;
 
   case 0x04:
   case 0x05:
     gLog.Error(tr("%sInvalid UIN and password combination.\n"), L_ERRORxSTR);
-      pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_PASSWORD, USERID_NONE, LICQ_PPID));
+      pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_PASSWORD, gUserManager.ownerUserId(LICQ_PPID), LICQ_PPID));
       break;
 
   case 0x0C:

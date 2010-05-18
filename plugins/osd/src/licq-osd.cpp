@@ -424,7 +424,7 @@ void ProcessSignal(LicqSignal* s)
     bool notify=false;
     bool ignore=false;
     bool invisible=false;
-    bool want_osd=true; // if we are in DND,... we maybe dont want OSD
+  bool want_osd = true; // if we are in DND,... we maybe don't want OSD
     bool want_osd_msgs_only=false; // though we don't want OSD we want msgs
     bool secure=false;
     unsigned long status=0;
@@ -554,7 +554,7 @@ void ProcessSignal(LicqSignal* s)
                 want_osd=false;
 
 	    // user checked our auto-response
-	    // this is some evil functionality - most users dont know
+      // this is some evil functionality - most users don't know
 	    // that you realize when they check your auto-response
 	    // i implemented this just for fun :)
 	    if ((want_osd) && (!want_osd_msgs_only) && // not ignored or disabled
@@ -834,7 +834,8 @@ char* my_translate(const UserId& /* userId */, const char* msg, const char* user
 		tosize += fromsize + 4;
 		continue;
 	    }
-	    gLog.Warn("%sError in my_translate - stopping translation, error on %li. char\n", L_OSD_STR, msgptr-msg+1);
+      gLog.Warn("%sError in my_translate - stopping translation, error on %ld. char\n",
+          L_OSD_STR, (long int)(msgptr-msg+1));
 	    strcpy(result, msg); // return original string
 	    return result;
 	}

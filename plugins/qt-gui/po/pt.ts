@@ -486,7 +486,7 @@ See Network Window for details.</source>
     <name>CMMUserView</name>
     <message>
         <source>Remove</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Eliminar</translation>
     </message>
     <message>
         <source>Crop</source>
@@ -2757,7 +2757,7 @@ Rebuild Licq with OpenSSL support.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Auto close the user function window after a succesful event</source>
+        <source>Auto close the user function window after a successful event</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3643,7 +3643,7 @@ Now set your personal information.</source>
     </message>
     <message>
         <source>Done</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">Aceitar</translation>
     </message>
     <message>
         <source>Licq Plugin %1 %2
