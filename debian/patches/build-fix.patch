@@ -1,3 +1,5 @@
+Subject: Fixes build problem due to bash-ism
+Author: upstream, http://trac.licq.org/changeset/7506/branches/1.3-stable/qt-gui
 Index: licq/plugins/qt-gui/configure
 ===================================================================
 --- licq.orig/plugins/qt-gui/configure	2010-05-18 21:10:19.000000000 +0200

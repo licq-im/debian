@@ -1,5 +1,6 @@
-# bug #362472
-
+Subject: Windowmaker window_group hint managed improperly by Qt
+Origin: vendor, http://bugs.debian.org/cgi-bin/bugreport.cgi?msg=5;bug=362472
+Bug-Debian: http://bugs.debian.org/362472
 Index: licq/plugins/qt-gui/src/mainwin.cpp
 ===================================================================
 --- licq.orig/plugins/qt-gui/src/mainwin.cpp	2010-05-18 21:10:19.000000000 +0200

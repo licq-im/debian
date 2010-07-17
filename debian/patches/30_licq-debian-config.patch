@@ -1,5 +1,5 @@
-# adjusts some configuration defaults to be more reasonable for Debian
-
+Subject: Adjusts some configuration defaults to be more reasonable for Debian
+Origin: vendor, Debian package
 Index: licq/bin/viewurl-lynx.sh
 ===================================================================
 --- licq.orig/bin/viewurl-lynx.sh	2010-07-17 15:01:05.000000000 +0200
