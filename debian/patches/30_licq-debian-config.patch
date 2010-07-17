@@ -1,8 +1,9 @@
 # adjusts some configuration defaults to be more reasonable for Debian
 
-diff -Nur licq-1.3.4-RC1/bin/viewurl-lynx.sh licq-1.3.4-RC1.new/bin/viewurl-lynx.sh
---- licq-1.3.4-RC1/bin/viewurl-lynx.sh	2006-08-19 08:05:02.000000000 +0200
-+++ licq-1.3.4-RC1.new/bin/viewurl-lynx.sh	2006-09-25 16:04:26.000000000 +0200
+Index: licq/bin/viewurl-lynx.sh
+===================================================================
+--- licq.orig/bin/viewurl-lynx.sh	2010-07-17 15:01:05.000000000 +0200
++++ licq/bin/viewurl-lynx.sh	2010-07-17 15:01:14.000000000 +0200
 @@ -8,7 +8,7 @@
  # Graham Roff, February 1999.
  #
@@ -12,9 +13,10 @@ diff -Nur licq-1.3.4-RC1/bin/viewurl-lynx.sh licq-1.3.4-RC1.new/bin/viewurl-lynx
  LYNX=lynx
  
  ${XTERM} -title "Licq URL View" -e ${LYNX} "$1"
-diff -Nur licq-1.3.4-RC1/bin/viewurl-ncftp.sh licq-1.3.4-RC1.new/bin/viewurl-ncftp.sh
---- licq-1.3.4-RC1/bin/viewurl-ncftp.sh	2006-08-19 08:05:02.000000000 +0200
-+++ licq-1.3.4-RC1.new/bin/viewurl-ncftp.sh	2006-09-25 16:04:26.000000000 +0200
+Index: licq/bin/viewurl-ncftp.sh
+===================================================================
+--- licq.orig/bin/viewurl-ncftp.sh	2010-07-17 15:01:05.000000000 +0200
++++ licq/bin/viewurl-ncftp.sh	2010-07-17 15:01:14.000000000 +0200
 @@ -9,6 +9,6 @@
  #
  
@@ -23,9 +25,10 @@ diff -Nur licq-1.3.4-RC1/bin/viewurl-ncftp.sh licq-1.3.4-RC1.new/bin/viewurl-ncf
 +XTERM=x-terminal-emulator
  
  ${XTERM} -title "Licq URL View" -e ${NCFTP} "$1"
-diff -Nur licq-1.3.4-RC1/bin/viewurl-w3m.sh licq-1.3.4-RC1.new/bin/viewurl-w3m.sh
---- licq-1.3.4-RC1/bin/viewurl-w3m.sh	2006-08-19 08:05:02.000000000 +0200
-+++ licq-1.3.4-RC1.new/bin/viewurl-w3m.sh	2006-09-25 16:04:26.000000000 +0200
+Index: licq/bin/viewurl-w3m.sh
+===================================================================
+--- licq.orig/bin/viewurl-w3m.sh	2010-07-17 15:01:05.000000000 +0200
++++ licq/bin/viewurl-w3m.sh	2010-07-17 15:01:14.000000000 +0200
 @@ -8,7 +8,7 @@
  # Graham Roff, October 1999.
  #
@@ -35,10 +38,11 @@ diff -Nur licq-1.3.4-RC1/bin/viewurl-w3m.sh licq-1.3.4-RC1.new/bin/viewurl-w3m.s
  W3M=w3m
  
  ${XTERM} -title "Licq URL View" -e ${W3M} "$1"
-diff -Nur licq-1.3.4-RC1/plugins/qt-gui/src/optionsdlg.cpp licq-1.3.4-RC1.new/plugins/qt-gui/src/optionsdlg.cpp
---- licq-1.3.4-RC1/plugins/qt-gui/src/optionsdlg.cpp	2006-08-19 08:06:49.000000000 +0200
-+++ licq-1.3.4-RC1.new/plugins/qt-gui/src/optionsdlg.cpp	2006-09-25 16:06:37.000000000 +0200
-@@ -1503,6 +1503,7 @@
+Index: licq/plugins/qt-gui/src/optionsdlg.cpp
+===================================================================
+--- licq.orig/plugins/qt-gui/src/optionsdlg.cpp	2010-07-17 15:01:05.000000000 +0200
++++ licq/plugins/qt-gui/src/optionsdlg.cpp	2010-07-17 15:01:14.000000000 +0200
+@@ -1510,6 +1510,7 @@
  #ifdef USE_KDE
    cmbUrlViewer->insertItem(DEFAULT_URL_VIEWER);
  #endif
@@ -46,10 +50,11 @@ diff -Nur licq-1.3.4-RC1/plugins/qt-gui/src/optionsdlg.cpp licq-1.3.4-RC1.new/pl
    cmbUrlViewer->insertItem("viewurl-firefox.sh");
    cmbUrlViewer->insertItem("viewurl-lynx.sh");
    cmbUrlViewer->insertItem("viewurl-mozilla.sh");
-diff -Nur licq-1.3.4-RC1/plugins/qt-gui/src/optionsdlg.h licq-1.3.4-RC1.new/plugins/qt-gui/src/optionsdlg.h
---- licq-1.3.4-RC1/plugins/qt-gui/src/optionsdlg.h	2006-08-19 08:06:49.000000000 +0200
-+++ licq-1.3.4-RC1.new/plugins/qt-gui/src/optionsdlg.h	2006-09-25 16:05:50.000000000 +0200
-@@ -24,7 +24,7 @@
+Index: licq/plugins/qt-gui/src/optionsdlg.h
+===================================================================
+--- licq.orig/plugins/qt-gui/src/optionsdlg.h	2010-07-17 15:01:05.000000000 +0200
++++ licq/plugins/qt-gui/src/optionsdlg.h	2010-07-17 15:01:14.000000000 +0200
+@@ -43,7 +43,7 @@
  # define DEFAULT_URL_VIEWER tr("KDE default")
  class KURLRequester;
  #else
@@ -58,10 +63,11 @@ diff -Nur licq-1.3.4-RC1/plugins/qt-gui/src/optionsdlg.h licq-1.3.4-RC1.new/plug
  class KURLRequester : public QLineEdit
  {
  public:
-diff -Nur licq-1.3.4-RC1/src/icqd.cpp licq-1.3.4-RC1.new/src/icqd.cpp
---- licq-1.3.4-RC1/src/icqd.cpp	2006-08-19 08:04:38.000000000 +0200
-+++ licq-1.3.4-RC1.new/src/icqd.cpp	2006-09-25 16:04:26.000000000 +0200
-@@ -239,7 +239,7 @@
+Index: licq/src/icqd.cpp
+===================================================================
+--- licq.orig/src/icqd.cpp	2010-07-17 15:01:05.000000000 +0200
++++ licq/src/icqd.cpp	2010-07-17 15:01:14.000000000 +0200
+@@ -254,7 +254,7 @@
  
    // Terminal
    m_szTerminal = NULL;
@@ -70,9 +76,10 @@ diff -Nur licq-1.3.4-RC1/src/icqd.cpp licq-1.3.4-RC1.new/src/icqd.cpp
    m_szTerminal = (char *)malloc(strlen(temp) + 1);
    strcpy(m_szTerminal, temp);
  
-diff -Nur licq-1.3.4-RC1/src/licq.conf.h licq-1.3.4-RC1.new/src/licq.conf.h
---- licq-1.3.4-RC1/src/licq.conf.h	2006-08-19 08:04:38.000000000 +0200
-+++ licq-1.3.4-RC1.new/src/licq.conf.h	2006-09-25 16:07:18.000000000 +0200
+Index: licq/src/licq.conf.h
+===================================================================
+--- licq.orig/src/licq.conf.h	2010-07-17 15:01:05.000000000 +0200
++++ licq/src/licq.conf.h	2010-07-17 15:01:14.000000000 +0200
 @@ -23,7 +23,7 @@
  "ErrorTypes = 6\n"
  "Rejects = log.rejects\n"

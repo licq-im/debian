@@ -1,7 +1,7 @@
 Index: licq/src/buffer.cpp
 ===================================================================
---- licq/src/buffer.cpp	(revision 7352)
-+++ licq/src/buffer.cpp	(working copy)
+--- licq.orig/src/buffer.cpp	2010-05-18 21:10:19.000000000 +0200
++++ licq/src/buffer.cpp	2010-07-17 15:01:15.000000000 +0200
 @@ -446,6 +446,8 @@
    PackUnsignedShort(size);
    if (data != NULL)
