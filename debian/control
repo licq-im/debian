@@ -76,6 +76,32 @@ Description: jabber plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
  communication over a jabber (XMPP) instant messaging network.
 
+Package: licq-plugin-kde
+Architecture: all
+Depends: licq-plugin-kde4, ${misc:Depends}
+Section: oldlibs
+Description: transitional dummy package
+ This is a transitional dummy package to ease the migration from the deprecated
+ licq-plugin-kde to the new licq-plugin-kde4 package.  You can remove it
+ safely.
+
+Package: licq-plugin-kde4
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version}), licq-plugin-qt4-common
+Provides: licq-plugin
+Description: graphical user interface plug-in for Licq using KDE4
+ This package provides a KDE-based graphical user interface to the Licq instant
+ messaging client.  The GUI provides access to all features available in Licq.
+ .
+ The GUI contains a wide range of configurable options as well as skin support
+ allowing behaviour and appearance to be customized in many ways.  Features
+ include spell checking, auto-raise and auto-popup incoming messages, tray icon
+ and a searchable history.
+ .
+ KDE4-GUI is based on the old KDE-GUI (licq-plugin-kde) but uses KDE4 and
+ includes new features such as spell checking and configurable keyboard
+ shortcuts as well as entirely new dialogs for messaging, history and settings.
+
 Package: licq-plugin-msn
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
