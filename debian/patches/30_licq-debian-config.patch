@@ -1,91 +1,15 @@
 Subject: Adjusts some configuration defaults to be more reasonable for Debian
 Origin: vendor, Debian package
-Index: licq/bin/viewurl-lynx.sh
+Index: licq/src/daemon.cpp
 ===================================================================
---- licq.orig/bin/viewurl-lynx.sh	2010-07-17 15:01:05.000000000 +0200
-+++ licq/bin/viewurl-lynx.sh	2010-07-17 15:01:14.000000000 +0200
-@@ -8,7 +8,7 @@
- # Graham Roff, February 1999.
- #
+--- licq.orig/src/daemon.cpp	2010-09-23 22:06:20.000000000 +0200
++++ licq/src/daemon.cpp	2010-09-23 22:08:14.000000000 +0200
+@@ -131,7 +131,7 @@
+     Licq::gTranslator.setTranslationMap(shareDir() + TranslationDir + "/" + temp);
  
--XTERM=xterm
-+XTERM=x-terminal-emulator
- LYNX=lynx
+   // Misc
+-  licqConf.get("Terminal", myTerminal, "xterm -T Licq -e ");
++  licqConf.get("Terminal", myTerminal, "x-terminal-emulator -T Licq -e ");
+   licqConf.get("SendTypingNotification", mySendTypingNotification, true);
+   licqConf.get("IgnoreTypes", myIgnoreTypes, 0);
  
- ${XTERM} -title "Licq URL View" -e ${LYNX} "$1"
-Index: licq/bin/viewurl-ncftp.sh
-===================================================================
---- licq.orig/bin/viewurl-ncftp.sh	2010-07-17 15:01:05.000000000 +0200
-+++ licq/bin/viewurl-ncftp.sh	2010-07-17 15:01:14.000000000 +0200
-@@ -9,6 +9,6 @@
- #
- 
- NCFTP=ncftp
--XTERM=xterm
-+XTERM=x-terminal-emulator
- 
- ${XTERM} -title "Licq URL View" -e ${NCFTP} "$1"
-Index: licq/bin/viewurl-w3m.sh
-===================================================================
---- licq.orig/bin/viewurl-w3m.sh	2010-07-17 15:01:05.000000000 +0200
-+++ licq/bin/viewurl-w3m.sh	2010-07-17 15:01:14.000000000 +0200
-@@ -8,7 +8,7 @@
- # Graham Roff, October 1999.
- #
- 
--XTERM=xterm
-+XTERM=x-terminal-emulator
- W3M=w3m
- 
- ${XTERM} -title "Licq URL View" -e ${W3M} "$1"
-Index: licq/plugins/qt-gui/src/optionsdlg.cpp
-===================================================================
---- licq.orig/plugins/qt-gui/src/optionsdlg.cpp	2010-07-17 15:01:05.000000000 +0200
-+++ licq/plugins/qt-gui/src/optionsdlg.cpp	2010-07-17 15:01:14.000000000 +0200
-@@ -1510,6 +1510,7 @@
- #ifdef USE_KDE
-   cmbUrlViewer->insertItem(DEFAULT_URL_VIEWER);
- #endif
-+  cmbUrlViewer->insertItem("sensible-browser");
-   cmbUrlViewer->insertItem("viewurl-firefox.sh");
-   cmbUrlViewer->insertItem("viewurl-lynx.sh");
-   cmbUrlViewer->insertItem("viewurl-mozilla.sh");
-Index: licq/plugins/qt-gui/src/optionsdlg.h
-===================================================================
---- licq.orig/plugins/qt-gui/src/optionsdlg.h	2010-07-17 15:01:05.000000000 +0200
-+++ licq/plugins/qt-gui/src/optionsdlg.h	2010-07-17 15:01:14.000000000 +0200
-@@ -43,7 +43,7 @@
- # define DEFAULT_URL_VIEWER tr("KDE default")
- class KURLRequester;
- #else
--# define DEFAULT_URL_VIEWER "viewurl-mozilla.sh"
-+# define DEFAULT_URL_VIEWER "sensible-browser"
- class KURLRequester : public QLineEdit
- {
- public:
-Index: licq/src/icqd.cpp
-===================================================================
---- licq.orig/src/icqd.cpp	2010-07-17 15:01:05.000000000 +0200
-+++ licq/src/icqd.cpp	2010-07-17 15:01:14.000000000 +0200
-@@ -254,7 +254,7 @@
- 
-   // Terminal
-   m_szTerminal = NULL;
--  licqConf.ReadStr("Terminal", temp, "xterm -T Licq -e ");
-+  licqConf.ReadStr("Terminal", temp, "x-terminal-emulator -T Licq -e ");
-   m_szTerminal = (char *)malloc(strlen(temp) + 1);
-   strcpy(m_szTerminal, temp);
- 
-Index: licq/src/licq.conf.h
-===================================================================
---- licq.orig/src/licq.conf.h	2010-07-17 15:01:05.000000000 +0200
-+++ licq/src/licq.conf.h	2010-07-17 15:01:14.000000000 +0200
-@@ -23,7 +23,7 @@
- "ErrorTypes = 6\n"
- "Rejects = log.rejects\n"
- "Translation = none\n"
--"Terminal = xterm -T Licq -e \n"
-+"Terminal = x-terminal-emulator -T Licq -e \n"
- "ProxyEnabled = 0\n"
- "ProxyServerType = 1\n"
- "ProxyServer = \n"
