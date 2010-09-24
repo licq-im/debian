@@ -17,7 +17,7 @@ Description: multi-protocol instant messaging client (base files)
  Licq is an instant messaging client daemon that supports a number of
  interfaces via plug-ins, primarily KDE or Qt, but also console, and several
  utility plug-ins.  Included in this package is support for AIM and ICQ.
- Support for MSN is available as a separate plug-in.
+ Support for MSN and Jabber is available as separate plug-ins.
  .
  Implemented features include messaging, chat, file transfer, whitepages,
  history, invisible list, server-side stored contacts, typing
@@ -68,14 +68,13 @@ Description: forwarder plug-in for Licq
  (messages, URLs, etc.) received while the plug-in is enabled will be forwarded
  either via SMTP to a given email account or via ICQ to a given UIN.
 
-Package: licq-plugin-kde
+Package: licq-plugin-jabber
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
-Description: graphical user interface plug-in for Licq using KDE
- This package provides a Qt-based graphical user interface to the Licq instant
- messaging client.  This version is built for KDE and provides the
- corresponding extra features, including KDE docking support.
+Description: jabber plug-in for Licq
+ This is a plug-in for the Licq instant messaging client that enables
+ communication over a jabber (XMPP) instant messaging network.
 
 Package: licq-plugin-msn
 Architecture: any
