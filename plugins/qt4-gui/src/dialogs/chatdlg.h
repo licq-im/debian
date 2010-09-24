@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,8 +23,6 @@
 #include <deque>
 #include <list>
 
-#include <licq_types.h>
-
 #include <QDialog>
 #include <QTextEdit>
 
@@ -42,6 +40,11 @@ class QToolButton;
 
 class CChatManager;
 class CChatUser;
+
+namespace Licq
+{
+class UserId;
+}
 
 namespace LicqQtGui
 {
@@ -101,7 +104,7 @@ public:
    * @param userId User to open chat with
    * @param parent Parent widget
    */
-  ChatDlg(const UserId& userId, QWidget* parent = 0);
+  ChatDlg(const Licq::UserId& userId, QWidget* parent = 0);
   virtual ~ChatDlg();
 
   bool StartAsClient(unsigned short nPort);

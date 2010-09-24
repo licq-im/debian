@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #include <QMap>
 #include <QMenu>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 #include "gui-defines.h"
 
@@ -51,6 +51,8 @@ public:
    */
   UserMenu(QWidget* parent = 0);
 
+  ~UserMenu();
+
   /**
    * Update the list of groups from the daemon. This must be called when the
    * list of groups is changed.
@@ -62,7 +64,7 @@ public:
    *
    * @param userId Contact id
    */
-  void setUser(const UserId& userId);
+  void setUser(const Licq::UserId& userId);
 
   /**
    * Change which contact the menu will be displayed for.
@@ -79,7 +81,7 @@ public:
    * @param id Contact id
    * @param ppid Contact protocol id
    */
-  void popup(QPoint pos, const UserId& userId);
+  void popup(QPoint pos, const Licq::UserId& userId);
 
 private slots:
   /**
@@ -111,7 +113,7 @@ private slots:
 
 private:
   // Current contact
-  UserId myUserId;
+  Licq::UserId myUserId;
   QString myId;
   unsigned long myPpid;
 
@@ -150,7 +152,12 @@ private:
     ModeStatusAway,
     ModeStatusNa,
     ModeStatusOccupied,
-    ModeStatusDnd
+    ModeStatusDnd,
+    ModeOnlineNotify,
+    ModeVisibleList,
+    ModeInvisibleList,
+    ModeIgnoreList,
+    ModeNewUser,
   };
 
   // Actions not in any sub menu
@@ -183,6 +190,8 @@ private:
   QMap<SendModes, QAction*> mySendActions;
   QMap<MiscModes, QAction*> myMiscModesActions;
 };
+
+extern UserMenu* gUserMenu;
 
 } // namespace LicqQtGui
 

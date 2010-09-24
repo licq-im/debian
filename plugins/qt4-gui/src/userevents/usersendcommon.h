@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,14 +23,17 @@
 
 #include "usereventcommon.h"
 
-#include <licq_color.h>
+#include <licq/color.h>
 
 class QGroupBox;
 class QLabel;
 class QPushButton;
 class QSplitter;
 
-class LicqEvent;
+namespace Licq
+{
+class Event;
+}
 
 namespace LicqQtGui
 {
@@ -50,7 +53,7 @@ public:
    * @param parent Parent widget
    * @param name Object name of widget
    */
-  UserSendCommon(int type, const UserId& userId, QWidget* parent = 0, const char* name = 0);
+  UserSendCommon(int type, const Licq::UserId& userId, QWidget* parent = 0, const char* name = 0);
   virtual ~UserSendCommon();
   virtual bool eventFilter(QObject* watched, QEvent* e);
 
@@ -61,14 +64,14 @@ public:
    *
    * @param userId User that joined conversation
    */
-  void convoJoin(const UserId& userId);
+  void convoJoin(const Licq::UserId& userId);
 
   /**
    * Someone left the conversation
    *
    * @param userId User that left conversation
    */
-  void convoLeave(const UserId& userId);
+  void convoLeave(const Licq::UserId& userId);
 
   virtual void windowActivationChange(bool oldActive);
   int clearDelay;
@@ -84,7 +87,7 @@ signals:
    *
    * @param event Event object that was sent
    */
-  void eventSent(const LicqEvent* event);
+  void eventSent(const Licq::Event* event);
 
 public slots:
   /**
@@ -96,7 +99,7 @@ public slots:
   UserSendCommon* changeEventType(int type);
 
 protected:
-  CICQColor myIcqColor;
+  Licq::Color myIcqColor;
   HistoryView* myHistoryView;
   MLEdit* myMessageEdit;
   MMUserView* myMassMessageList;
@@ -116,7 +119,7 @@ protected:
   int myType;
   std::list<unsigned long> myEventTag;
 
-  void retrySend(const LicqEvent* e, bool online, unsigned short level);
+  void retrySend(const Licq::Event* e, bool online, unsigned short level);
 
   /**
    * A user has been update, this virtual function allows subclasses to add additional handling
@@ -127,8 +130,8 @@ protected:
    * @param argument Signal specific argument
    * @param cid Conversation id
    */
-  virtual void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
-  void updatePicture(const LicqUser* u = NULL);
+  virtual void userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  void updatePicture(const Licq::User* u = NULL);
   bool checkSecure();
 
   /**
@@ -140,7 +143,7 @@ protected:
   const QPixmap& iconForType(int type) const;
 
   virtual void resetSettings() = 0;
-  virtual bool sendDone(const LicqEvent* e) = 0;
+  virtual bool sendDone(const Licq::Event* e) = 0;
 
   /**
    * Widget is about to be closed
@@ -169,16 +172,7 @@ protected slots:
   virtual void updateShortcuts();
 
   virtual void send();
-  virtual void eventDoneReceived(const LicqEvent* e);
-
-  /**
-   * An event tag was generated
-   * Used by protocols that cannot return event id from event send function
-   *
-   * @param userId User event belongs to
-   * @param eventTag Id for event
-   */
-  void addEventTag(const UserId& userId, unsigned long eventTag);
+  virtual void eventDoneReceived(const Licq::Event* e);
 
   void cancelSend();
   void changeEventType(QAction* action);

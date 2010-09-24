@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@
 # include <QStyleFactory>
 #endif
 
-#include <licq_icqd.h>
+#include <licq/icq.h>
 
 #include "config/chat.h"
 #include "config/contactlist.h"
@@ -237,7 +237,7 @@ QWidget* Settings::ContactList::createPageColumns(QWidget* parent)
   myColAlignLabel->setToolTip(tr("The alignment of the column"));
   myColumnsLayout->addWidget(myColAlignLabel, 0, 4);
 
-  for (unsigned short i = 0; i < MAX_COLUMNCOUNT; i++)
+  for (int i = 0; i < MAX_COLUMNCOUNT; i++)
   {
     myColNumberRadio[i] = new QRadioButton(QString::number(i+1));
     myColNumberRadio[i]->setToolTip(tr("Number of columns"));
@@ -336,7 +336,7 @@ void Settings::ContactList::numColumnsChanged()
   // Starting from the top, rows should be enabled
   bool enableRow = true;
 
-  for (unsigned short i = 0; i < MAX_COLUMNCOUNT; ++i)
+  for (int i = 0; i < MAX_COLUMNCOUNT; ++i)
   {
     myColTitleEdit[i]->setEnabled(enableRow);
     myColFormatEdit[i]->setEnabled(enableRow);
@@ -387,7 +387,7 @@ void Settings::ContactList::load()
   for (int i = 0; i < MAX_COLUMNCOUNT; ++i)
   {
     myColTitleEdit[i]->setText(contactListConfig->columnHeading(i));
-    myColFormatEdit[i]->setText(contactListConfig->columnFormat(i));
+    myColFormatEdit[i]->setText(QString(contactListConfig->columnFormat(i)).replace("\n", "\\n"));
     myColWidthSpin[i]->setValue(contactListConfig->columnWidth(i));
     myColAlignCombo[i]->setCurrentIndex(contactListConfig->columnAlignment(i));
 
@@ -457,11 +457,11 @@ void Settings::ContactList::apply()
   contactListConfig->setUseSystemBackground(mySysBackCheck->isChecked());
   contactListConfig->setDragMovesUser(myDragMovesUserCheck->isChecked());
 
-  for (unsigned short i = 0; i < MAX_COLUMNCOUNT; ++i)
+  for (int i = 0; i < MAX_COLUMNCOUNT; ++i)
   {
     contactListConfig->setColumn(i,
         myColTitleEdit[i]->text(),
-        myColFormatEdit[i]->text(),
+        myColFormatEdit[i]->text().replace("\\n", "\n"),
         myColWidthSpin[i]->value(),
         static_cast<Config::ContactList::AlignmentMode>(myColAlignCombo[i]->currentIndex()));
 

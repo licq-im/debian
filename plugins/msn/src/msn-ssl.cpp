@@ -1,34 +1,29 @@
 /*
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
-// written by Jon Keating <jon@licq.org>
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2004-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include "msn.h"
 #include "msnpacket.h"
 
-#include <licq_events.h>
-#include <licq_icqd.h>
-#include "licq_log.h"
-#include "licq_message.h"
-
-#include <openssl/md5.h>
+#include <licq/daemon.h>
+#include <licq/pluginsignal.h>
+#include <licq/socket.h>
+#include <licq/logging/log.h>
 
 #include <cstring>
 #include <string>
@@ -36,6 +31,8 @@
 #include <vector>
 
 using namespace std;
+using Licq::UserId;
+using Licq::gLog;
 
 void CMSN::ProcessSSLServerPacket(CMSNBuffer &packet)
 {
@@ -105,21 +102,22 @@ void CMSN::ProcessSSLServerPacket(CMSNBuffer &packet)
       delete m_pSSLPacket;
       m_pSSLPacket = 0;
 
-      gLog.Info("%sRedirecting to %s:443\n", L_MSNxSTR, strHost.c_str());
+      gLog.info("Redirecting to %s:443", strHost.c_str());
       MSNAuthenticateRedirect(strHost, strToSend);
       return;
     }
     else
-      gLog.Error("%sMalformed location header.\n", L_MSNxSTR);
+      gLog.error("Malformed location header");
   }
   else if (strFirstLine == "HTTP/1.1 401 Unauthorized")
   {
-    gLog.Error("%sInvalid password.\n", L_MSNxSTR);
-    gLicqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_LOGOFF, LOGOFF_PASSWORD, LicqUser::makeUserId(m_szUserName, MSN_PPID), MSN_PPID));
+    gLog.error("Invalid password");
+    Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalLogoff,
+        Licq::PluginSignal::LogoffPassword, UserId(m_szUserName, MSN_PPID)));
   }
   else
   {
-    gLog.Error("%sUnknown sign in error.\n", L_MSNxSTR);
+    gLog.error("Unknown sign in error");
   }
   
   gSocketMan.CloseSocket(m_nSSLSocket, false, true);
@@ -162,8 +160,8 @@ void CMSN::ProcessNexusPacket(CMSNBuffer &packet)
 
 void CMSN::MSNGetServer()
 {
-  UserId myOwnerId = LicqUser::makeUserId(m_szUserName, MSN_PPID);
-  TCPSocket* sock = new TCPSocket(myOwnerId);
+  UserId myOwnerId(m_szUserName, MSN_PPID);
+  Licq::TCPSocket* sock = new Licq::TCPSocket(myOwnerId);
   if (!sock->connectTo(string("nexus.passport.com"), 443))
   {
     delete sock;
@@ -185,41 +183,39 @@ void CMSN::MSNGetServer()
 
 void CMSN::MSNAuthenticateRedirect(const string &strHost, const string& /* strParam */)
 {
-  UserId myOwnerId = LicqUser::makeUserId(m_szUserName, MSN_PPID);
-  TCPSocket* sock = new TCPSocket(myOwnerId);
-  gLog.Info("%sAuthenticating to %s:%d\n", L_MSNxSTR,
-      strHost.c_str(), 443);
+  UserId myOwnerId(m_szUserName, MSN_PPID);
+  Licq::TCPSocket* sock = new Licq::TCPSocket(myOwnerId);
+  gLog.info("Authenticating to %s:%d", strHost.c_str(), 443);
   if (!sock->connectTo(strHost, 443))
   {
-    gLog.Error("%sConnection to %s failed.\n", L_MSNxSTR, strHost.c_str());
+    gLog.error("Connection to %s failed", strHost.c_str());
     delete sock;
     return;
   }
 
   if (!sock->SecureConnect())
   {
-    gLog.Error("%sSSL connection failed.\n", L_MSNxSTR);
+    gLog.error("SSL connection failed");
     delete sock;
     return;
   }
 
   gSocketMan.AddSocket(sock);
   m_nSSLSocket = sock->Descriptor();
-  CMSNPacket *pHello = new CPS_MSNAuthenticate(m_szUserName, m_szPassword, m_szCookie);
+  CMSNPacket *pHello = new CPS_MSNAuthenticate(m_szUserName, myPassword.c_str(), m_szCookie);
   sock->SSLSend(pHello->getBuffer());
   gSocketMan.DropSocket(sock);
 }
 
 void CMSN::MSNAuthenticate(char *szCookie)
 {
-  UserId myOwnerId = LicqUser::makeUserId(m_szUserName, MSN_PPID);
+  UserId myOwnerId(m_szUserName, MSN_PPID);
   string server = "loginnet.passport.com";
-  TCPSocket* sock = new TCPSocket(myOwnerId);
-  gLog.Info("%sAuthenticating to %s:%d\n", L_MSNxSTR,
-      server.c_str(), 443);
+  Licq::TCPSocket* sock = new Licq::TCPSocket(myOwnerId);
+  gLog.info("Authenticating to %s:%d", server.c_str(), 443);
   if (!sock->connectTo(server, 443))
   {
-    gLog.Error("%sConnection to %s failed.\n", L_MSNxSTR, server.c_str());
+    gLog.error("Connection to %s failed", server.c_str());
     delete sock;
     free(szCookie);
     szCookie = 0;
@@ -228,7 +224,7 @@ void CMSN::MSNAuthenticate(char *szCookie)
   
   if (!sock->SecureConnect())
   {
-    gLog.Error("%sSSL connection failed.\n", L_MSNxSTR);   
+    gLog.error("SSL connection failed");
     free(szCookie);
     szCookie = 0;
     delete sock;
@@ -237,7 +233,7 @@ void CMSN::MSNAuthenticate(char *szCookie)
   
   gSocketMan.AddSocket(sock);
   m_nSSLSocket = sock->Descriptor();
-  CMSNPacket *pHello = new CPS_MSNAuthenticate(m_szUserName, m_szPassword, szCookie);
+  CMSNPacket *pHello = new CPS_MSNAuthenticate(m_szUserName, myPassword.c_str(), szCookie);
   sock->SSLSend(pHello->getBuffer());
   gSocketMan.DropSocket(sock);
 }

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
 
 #ifndef PLUGINDLG_H
 #define PLUGINDLG_H
+
+#include <licq/plugin.h>
 
 #include <QMap>
 #include <QDialog>
@@ -39,6 +41,22 @@ public:
   static void showPluginDlg();
 
 private:
+  /**
+   * Find a general plugin based on plugin id
+   *
+   * @param id Id of plugin
+   * @return Pointer to the plugin
+   */
+  Licq::GeneralPlugin::Ptr getGeneralPlugin(int id);
+
+  /**
+   * Find a protocol plugin based on plugin id
+   *
+   * @param id Id of plugin
+   * @return Pointer to the plugin
+   */
+  Licq::ProtocolPlugin::Ptr getProtocolPlugin(int id);
+
   static PluginDlg* myInstance;
 
   PluginDlg();

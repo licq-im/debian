@@ -1,26 +1,29 @@
 /*
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2004-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+#include <licq/pluginmanager.h>
+#include <licq/protocolbase.h>
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
-// written by Jon Keating <jon@licq.org>
-
-#include "licq_icqd.h"
-#include "licq_user.h"
-#include "licq_protoplugin.h"
-
+#include "pluginversion.h"
 #include "msn.h"
+
+using Licq::gPluginManager;
 
 char *LProto_Name()
 {
@@ -30,7 +33,7 @@ char *LProto_Name()
 
 char *LProto_Version()
 {
-  static char szVersion[] = VERSION;
+  static char szVersion[] = PLUGIN_VERSION_STRING;
   return szVersion;
 }
 
@@ -42,7 +45,9 @@ const char *LProto_Description()
 
 unsigned long LProto_SendFuncs()
 {
-  return (PP_SEND_MSG | PP_SEND_AUTH | PP_SEND_AUTHxREQ);
+  return Licq::ProtocolPlugin::CanSendMsg |
+      Licq::ProtocolPlugin::CanSendAuth |
+      Licq::ProtocolPlugin::CanSendAuthReq;
 }
 
 unsigned long LProto_Capabilities()
@@ -50,15 +55,15 @@ unsigned long LProto_Capabilities()
   return 0;
 }
 
-int LProto_Main(CICQDaemon *_pDaemon)
+int LProto_Main()
 {
-  int nPipe = _pDaemon->RegisterProtoPlugin();  
+  int nPipe = gPluginManager.registerProtocolPlugin();
 
-  CMSN *pMSN = new CMSN(_pDaemon, nPipe);
+  CMSN* pMSN = new CMSN(nPipe);
   pMSN->Run();
 
-  _pDaemon->UnregisterProtoPlugin();
-  
+  gPluginManager.unregisterProtocolPlugin();
+
   delete pMSN;
   
   return 0;

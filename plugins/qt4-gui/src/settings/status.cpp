@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QGridLayout>
@@ -32,7 +34,11 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
-#include <licq_sar.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/pluginmanager.h>
+#include <licq/sarmanager.h>
 
 #include "config/general.h"
 
@@ -42,6 +48,9 @@
 
 #include "settingsdlg.h"
 
+using Licq::SarManager;
+using Licq::User;
+using Licq::gSarManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Settings::Status */
 
@@ -62,30 +71,46 @@ QWidget* Settings::Status::createPageStatus(QWidget* parent)
   myPageStatusLayout = new QVBoxLayout(w);
   myPageStatusLayout->setContentsMargins(0, 0, 0, 0);
 
-  myGeneralBox = new QGroupBox(tr("General Status Options"));
-  myGeneralLayout = new QVBoxLayout(myGeneralBox);
-
-  myDelayStatusChangeCheck = new QCheckBox(tr("Delay status changes"));
-  myDelayStatusChangeCheck->setToolTip(tr("Set status after closing the away message dialog instead of setting it directly."));
-  myGeneralLayout->addWidget(myDelayStatusChangeCheck);
-
   myAutoLogonBox = new QGroupBox(tr("Startup"));
-  myAutoLogonLayout = new QVBoxLayout(myAutoLogonBox);
+  myAutoLogonLayout = new QGridLayout(myAutoLogonBox);
 
-  myAutoLogonCombo = new QComboBox();
-  myAutoLogonCombo->addItem(tr("Offline"));
-  myAutoLogonCombo->addItem(tr("Online"));
-  myAutoLogonCombo->addItem(tr("Away"));
-  myAutoLogonCombo->addItem(tr("Not Available"));
-  myAutoLogonCombo->addItem(tr("Occupied"));
-  myAutoLogonCombo->addItem(tr("Do Not Disturb"));
-  myAutoLogonCombo->addItem(tr("Free for Chat"));
-  myAutoLogonCombo->setToolTip(tr("Automatically log on when first starting up."));
-  myAutoLogonLayout->addWidget(myAutoLogonCombo);
+  {
+    Licq::OwnerListGuard ownerList;
+    int line = 0;
+    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+    {
+      unsigned long protocolId = owner->protocolId();
+      Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(protocolId);
+      if (protocol.get() == NULL)
+        continue;
 
-  myAutoLogonInvisibleCheck = new QCheckBox(tr("Invisible"));
-  myAutoLogonLayout->addWidget(myAutoLogonInvisibleCheck);
+      QLabel* autoLogonLabel = new QLabel(QString(protocol->getName()) + ": ");
+      myAutoLogonLayout->addWidget(autoLogonLabel, line, 0);
 
+#define ADD_STATUS(status, cond) \
+      if (cond) \
+        myAutoLogonCombo[protocolId]->addItem(User::statusToString(status).c_str(), status);
+
+      myAutoLogonCombo[protocolId] = new QComboBox();
+      ADD_STATUS(User::OfflineStatus, true);
+      ADD_STATUS(User::OnlineStatus, true);
+      ADD_STATUS(User::OnlineStatus | User::AwayStatus, true);
+      ADD_STATUS(User::OnlineStatus | User::NotAvailableStatus, protocolId != MSN_PPID);
+      ADD_STATUS(User::OnlineStatus | User::OccupiedStatus, protocolId != JABBER_PPID);
+      ADD_STATUS(User::OnlineStatus | User::DoNotDisturbStatus, protocolId != MSN_PPID);
+      ADD_STATUS(User::OnlineStatus | User::FreeForChatStatus, protocolId != MSN_PPID);
+#undef ADD_STATUS
+      myAutoLogonCombo[protocolId]->setToolTip(tr("Automatically log on when first starting up."));
+      myAutoLogonLayout->addWidget(myAutoLogonCombo[protocolId], line, 1);
+
+      myAutoLogonInvisibleCheck[protocolId] = new QCheckBox(tr("Invisible"));
+      if (protocolId == JABBER_PPID)
+        myAutoLogonInvisibleCheck[protocolId]->setEnabled(false);
+      myAutoLogonLayout->addWidget(myAutoLogonInvisibleCheck[protocolId], line, 2);
+
+      ++line;
+    }
+  }
 
   myAutoAwayBox = new QGroupBox(tr("Auto Change Status"));
   myAutoAwayLayout = new QGridLayout(myAutoAwayBox);
@@ -126,7 +151,6 @@ QWidget* Settings::Status::createPageStatus(QWidget* parent)
 
   buildAutoStatusCombos(1);
 
-  myPageStatusLayout->addWidget(myGeneralBox);
   myPageStatusLayout->addWidget(myAutoLogonBox);
   myPageStatusLayout->addWidget(myAutoAwayBox);
   myPageStatusLayout->addStretch(1);
@@ -149,11 +173,11 @@ QWidget* Settings::Status::createPageRespMsg(QWidget* parent)
   myDefRespMsgLayout->addWidget(mySarGroupLabel, 0, 0);
 
   mySarGroupCombo = new QComboBox();
-  mySarGroupCombo->addItem(tr("Away"), SAR_AWAY);
-  mySarGroupCombo->addItem(tr("Not Available"), SAR_NA);
-  mySarGroupCombo->addItem(tr("Occupied"), SAR_OCCUPIED);
-  mySarGroupCombo->addItem(tr("Do Not Disturb"), SAR_DND);
-  mySarGroupCombo->addItem(tr("Free For Chat"), SAR_FFC);
+  mySarGroupCombo->addItem(User::statusToString(User::AwayStatus).c_str(), SarManager::AwayList);
+  mySarGroupCombo->addItem(User::statusToString(User::NotAvailableStatus).c_str(), SarManager::NotAvailableList);
+  mySarGroupCombo->addItem(User::statusToString(User::OccupiedStatus).c_str(), SarManager::OccupiedList);
+  mySarGroupCombo->addItem(User::statusToString(User::DoNotDisturbStatus).c_str(), SarManager::DoNotDisturbList);
+  mySarGroupCombo->addItem(User::statusToString(User::FreeForChatStatus).c_str(), SarManager::FreeForChatList);
   connect(mySarGroupCombo, SIGNAL(activated(int)), SLOT(sarGroupChanged(int)));
   myDefRespMsgLayout->addWidget(mySarGroupCombo, 0, 1);
 
@@ -185,7 +209,7 @@ QWidget* Settings::Status::createPageRespMsg(QWidget* parent)
 
   myDefRespMsgLayout->setColumnStretch(2, 1);
 
-  sarGroupChanged(SAR_AWAY);
+  sarGroupChanged(SarManager::AwayList);
 
   return w;
 }
@@ -208,17 +232,19 @@ void Settings::Status::buildAutoStatusCombos(bool firstTime)
 
   myAutoAwayMessCombo->clear();
   myAutoAwayMessCombo->addItem(tr("Previous Message"),0);
-  SARList &sara = gSARManager.Fetch(SAR_AWAY);
-  for (unsigned i = 0; i < sara.size(); i++)
-    myAutoAwayMessCombo->addItem(sara[i]->Name(),i+1);
-  gSARManager.Drop();
+  const Licq::SarList& sarsAway(gSarManager.getList(SarManager::AwayList));
+  int count = 0;
+  for (Licq::SarList::const_iterator i = sarsAway.begin(); i != sarsAway.end(); ++i)
+    myAutoAwayMessCombo->addItem(QString::fromLocal8Bit(i->name.c_str()), ++count);
+  gSarManager.releaseList();
 
   myAutoNaMessCombo->clear();
   myAutoNaMessCombo->addItem(tr("Previous Message"),0);
-  SARList &sarn = gSARManager.Fetch(SAR_NA);
-  for (unsigned i = 0; i < sarn.size(); i++)
-    myAutoNaMessCombo->addItem(sarn[i]->Name(),i+1);
-  gSARManager.Drop();
+  const Licq::SarList& sarsNa(gSarManager.getList(SarManager::NotAvailableList));
+  count = 0;
+  for (Licq::SarList::const_iterator i = sarsNa.begin(); i != sarsNa.end(); ++i)
+    myAutoNaMessCombo->addItem(QString::fromLocal8Bit(i->name.c_str()), ++count);
+  gSarManager.releaseList();
 
   myAutoAwayMessCombo->setCurrentIndex(selectedAway);
   myAutoNaMessCombo->setCurrentIndex(selectedNA);
@@ -229,9 +255,9 @@ void Settings::Status::sarMsgChanged(int msg)
   if (msg < 0)
     return;
 
-  SARList &sar = gSARManager.Fetch(mySarGroupCombo->currentIndex());
-  mySartextEdit->setText(QString::fromLocal8Bit(sar[msg]->AutoResponse()));
-  gSARManager.Drop();
+  const Licq::SarList& sars(gSarManager.getList(static_cast<SarManager::List>(mySarGroupCombo->currentIndex())));
+  mySartextEdit->setText(QString::fromLocal8Bit(sars[msg].text.c_str()));
+  gSarManager.releaseList();
 }
 
 void Settings::Status::sarGroupChanged(int group)
@@ -240,24 +266,21 @@ void Settings::Status::sarGroupChanged(int group)
     return;
 
   mySarMsgCombo->clear();
-  SARList &sar = gSARManager.Fetch(group);
-  for (SARListIter i = sar.begin(); i != sar.end(); i++)
-    mySarMsgCombo->addItem(QString::fromLocal8Bit((*i)->Name()));
-  gSARManager.Drop();
+  const Licq::SarList& sars(gSarManager.getList(static_cast<SarManager::List>(group)));
+  for (Licq::SarList::const_iterator i = sars.begin(); i != sars.end(); ++i)
+    mySarMsgCombo->addItem(QString::fromLocal8Bit(i->name.c_str()));
+  gSarManager.releaseList();
 
   sarMsgChanged(0);
 }
 
 void Settings::Status::saveSar()
 {
-  SARList& sar = gSARManager.Fetch(mySarGroupCombo->currentIndex());
-  delete sar[mySarMsgCombo->currentIndex()];
-  sar[mySarMsgCombo->currentIndex()] =
-    new CSavedAutoResponse(mySarMsgCombo->currentText().toLocal8Bit().data(),
-        mySartextEdit->toPlainText().toLocal8Bit().data());
-
-  gSARManager.Drop();
-  gSARManager.Save();
+  Licq::SarList& sars(gSarManager.getList(static_cast<SarManager::List>(mySarGroupCombo->currentIndex())));
+  Licq::SavedAutoResponse& sar(sars[mySarMsgCombo->currentIndex()]);
+  sar.name = mySarMsgCombo->currentText().toLocal8Bit().data();
+  sar.text = mySartextEdit->toPlainText().toLocal8Bit().data();
+  gSarManager.releaseList(true);
 
   buildAutoStatusCombos(0);
 }
@@ -271,14 +294,26 @@ void Settings::Status::load()
 {
   Config::General* generalConfig = Config::General::instance();
 
-  myDelayStatusChangeCheck->setChecked(generalConfig->delayStatusChange());
   myAutoAwaySpin->setValue(generalConfig->autoAwayTime());
   myAutoNaSpin->setValue(generalConfig->autoNaTime());
   myAutoOfflineSpin->setValue(generalConfig->autoOfflineTime());
-  myAutoLogonCombo->setCurrentIndex(generalConfig->autoLogon() % 10);
-  myAutoLogonInvisibleCheck->setChecked(generalConfig->autoLogon() >= 10);
   myAutoAwayMessCombo->setCurrentIndex(generalConfig->autoAwayMess());
   myAutoNaMessCombo->setCurrentIndex(generalConfig->autoNaMess());
+
+  Licq::OwnerListGuard ownerList;
+  BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+  {
+    Licq::OwnerReadGuard o(owner);
+    unsigned long protocolId = o->protocolId();
+
+    // In case someone added an owner since we created the page
+    if (myAutoLogonCombo.find(protocolId) == myAutoLogonCombo.end())
+      continue;
+
+    int item = myAutoLogonCombo[protocolId]->findData(o->startupStatus() & ~User::InvisibleStatus);
+    myAutoLogonCombo[protocolId]->setCurrentIndex(item);
+    myAutoLogonInvisibleCheck[protocolId]->setChecked(o->startupStatus() & User::InvisibleStatus);
+  }
 }
 
 void Settings::Status::apply()
@@ -286,14 +321,35 @@ void Settings::Status::apply()
   Config::General* generalConfig = Config::General::instance();
   generalConfig->blockUpdates(true);
 
-  generalConfig->setDelayStatusChange(myDelayStatusChangeCheck->isChecked());
   generalConfig->setAutoAwayTime(myAutoAwaySpin->value());
   generalConfig->setAutoNaTime(myAutoNaSpin->value());
   generalConfig->setAutoOfflineTime(myAutoOfflineSpin->value());
-  generalConfig->setAutoLogon(myAutoLogonCombo->currentIndex() +
-      (myAutoLogonInvisibleCheck->isChecked() ? 10 : 0));
+
   generalConfig->setAutoAwayMess(myAutoAwayMessCombo->currentIndex());
   generalConfig->setAutoNaMess(myAutoNaMessCombo->currentIndex());
 
   generalConfig->blockUpdates(false);
+
+  Licq::OwnerListGuard ownerList;
+  BOOST_FOREACH(Licq::Owner* owner, **ownerList)
+  {
+    Licq::OwnerWriteGuard o(owner);
+    unsigned long protocolId = o->protocolId();
+
+    // In case someone added an owner since we created the page
+    if (myAutoLogonCombo.find(protocolId) == myAutoLogonCombo.end())
+      continue;
+
+    int index = myAutoLogonCombo[protocolId]->currentIndex();
+    unsigned long status = myAutoLogonCombo[protocolId]->itemData(index).toUInt();
+    if (status != User::OfflineStatus && myAutoLogonInvisibleCheck[protocolId]->isChecked())
+      status |= User::InvisibleStatus;
+
+    // Don't trigger unnecessary updates
+    if (status == o->startupStatus())
+      continue;
+
+    o->setStartupStatus(status);
+    o->SaveLicqInfo();
+  }
 }

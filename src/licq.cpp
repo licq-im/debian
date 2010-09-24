@@ -1,60 +1,63 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2009 Licq developers
+ * Copyright (C) 1998-2010 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
 
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
-#include <stdlib.h>
+#include <boost/foreach.hpp>
+#include <cerrno>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <iostream>
+#include <pwd.h>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <dlfcn.h>
-#include <string.h>
-#include <string>
 
-using namespace std;
-
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#else
-extern int errno;
-#endif
-
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#endif
-
-#ifdef HAVE_PWD_H
-#include <pwd.h>
-#endif
-
-// Localization
-#include "gettext.h"
-
-#include "licq_icq.h"
 #include "licq.h"
-#include "licq_log.h"
-#include "licq_countrycodes.h"
-#include "licq_utility.h"
-#include "support.h"
-#include "licq_sar.h"
-#include "licq_user.h"
-#include "licq_icqd.h"
-#include "licq_socket.h"
-#include "licq_protoplugind.h"
+#include <licq/logging/log.h>
+#include <licq/logging/logutils.h>
+#include <licq/exceptions/exception.h>
+#include <licq/inifile.h>
+#include <licq/utility.h>
+#include <licq/version.h>
 
-#include "licq.conf.h"
+#include "contactlist/usermanager.h"
+#include "daemon.h"
+#include "fifo.h"
+#include "gettext.h"
+#include "icq/icq.h"
+#include "logging/streamlogsink.h"
+#include "oneventmanager.h"
+#include "plugins/pluginmanager.h"
+#include "sarmanager.h"
+#include "statistics.h"
+#include "support.h"
 
 using namespace std;
+using Licq::GeneralPlugin;
+using Licq::ProtocolPlugin;
+using LicqDaemon::Daemon;
+using LicqDaemon::PluginManager;
+using LicqDaemon::gDaemon;
+using LicqDaemon::gFifo;
+using LicqDaemon::gOnEventManager;
+using LicqDaemon::gSarManager;
+using LicqDaemon::gPluginManager;
+using LicqDaemon::gStatistics;
+using LicqDaemon::gUserManager;
+using Licq::gLog;
+using Licq::gUtilityManager;
 
 /*-----Start OpenSSL code--------------------------------------------------*/
 
@@ -104,12 +107,12 @@ void ssl_info_callback(SSL *s, int where, int ret)
 
     if (where & SSL_CB_LOOP)
     {
-        gLog.Info("%s%s:%s\n",L_SSLxSTR,str,SSL_state_string_long(s));
+        gLog.info("%s%s:%s\n",L_SSLxSTR,str,SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT)
     {
         str=(where & SSL_CB_READ)?"read":"write";
-        gLog.Info("%sSSL3 alert %s:%s:%s\n",L_SSLxSTR,
+        gLog.info("%sSSL3 alert %s:%s:%s\n",L_SSLxSTR,
             str,
             SSL_alert_type_string_long(ret),
             SSL_alert_desc_string_long(ret));
@@ -117,17 +120,17 @@ void ssl_info_callback(SSL *s, int where, int ret)
     else if (where & SSL_CB_EXIT)
     {
         if (ret == 0)
-            gLog.Info("%s%s:failed in %s\n",L_SSLxSTR,
+            gLog.info("%s%s:failed in %s\n",L_SSLxSTR,
                 str,SSL_state_string_long(s));
         else if (ret < 0)
         {
-        gLog.Info("%s%s:%s\n",L_SSLxSTR,str,SSL_state_string_long(s));
+        gLog.info("%s%s:%s\n",L_SSLxSTR,str,SSL_state_string_long(s));
         }
     }
     else if (where & SSL_CB_ALERT)
     {
         str=(where & SSL_CB_READ)?"read":"write";
-        gLog.Info("%sSSL3 alert %s:%s:%s\n",L_SSLxSTR,
+        gLog.info("%sSSL3 alert %s:%s:%s\n",L_SSLxSTR,
             str,
             SSL_alert_type_string_long(ret),
             SSL_alert_desc_string_long(ret));
@@ -135,11 +138,11 @@ void ssl_info_callback(SSL *s, int where, int ret)
     else if (where & SSL_CB_EXIT)
     {
         if (ret == 0)
-            gLog.Info("%s%s:failed in %s\n",L_SSLxSTR,
+            gLog.info("%s%s:failed in %s\n",L_SSLxSTR,
                 str,SSL_state_string_long(s));
         else if (ret < 0)
         {
-            gLog.Info("%s%s:error in %s\n",L_SSLxSTR,
+            gLog.info("%s%s:error in %s\n",L_SSLxSTR,
                 str,SSL_state_string_long(s));
         }
     }
@@ -148,14 +151,45 @@ void ssl_info_callback(SSL *s, int where, int ret)
 #endif
 /*-----End of OpenSSL code-------------------------------------------------*/
 
+// Sets up BASE_DIR to be the absolute path to the user's config base
+// directory. BASE_DIR will both start and end with a slash (/).
+static bool setupBaseDirPath(const std::string& path)
+{
+  if (path.size() > 0 && path[0] == '/')
+    gDaemon.setBaseDir(path);
+  else
+  {
+    // Get current working directory
+    // Linux uses PATH_MAX, BSD uses MAXPATHLEN, either seems to work on both
+    char cwd[PATH_MAX];
+    if (::getcwd(cwd, sizeof(cwd)) == NULL)
+    {
+      ::fprintf(stderr, tr("Could not get current working directory\n"));
+      return false;
+    }
+
+    // Tidy up path if it is a "simple" relative path
+    string newPath;
+    if (path.size() >= 2 && path[0] == '.' && path[1] == '/')
+      newPath = path.substr(1);
+    else
+      newPath = '/' + path;
+
+    // Construct an absolute path
+    gDaemon.setBaseDir(cwd + newPath);
+  }
+
+  return (gDaemon.baseDir().size() > 0);
+}
+
 /**
  * Prints the @a error to stderr (by means of gLog), and if the user is running
  * X, tries to show a dialog with the error.
  */
-extern "C" void DisplayFatalError(const char* error, int useLicqLog)
+void displayFatalError(const char* error, int useLicqLog)
 {
   if (useLicqLog)
-    gLog.Error(error);
+    gLog.error(error);
   else
     fprintf(stderr, "\n%s\n", error);
 
@@ -180,6 +214,12 @@ extern "C" void DisplayFatalError(const char* error, int useLicqLog)
   }
 }
 
+void handleExitSignal(int signal)
+{
+  gLog.info(tr("Received signal %d, exiting"), signal);
+  gDaemon.Shutdown();
+}
+
 /*-----Helper functions for CLicq::UpgradeLicq-----------------------------*/
 int SelectUserUtility(const struct dirent *d)
 {
@@ -199,29 +239,19 @@ int SelectHistoryUtility(const struct dirent *d)
 char **global_argv = NULL;
 int global_argc = 0;
 
-// Plugin variables
-pthread_cond_t LP_IdSignal;
-pthread_mutex_t LP_IdMutex;
-list<unsigned short> LP_Ids;
-
-CLicq::CLicq()
+CLicq::CLicq() :
+  myConsoleLogLevel(0)
 {
-  DEBUG_LEVEL = 0;
-  licqDaemon = NULL;
-  pthread_mutex_init(&mutex_plugins, NULL);
-  pthread_mutex_init(&mutex_protoplugins, NULL);
-
-  //FIXME ICQ should be put into its own plugin.
-  CProtoPlugin *p = new CProtoPlugin;
-  p->m_nPPID = LICQ_PPID;
-  p->m_szLibName = strdup("");
-  list_protoplugins.push_back(p);
 }
 
 bool CLicq::Init(int argc, char **argv)
 {
+  myConsoleLog.reset(new LicqDaemon::StreamLogSink(std::cerr));
+  myConsoleLog->setLogLevel(Licq::Log::Error, true);
+  myConsoleLog->setLogLevel(Licq::Log::Warning, true);
+  myLogService.registerDefaultLogSink(myConsoleLog);
+
   char *szRedirect = NULL;
-  char szFilename[MAX_FILENAME_LEN];
   vector <char *> vszPlugins;
   vector <char *> vszProtoPlugins;
 
@@ -255,12 +285,12 @@ bool CLicq::Init(int argc, char **argv)
         bHelp = true;
         break;
       case 'b':  // base directory
-        snprintf(BASE_DIR, MAX_FILENAME_LEN, "%s/", optarg);
-        BASE_DIR[MAX_FILENAME_LEN - 1] = '\0';
+        if (!setupBaseDirPath(optarg))
+          return false;
         bBaseDir = true;
         break;
-      case 'd':  // DEBUG_LEVEL
-        DEBUG_LEVEL = atol(optarg);
+      case 'd':  // debug level
+        myConsoleLogLevel = atol(optarg);
         break;
       case 'c':  // use color
         bUseColor = false;
@@ -283,7 +313,8 @@ bool CLicq::Init(int argc, char **argv)
         bFork = true;
         break;
       case 'v':  // show version
-        printf(tr("%s version %s, compiled on %s\n"), PACKAGE, VERSION, __DATE__);
+        printf(tr("%s version %s, compiled on %s\n"),
+               PACKAGE, LICQ_VERSION_STRING, __DATE__);
         return false;
         break;
       }
@@ -305,17 +336,20 @@ bool CLicq::Init(int argc, char **argv)
   if(!isatty(STDERR_FILENO))
     bUseColor = false;
 
-  // Initialise the log server for standard output and dump all initial errors
-  // and warnings to it regardless of DEBUG_LEVEL
-  gLog.AddService(new CLogService_StdErr(DEBUG_LEVEL | L_ERROR | L_WARN, bUseColor));
+  // Dump all initial errors and warnings to the console log regardless of the
+  // requested debug level.
+  myConsoleLog->setLogLevelsFromBitmask(
+      Licq::LogUtils::convertOldBitmaskToNew(myConsoleLogLevel));
+  myConsoleLog->setLogLevel(Licq::Log::Warning, true);
+  myConsoleLog->setLogLevel(Licq::Log::Error, true);
+  myConsoleLog->setUseColors(bUseColor);
 
   // Redirect stdout and stderr if asked to
   if (szRedirect) {
     if (bRedirect_ok)
-      gLog.Info(tr("%sOutput redirected to \"%s\".\n"), L_INITxSTR, szRedirect);
+      gLog.info(tr("Output redirected to \"%s\""), szRedirect);
     else
-      gLog.Warn(tr("%sRedirection to \"%s\" failed:\n%s%s.\n"), L_WARNxSTR,
-                szRedirect, L_BLANKxSTR, strerror(errno));
+      gLog.warning(tr("Redirection to \"%s\" failed: %s"), szRedirect, strerror(errno));
     free (szRedirect);
     szRedirect = NULL;
   }
@@ -323,52 +357,52 @@ bool CLicq::Init(int argc, char **argv)
   // if no base directory set on the command line then get it from HOME
   if (!bBaseDir)
   {
-     char *home;
-     if ((home = getenv("HOME")) == NULL)
-     {
-       gLog.Error("%sLicq: $HOME not set, unable to determine config base directory.\n", L_ERRORxSTR);
-       return false;
-     }
-     snprintf(BASE_DIR, MAX_FILENAME_LEN, "%s/.licq/", home);
-     BASE_DIR[MAX_FILENAME_LEN - 1] = '\0';
+    const char* home = ::getenv("HOME");
+    if (home == NULL || home[0] != '/')
+    {
+      gLog.error(tr("$HOME not set or invalid; "
+                    "unable to determine config base directory"));
+      return false;
+    }
+    gDaemon.setBaseDir(string(home) + "/.licq");
   }
 
   // check if user has conf files installed, install them if not
-  if ( (access(BASE_DIR, F_OK) < 0 || bForceInit) && !Install() )
+  if ( (access(gDaemon.baseDir().c_str(), F_OK) < 0 || bForceInit) && !Install() )
     return false;
 
-  // Define the directory for all the shared data
-  strncpy(SHARE_DIR, INSTALL_SHAREDIR, MAX_FILENAME_LEN);
-  SHARE_DIR[MAX_FILENAME_LEN - 1] = '\0';
-
-  strncpy(LIB_DIR, INSTALL_LIBDIR, MAX_FILENAME_LEN);
-  LIB_DIR[MAX_FILENAME_LEN - 1] = '\0';
+  // ICQ-PLUGIN: Remove when ICQ is put into its own plugin. This is just a
+  // dummy plugin. It can't really be stopped.
+  gPluginManager.loadProtocolPlugin("", true, true);
 
   // Load up the plugins
-  m_nNextId = 1;
   vector <char *>::iterator iter;
   for (iter = vszPlugins.begin(); iter != vszPlugins.end(); ++iter)
   {
-    if (!LoadPlugin(*iter, argc, argv)) return false;
+    GeneralPlugin::Ptr plugin = LoadPlugin(*iter, argc, argv, !bHelp);
+    if (!plugin)
+      return false;
     if (bHelp)
     {
-      fprintf(stderr, "----------\nLicq Plugin: %s %s\n%s\n",
-          list_plugins.back()->Name(),
-          list_plugins.back()->Version(),
-          (*(list_plugins.back())->fUsage)() );
-      list_plugins.pop_back();
+      fprintf(stderr,
+              "----------\nLicq Plugin: %s %s\n%s\n",
+              plugin->getName(),
+              plugin->getVersion(),
+              plugin->getUsage());
     }
     free(*iter);
   }
   for (iter = vszProtoPlugins.begin(); iter != vszProtoPlugins.end(); ++iter)
   {
-    if (!LoadProtoPlugin(*iter)) return false;
+    ProtocolPlugin::Ptr plugin = LoadProtoPlugin(*iter, !bHelp);
+    if (!plugin)
+      return false;
     if (bHelp)
     {
-      fprintf(stderr, "----------\nLicq Protocol Plugin: %s %s\n",
-          list_protoplugins.back()->Name(),
-          list_protoplugins.back()->Version());
-      list_protoplugins.pop_back();
+      fprintf(stderr,
+              "----------\nLicq Protocol Plugin: %s %s\n",
+              plugin->getName(),
+              plugin->getVersion());
     }
     free(*iter);
   }
@@ -378,23 +412,22 @@ bool CLicq::Init(int argc, char **argv)
   // We do this by acquiring a write lock on the pid file and never closing the file.
   // When Licq is killed (normally or abnormally) the file will be closed by the operating
   // system and the lock released.
-  char szConf[MAX_FILENAME_LEN], szKey[32];
-  snprintf(szConf, MAX_FILENAME_LEN, "%s/licq.pid", BASE_DIR);
-  szConf[MAX_FILENAME_LEN - 1] = '\0';
+  char szKey[32];
+  string pidfile = gDaemon.baseDir() + "licq.pid";
 
   // Never close pidFile!
-  int pidFile = open(szConf, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+  int pidFile = open(pidfile.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
   if (pidFile < 0)
   {
     // We couldn't open (or create) the file for writing.
     // If the file doesn't exists we continue without lockfile protection.
     // If it does exist, we bail out.
     struct stat buf;
-    if (stat(szConf, &buf) < 0 && errno == ENOENT)
+    if (stat(pidfile.c_str(), &buf) < 0 && errno == ENOENT)
     {
-      gLog.Warn(tr("%sLicq: %s cannot be opened for writing.\n"
-                   "%s      skipping lockfile protection.\n"),
-                L_WARNxSTR, szConf, L_BLANKxSTR);
+      gLog.warning(tr("Licq: %s cannot be opened for writing,\n"
+                      "      skipping lockfile protection."),
+                   pidfile.c_str());
     }
     else
     {
@@ -402,16 +435,16 @@ bool CLicq::Init(int argc, char **argv)
       char error[ERR_SIZE + 1];
 
       // Try to read the pid of running Licq instance.
-      FILE* fs = fopen(szConf, "r");
+      FILE* fs = fopen(pidfile.c_str(), "r");
       if (fs != NULL)
       {
           fgets(szKey, 32, fs);
           pid_t pid = atol(szKey);
 
           snprintf(error, ERR_SIZE,
-                   tr("%sLicq: Already running at pid %d.\n"
-                      "%s      Kill process or remove %s.\n"),
-                   L_ERRORxSTR, pid, L_BLANKxSTR, szConf);
+                   tr("Licq: Already running at pid %d.\n"
+                      "      Kill process or remove %s."),
+                   (int)pid, pidfile.c_str());
           fclose(fs);
       }
       else
@@ -422,7 +455,7 @@ bool CLicq::Init(int argc, char **argv)
       }
 
       error[ERR_SIZE] = '\0';
-      DisplayFatalError(error, 1);
+      displayFatalError(error, 1);
 
       return false;
     }
@@ -451,11 +484,11 @@ bool CLicq::Init(int argc, char **argv)
       {
         snprintf(error, ERR_SIZE,
                 tr("%sLicq: Already running at pid %d.\n"),
-                L_ERRORxSTR, lock.l_pid);
+                L_ERRORxSTR, (int)lock.l_pid);
       }
 
       error[ERR_SIZE] = '\0';
-      DisplayFatalError(error, 1);
+      displayFatalError(error, 1);
 
       return false;
     }
@@ -463,53 +496,57 @@ bool CLicq::Init(int argc, char **argv)
     {
       // Save our pid in the file
       ftruncate(pidFile, 0);
-      int size = snprintf(szKey, 32, "%d\n", getpid());
+      int size = snprintf(szKey, 32, "%d\n", (int)getpid());
       write(pidFile, szKey, (size > 32 ? 32 : size));
     }
   }
 
   // Open the config file
-  CIniFile licqConf(INI_FxWARN | INI_FxALLOWxCREATE);
-  snprintf(szConf, MAX_FILENAME_LEN, "%s/licq.conf", BASE_DIR);
-  szConf[MAX_FILENAME_LEN - 1] = '\0';
-  if (licqConf.LoadFile(szConf) == false)
+  Licq::IniFile licqConf("licq.conf");
+  if (!licqConf.loadFile())
+  {
+    gLog.error("Could not load config file '%s'", licqConf.filename().c_str());
     return false;
+  }
 
   // Verify the version
-  licqConf.SetSection("licq");
-  unsigned short nVersion;
-  licqConf.ReadNum("Version", nVersion, 0);
-  if (nVersion < 1028)
+  licqConf.setSection("licq");
+  unsigned nVersion;
+  licqConf.get("Version", nVersion, 0);
+  if (nVersion < LICQ_MAKE_VERSION(1, 2, 8))
   {
-    gLog.Info("%sUpgrading config file formats.\n", L_SBLANKxSTR);
-    if (UpgradeLicq(licqConf))
-      gLog.Info("%sUpgrade completed.\n", L_SBLANKxSTR);
+    gLog.info("Upgrading config file formats");
+    if (upgradeLicq128(licqConf))
+      gLog.info("Upgrade completed");
     else
     {
-      gLog.Warn("%sUpgrade failed. Please save your licq directory and\n"
-                "%sreport this as a bug.\n", L_ERRORxSTR, L_BLANKxSTR);
+      gLog.error("Upgrade failed. Please save your licq directory and "
+                 "report this as a bug.");
       return false;
     }
   }
-  else if (nVersion < INT_VERSION)
+  else if (nVersion < LICQ_VERSION)
   {
-    licqConf.WriteNum("Version", (unsigned short)INT_VERSION);
-    licqConf.FlushFile();
+    licqConf.set("Version", LICQ_VERSION);
+    licqConf.writeFile();
   }
 
   // Find and load the protocol plugins before the UI plugins
   if (!bHelp && !bCmdLineProtoPlugins)
   {
-    unsigned short nNumProtoPlugins = 0;
-    char szData[MAX_FILENAME_LEN];
-    if (licqConf.SetSection("plugins") && licqConf.ReadNum("NumProtoPlugins", nNumProtoPlugins) && nNumProtoPlugins > 0)
+    unsigned nNumProtoPlugins = 0;
+    if (licqConf.setSection("plugins", false)
+        && licqConf.get("NumProtoPlugins", nNumProtoPlugins))
     {
       char szKey[20];
-      for (int i = 0; i < nNumProtoPlugins; i++)
+      for (unsigned i = 0; i < nNumProtoPlugins; i++)
       {
+        string pluginName;
         sprintf(szKey, "ProtoPlugin%d", i+1);
-        if (!licqConf.ReadStr(szKey, szData)) continue;
-        if (LoadProtoPlugin(szData) == false) return false;
+        if (!licqConf.get(szKey, pluginName))
+          continue;
+        if (!LoadProtoPlugin(pluginName.c_str()))
+          return false;
       }
     }
   }
@@ -518,14 +555,14 @@ bool CLicq::Init(int argc, char **argv)
   // Find and load the plugins from the conf file
   if (!bHelp && !bCmdLinePlugins)
   {
-    unsigned short nNumPlugins = 0;
+    unsigned nNumPlugins = 0;
     string pluginName;
-    if (licqConf.SetSection("plugins") && licqConf.ReadNum("NumPlugins", nNumPlugins) && nNumPlugins > 0)
+    if (licqConf.setSection("plugins", false) && licqConf.get("NumPlugins", nNumPlugins) && nNumPlugins > 0)
     {
-      for (int i = 0; i < nNumPlugins; i++)
+      for (unsigned i = 0; i < nNumPlugins; i++)
       {
         sprintf(szKey, "Plugin%d", i + 1);
-        if (!licqConf.readString(szKey, pluginName))
+        if (!licqConf.get(szKey, pluginName))
           continue;
 
         bool loaded = LoadPlugin(pluginName.c_str(), argc, argv);
@@ -533,12 +570,12 @@ bool CLicq::Init(int argc, char **argv)
         // Make upgrade from 1.3.x and older easier by automatically switching from kde/qt-gui to kde4/qt4-gui
         if (!loaded && pluginName == "kde-gui")
         {
-          gLog.Warn(tr("%sPlugin kde-gui is no longer available, trying to load kde4-gui instead.\n"), L_WARNxSTR);
+          gLog.warning(tr("%sPlugin kde-gui is no longer available, trying to load kde4-gui instead.\n"), L_WARNxSTR);
           loaded = LoadPlugin("kde4-gui", argc, argv);
         }
         if (!loaded && (pluginName == "qt-gui" || pluginName == "kde-gui"))
         {
-          gLog.Warn(tr("%sPlugin %s is no longer available, trying to load qt4-gui instead.\n"), L_WARNxSTR, pluginName.c_str());
+          gLog.warning(tr("%sPlugin %s is no longer available, trying to load qt4-gui instead.\n"), L_WARNxSTR, pluginName.c_str());
           loaded = LoadPlugin("qt4-gui", argc, argv);
         }
 
@@ -548,20 +585,16 @@ bool CLicq::Init(int argc, char **argv)
     }
     else  // If no plugins, try some defaults one by one
     {
-      const char* plugins[] =
-        {"qt4-gui", "kde4-gui", "qt-gui", "kde-gui", "jons-gtk-gui", "console"};
+      const char* plugins[] = {"qt4-gui", "kde4-gui", "console"};
       unsigned short i = 0, size = sizeof(plugins) / sizeof(char*);
-      CPlugin* ptr = NULL;
 
-      while (i < size && ptr == NULL)
-        ptr = LoadPlugin(plugins[i++], argc, argv);
-      if (ptr == NULL)
+      GeneralPlugin::Ptr plugin;
+      while (i < size && !plugin)
+        plugin = LoadPlugin(plugins[i++], argc, argv);
+      if (!plugin)
         return false;
     }
   }
-
-  // Close the conf file
-  licqConf.CloseFile();
 
 #ifdef USE_OPENSSL
   // Initialize SSL
@@ -585,30 +618,31 @@ bool CLicq::Init(int argc, char **argv)
 #endif
 
   // Start things going
-  if (!gUserManager.Load())
+  if (!LicqDaemon::gUserManager.Load())
     return false;
-  gSARManager.Load();
-  sprintf(szFilename, "%s%s", SHARE_DIR, UTILITY_DIR);
-  gUtilityManager.LoadUtilities(szFilename);
+  gDaemon.initialize(this);
+  gOnEventManager.initialize();
+  gSarManager.initialize();
+  gStatistics.initialize();
+  gUtilityManager.loadUtilities(gDaemon.shareDir() + Daemon::UtilityDir);
 
   // Create the daemon
-  licqDaemon = new CICQDaemon(this);
+  gIcqProtocol.initialize();
 
   return true;
 }
 
 CLicq::~CLicq()
 {
-  // Close the plugins
-  //...
-  // Kill the daemon
-  if (licqDaemon != NULL) delete licqDaemon;
+  gFifo.shutdown();
+
+  myLogService.unregisterLogSink(myConsoleLog);
 }
 
 
 const char *CLicq::Version()
 {
-  static const char version[] = VERSION;
+  static const char version[] = LICQ_VERSION_STRING;
   return version;
 }
 
@@ -618,53 +652,49 @@ const char *CLicq::Version()
  *
  * Upgrades the config files to the current version.
  *---------------------------------------------------------------------------*/
-bool CLicq::UpgradeLicq(CIniFile &licqConf)
-{  
-  CIniFile ownerFile(INI_FxERROR);
-  string strBaseDir = BASE_DIR;
-  string strOwnerFile = strBaseDir + "/owner.uin";
-  if (!ownerFile.LoadFile(strOwnerFile.c_str()))
+bool CLicq::upgradeLicq128(Licq::IniFile& licqConf)
+{
+  string strBaseDir = gDaemon.baseDir();
+  Licq::IniFile ownerFile("owner.uin");
+  if (!ownerFile.loadFile())
     return false;
 
   // Get the UIN
   unsigned long nUin;
-  ownerFile.SetSection("user");
-  ownerFile.ReadNum("Uin", nUin, 0);
-  ownerFile.CloseFile();
+  ownerFile.setSection("user");
+  ownerFile.get("Uin", nUin, 0);
 
   // Set the new version number
-  licqConf.SetSection("licq");
-  licqConf.WriteNum("Version", (unsigned short)INT_VERSION);  
- 
+  licqConf.setSection("licq");
+  licqConf.set("Version", LICQ_VERSION);
+
   // Create the owner section and fill it
-  licqConf.SetSection("owners");
-  licqConf.WriteNum("NumOfOwners", (unsigned short)1);
-  licqConf.WriteNum("Owner1.Id", nUin);
-  licqConf.WriteStr("Owner1.PPID", "Licq");
-  
+  licqConf.setSection("owners");
+  licqConf.set("NumOfOwners", 1);
+  licqConf.set("Owner1.Id", nUin);
+  licqConf.set("Owner1.PPID", "Licq");
+
   // Add the protocol plugins info
-  licqConf.SetSection("plugins");
-  licqConf.WriteNum("NumProtoPlugins", (unsigned short)0);
-  licqConf.FlushFile();
-  
+  licqConf.setSection("plugins");
+  licqConf.set(string("NumProtoPlugins"), 0);
+  licqConf.writeFile();
+
   // Rename owner.uin to owner.Licq
-  string strNewOwnerFile = strBaseDir + "/owner.Licq";
-  if (rename(strOwnerFile.c_str(), strNewOwnerFile.c_str()))
+  if (rename((strBaseDir + "owner.uin").c_str(), (strBaseDir + "owner.Licq").c_str()))
     return false;
 
   // Update all the user files and update users.conf
   struct dirent **UinFiles;
-  string strUserDir = strBaseDir + "/users";
-  string strUsersConf = strBaseDir + "/users.conf";
+  string strUserDir = strBaseDir + "users";
   int n = scandir_alpha_r(strUserDir.c_str(), &UinFiles, SelectUserUtility);
   if (n != 0)
   {
-    CIniFile userConfFile(INI_FxERROR);
-    if (!userConfFile.LoadFile(strUsersConf.c_str()))
+    Licq::IniFile userConf("users.conf");
+    if (!userConf.loadFile())
       return false;
-    userConfFile.SetSection("users");  
-    userConfFile.WriteNum("NumOfUsers", (unsigned short)n);
-    for (unsigned short i = 0; i < n; i++)
+    userConf.setSection("users");
+    userConf.set("NumOfUsers", n);
+    for (int i = 0; i < n; i++)
     {
       char szKey[20];
       snprintf(szKey, sizeof(szKey), "User%d", i+1);
@@ -674,15 +704,14 @@ bool CLicq::UpgradeLicq(CIniFile &licqConf)
       string strNewFile = strUserDir + "/" + strNewName;
       if (rename(strFileName.c_str(), strNewFile.c_str()))
         return false;
-      userConfFile.WriteStr(szKey, strNewName.c_str());
+      userConf.set(szKey, strNewName);
     }
-    
-    userConfFile.FlushFile();
+    userConf.writeFile();
   }
-  
+
   // Rename the history files
   struct dirent **HistoryFiles;
-  string strHistoryDir = strBaseDir + "/history";
+  string strHistoryDir = strBaseDir + "history";
   int nNumHistory = scandir_alpha_r(strHistoryDir.c_str(), &HistoryFiles,
     SelectHistoryUtility);
   if (nNumHistory)
@@ -705,198 +734,9 @@ bool CLicq::UpgradeLicq(CIniFile &licqConf)
  *
  * Loads the given plugin using the given command line arguments.
  *---------------------------------------------------------------------------*/
-CPlugin *CLicq::LoadPlugin(const char *_szName, int argc, char **argv)
+GeneralPlugin::Ptr CLicq::
+LoadPlugin(const char *_szName, int argc, char **argv, bool keep)
 {
-  void *handle;
-  const char *error;
-  CPlugin *p = new CPlugin(_szName);
-  char szPlugin[MAX_FILENAME_LEN];
-
-  // First check if the plugin is in the shared location
-  if ( _szName[0] != '/' && _szName[0] != '.')
-  {
-    snprintf(szPlugin, MAX_FILENAME_LEN, "%slicq_%s.so", LIB_DIR, _szName);
-  }
-  else
-  {
-    strncpy(szPlugin, _szName, MAX_FILENAME_LEN);
-  }
-  szPlugin[MAX_FILENAME_LEN - 1] = '\0';
-
-  handle = dlopen (szPlugin, DLOPEN_POLICY);
-  if (handle == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sUnable to load plugin (%s): %s.\n", L_ERRORxSTR, _szName,
-     error);
-
-    if (!strstr(error, "No such file"))
-    {
-      gLog.Warn("%sThis usually happens when your plugin\n"
-                "%sis not kept in sync with the daemon.\n"
-                "%sPlease try recompiling the plugin.\n"
-                "%sIf you are still having problems, see\n"
-                "%sthe FAQ at www.licq.org\n",
-                L_WARNxSTR, L_BLANKxSTR, L_BLANKxSTR, L_BLANKxSTR,
-                L_BLANKxSTR);
-    }
-
-    delete p;
-    return NULL;
-  }
-
-  // LP_Name
-  p->fName = (const char * (*)())dlsym(handle, "LP_Name");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fName = (const char * (*)())dlsym(handle, "_LP_Name");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Name() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, _szName, error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Version
-  p->fVersion = (const char * (*)())dlsym(handle, "LP_Version");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fVersion = (const char * (*)())dlsym(handle, "_LP_Version");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Version() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Status
-  p->fStatus = (const char * (*)())dlsym(handle, "LP_Status");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fStatus = (const char * (*)())dlsym(handle, "_LP_Status");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Status() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Description
-  p->fDescription = (const char * (*)())dlsym(handle, "LP_Description");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fDescription = (const char * (*)())dlsym(handle, "_LP_Description");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Description() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_BuildDate
-  p->fBuildDate = (const char * (*)())dlsym(handle, "LP_BuildDate");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fBuildDate = (const char * (*)())dlsym(handle, "_LP_BuildDate");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_BuildDate() function in plugin (%s): %s.\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_BuildTime
-  p->fBuildTime = (const char * (*)())dlsym(handle, "LP_BuildTime");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fBuildTime = (const char * (*)())dlsym(handle, "_LP_BuildTime");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_BuildTime() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Init
-  p->fInit = (bool (*)(int, char **))dlsym(handle, "LP_Init");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fInit = (bool (*)(int, char **))dlsym(handle, "_LP_Init");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Init() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Usage
-  p->fUsage = (const char * (*)())dlsym(handle, "LP_Usage");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fUsage = (const char * (*)())dlsym(handle, "_LP_Usage");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Usage() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Main
-  p->fMain = (int (*)(CICQDaemon *))dlsym(handle, "LP_Main");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fMain = (int (*)(CICQDaemon *))dlsym(handle, "_LP_Main");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Main() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_Main_tep
-  p->fMain_tep = (void * (*)(void *))dlsym(handle, "LP_Main_tep");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fMain_tep = (void * (*)(void *))dlsym(handle, "_LP_Main_tep");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Main_tep() function in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-  // LP_ConfigFile
-  p->fConfigFile = (const char * (*)())dlsym(handle, "LP_ConfigFile");
-  if ((error = dlerror()) != NULL)
-  {
-    p->fConfigFile = (const char * (*)())dlsym(handle, "_LP_ConfigFile");
-    if ((error = dlerror()) != NULL)
-      p->fConfigFile = NULL;
-  }
-  // LP_Id
-  p->nId = (unsigned short *)dlsym(handle, "LP_Id");
-  if ((error = dlerror()) != NULL)
-  {
-    p->nId = (unsigned short *)dlsym(handle, "_LP_Id");
-    if ((error = dlerror()) != NULL)
-    {
-      gLog.Error("%sFailed to find LP_Id variable in plugin (%s): %s\n",
-                 L_ERRORxSTR, p->Name(), error);
-      delete p;
-      return NULL;
-    }
-  }
-
   // Set up the argument vector
   static int argcndx = 0;
   int argccnt = 0;
@@ -911,363 +751,75 @@ CPlugin *CLicq::LoadPlugin(const char *_szName, int argc, char **argv)
     while (++argcndx < argc && strcmp(argv[argcndx], "--") != 0)
       argccnt++;
   }
-  //Setup the argv vector, the plugin as argv[0] ..
-  p->localargv = (char **)calloc(sizeof(char *), argccnt + 2);
-  p->localargv[0] = argv[0];
-  for(int i = argcndx - argccnt; i < argcndx; i++)
-  {
-    p->localargv[i - argcndx + argccnt + 1] = argv[i];
-  }
-  p->localargv[argccnt+1] = NULL;
-  // Set optind to 0 so plugins can use getopt
-  optind = 0;
-  p->localargc = argccnt + 1;
-
-  // Init the plugin
-  if (!(*p->fInit)(p->localargc, p->localargv))
-  {
-    gLog.Error("%sFailed to initialize plugin (%s).\n", L_ERRORxSTR, p->Name());
-    delete p;
-    return NULL;
-  }
-
-  *p->nId = m_nNextId++;
-  p->dl_handle = handle;
-  pthread_mutex_lock(&mutex_plugins);
-  list_plugins.push_back(p);
-  pthread_mutex_unlock(&mutex_plugins);
-  return p;
+  return gPluginManager.loadGeneralPlugin(_szName, argccnt,
+      &argv[argcndx - argccnt], keep);
 }
 
 
-void CLicq::StartPlugin(CPlugin *p)
+ProtocolPlugin::Ptr CLicq::
+LoadProtoPlugin(const char *_szName, bool keep)
 {
-  gLog.Info(tr("%sStarting plugin %s (version %s).\n"), L_INITxSTR, p->Name(),
-            p->Version());
-  pthread_create( &p->thread_plugin, NULL, p->fMain_tep, licqDaemon);
+  return gPluginManager.loadProtocolPlugin(_szName, keep);
 }
 
-CProtoPlugin *CLicq::LoadProtoPlugin(const char *_szName)
-{
-  void *handle;
-  const char *error = NULL;
-  CProtoPlugin *p = new CProtoPlugin(_szName);
-  char szFileName[MAX_FILENAME_LEN];
-
-  if (_szName[0] != '/' && _szName[0] != '.')
-    snprintf(szFileName, MAX_FILENAME_LEN, "%sprotocol_%s.so", LIB_DIR, _szName);
-  else
-    snprintf(szFileName, MAX_FILENAME_LEN, "%s", _szName);
-  szFileName[MAX_FILENAME_LEN - 1] = '\0';
-
-  handle = dlopen(szFileName, DLOPEN_POLICY);
-
-  if (handle == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sUnable to load plugin (%s): %s\n", L_ERRORxSTR, _szName,
-               error);
-    delete p;
-    return NULL;
-  }
-
-  // Get pointers to the functions
-  p->fName = (char *(*)())FindFunction(handle, "LProto_Name");
-  if (p->fName == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_Name in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  p->fVersion = (char *(*)())FindFunction(handle, "LProto_Version");
-  if (p->fVersion == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_Version in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  p->nId = (unsigned short *)FindFunction(handle, "LP_Id");
-  if (p->nId == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_Id in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  p->fPPID = (char *(*)())FindFunction(handle, "LProto_PPID");
-  if (p->fPPID == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_PPID in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;  
-  }
-  
-  p->fInit = (bool (*)())FindFunction(handle, "LProto_Init");
-  if (p->fInit == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_Init in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  p->fMain = (void (*)(CICQDaemon *))FindFunction(handle, "LProto_Main");
-  if (p->fMain == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_Main in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  p->fMain_tep = (void *(*)(void *))FindFunction(handle, "LProto_Main_tep");
-  if (p->fMain_tep == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LProto_Main_tep in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  unsigned long (*fSendFuncs)() = (unsigned long (*)())FindFunction(handle, "LProto_SendFuncs");
-  if (fSendFuncs == NULL)
-  {
-    error = dlerror();
-    gLog.Error("%sFailed to find LP_SendFuncs in plugin (%s): %s\n",
-      L_ERRORxSTR, _szName, error);
-    delete p;
-    return NULL;
-  }
-
-  if (!(*p->fInit)())
-  {
-    gLog.Error("%sFailed to initialize plugin (%s).\n", L_ERRORxSTR, p->Name());
-    delete p;
-    return NULL;
-  }
-
-  // PPID
-  p->m_nPPID = p->fPPID()[0] << 24 | p->fPPID()[1] << 16 | p->fPPID()[2] << 8 | p->fPPID()[3];
-
-  // Other info
-  p->m_nSendFunctions = fSendFuncs();
-
-  // Finish it up
-  *p->nId = m_nNextId++;
-  p->m_pHandle = handle;
-  pthread_mutex_lock(&mutex_protoplugins);
-  ProtoPluginsListIter p_iter;
-  for (p_iter = list_protoplugins.begin(); p_iter != list_protoplugins.end();
-      ++p_iter)
-  {
-    if ((*p_iter)->PPID() == p->m_nPPID)
-    {
-      delete p;
-      pthread_mutex_unlock(&mutex_protoplugins);
-      return NULL;
-    }
-  } 
-  list_protoplugins.push_back(p);
-  pthread_mutex_unlock(&mutex_protoplugins);
-
-  // Let the gui plugins know about the new protocol plugin
-  if (licqDaemon)
-    licqDaemon->pushPluginSignal(new LicqSignal(SIGNAL_NEWxPROTO_PLUGIN, p->PPID()));
-  return p;
-}
-
-void CLicq::StartProtoPlugin(CProtoPlugin *p)
-{
-  gLog.Info(tr("%sStarting protocol plugin %s (version %s).\n"), L_INITxSTR, p->Name(),
-            p->Version());
-  pthread_create(&p->thread_plugin, NULL, p->fMain_tep, licqDaemon);
-}
-
-
-void *CLicq::FindFunction(void *_pHandle, const char *_szSymbolName)
-{
-  void *pFunc = dlsym(_pHandle, _szSymbolName);
-  if (pFunc == NULL)
-  {
-    char *szSymbol = new char[strlen(_szSymbolName) + 2];
-    sprintf(szSymbol, "_%s", _szSymbolName);
-    szSymbol[strlen(_szSymbolName)+1] = '\0';
-
-    pFunc = dlsym(_pHandle, szSymbol);
-    delete [] szSymbol;
-  }
-
-  return pFunc;
-}
 
 int CLicq::Main()
 {
   int nResult = 0;
 
-  if (list_plugins.size() == 0)
+  if (gPluginManager.getGeneralPluginsCount() == 0)
   {
-    gLog.Warn(tr("%sNo plugins specified on the command-line (-p option).\n"
-                 "%sSee the README for more information.\n"),
-              L_WARNxSTR, L_BLANKxSTR);
+    gLog.warning(tr("No plugins specified on the command-line (-p option).\n"
+                    "See the README for more information."));
     return nResult;
   }
 
-  if (!licqDaemon->Start()) return 1;
+  gFifo.initialize();
+
+  if (!gIcqProtocol.start())
+    return 1;
 
   // Run the plugins
-  pthread_cond_init(&LP_IdSignal, NULL);
-  PluginsListIter iter;
-  ProtoPluginsListIter p_iter;
-  pthread_mutex_lock(&mutex_plugins);
-  pthread_mutex_lock(&mutex_protoplugins);
-  for (iter = list_plugins.begin(); iter != list_plugins.end(); ++iter)
-  {
-    StartPlugin(*iter);
-  }
-  for (p_iter = list_protoplugins.begin(); p_iter != list_protoplugins.end();
-       ++p_iter)
-  {
-    if ((*p_iter)->PPID() != LICQ_PPID)
-      StartProtoPlugin(*p_iter);
-  }
+  gPluginManager.startAllPlugins();
 
-  gLog.ModifyService(S_STDERR, DEBUG_LEVEL);
+  // Reset to requested log level
+  myConsoleLog->setLogLevelsFromBitmask(
+      Licq::LogUtils::convertOldBitmaskToNew(myConsoleLogLevel));
 
-  unsigned short nExitId;
-  bool bDaemonShutdown = false;
-  
-  //FIXME ICQ Plugin can't be taken out really
-  while (list_plugins.size() > 0 || list_protoplugins.size() > 1)
+  // Logon all protocols according to owner configuration
+  gDaemon.autoLogon();
+
+  try
   {
-    bool bUIPlugin = true;
-    pthread_mutex_lock(&LP_IdMutex);
-    pthread_mutex_unlock(&mutex_protoplugins);
-    pthread_mutex_unlock(&mutex_plugins);
-    while (LP_Ids.size() == 0)
+    bool bDaemonShutdown = false;
+
+    while (true)
     {
       if (bDaemonShutdown)
+        gPluginManager.waitForPluginExit(PluginManager::MaxWaitPlugin);
+      else
       {
-        struct timespec abstime;
-        abstime.tv_sec = time(TIME_NOW) + MAX_WAIT_PLUGIN;
-        abstime.tv_nsec = 0;
-        if (pthread_cond_timedwait(&LP_IdSignal, &LP_IdMutex, &abstime) == ETIMEDOUT)
+        if (gPluginManager.waitForPluginExit() == PluginManager::DaemonId)
         {
-          pthread_mutex_lock(&mutex_plugins);
-          pthread_mutex_lock(&mutex_protoplugins);
-          pthread_mutex_unlock(&LP_IdMutex);
-          goto timed_out;
+          bDaemonShutdown = true;
+          continue;
         }
       }
-      else
-        pthread_cond_wait(&LP_IdSignal, &LP_IdMutex);
-    }
-    nExitId = LP_Ids.front();
-    LP_Ids.pop_front();
-
-    pthread_mutex_lock(&mutex_plugins);
-    pthread_mutex_lock(&mutex_protoplugins);
-    pthread_mutex_unlock(&LP_IdMutex);
-
-    if (nExitId == 0)
-    {
-      bDaemonShutdown = true;
-      continue;
-    }
-
-    // Check UI plugins first
-    for (iter = list_plugins.begin(); iter != list_plugins.end(); ++iter)
-    {
-      if (*(*iter)->nId == nExitId)
-      {
-        bUIPlugin = true;
-        break;
-      }
-    }
-    
-    for (p_iter = list_protoplugins.begin(); p_iter != list_protoplugins.end();
-         ++p_iter)
-    {
-      if ((*p_iter)->PPID() != LICQ_PPID && *(*p_iter)->nId == nExitId)
-      {
-        bUIPlugin = false;
-        break;
-      }
-    }
-        
-    if (iter == list_plugins.end() && p_iter == list_protoplugins.end())
-    {
-      gLog.Error("%sInvalid plugin id (%d) in exit signal.\n", L_ERRORxSTR, nExitId);
-      continue;
-    }
-
-    if (bUIPlugin)
-    {
-      void *nPluginResult;
-      pthread_join((*iter)->thread_plugin, &nPluginResult);
-      gLog.Info(tr("%sPlugin %s exited with code %d.\n"), L_ENDxSTR, (*iter)->Name(), *((int*)nPluginResult));
-      free (nPluginResult);
-      // Causes Qt to crash on exit
-      //dlclose((*iter)->dl_handle);
-      delete *iter;
-      list_plugins.erase(iter);
-    }
-    else
-    {
-      //FIXME
-      if ((*p_iter)->PPID() != LICQ_PPID)
-      {
-        void *nPluginResult;
-        pthread_join((*p_iter)->thread_plugin, &nPluginResult);
-        gLog.Info(tr("%sPlugin %s exited with code %d.\n"), L_ENDxSTR, (*p_iter)->Name(), *((int*)nPluginResult));
-        free (nPluginResult);
-        dlclose((*p_iter)->m_pHandle);
-        delete *p_iter;
-        list_protoplugins.erase(p_iter);
-      }
     }
   }
-
-  timed_out:
-
-  for (iter = list_plugins.begin(); iter != list_plugins.end(); ++iter)
+  catch (const Licq::Exception&)
   {
-    gLog.Info(tr("%sPlugin %s failed to exit.\n"), L_WARNxSTR, (*iter)->Name());
-    pthread_cancel( (*iter)->thread_plugin);
+    // Empty
   }
-  pthread_mutex_unlock(&mutex_plugins);
 
-  for (p_iter = list_protoplugins.begin(); p_iter != list_protoplugins.end();
-       ++p_iter)
-  {
-    if ((*p_iter)->PPID() == LICQ_PPID) //FIXME
-    {
-      delete *p_iter;
-    }
-    else
-    {
-      gLog.Info(tr("%sPlugin %s failed to exit.\n"), L_WARNxSTR, (*p_iter)->Name());
-      pthread_cancel((*p_iter)->thread_plugin);
-    }
-  }
-  pthread_mutex_unlock(&mutex_protoplugins);
+  gPluginManager.cancelAllPlugins();
 
-  pthread_t *t = licqDaemon->Shutdown();
+  pthread_t* t = gDaemon.Shutdown();
   pthread_join(*t, NULL);
 
-  return list_plugins.size();
+  gUserManager.shutdown();
+
+  return gPluginManager.getGeneralPluginsCount();
 }
 
 
@@ -1289,121 +841,101 @@ void CLicq::PrintUsage()
          " -p : load the given plugin library\n"
          " -l : load the given protocol plugin library\n"
          " -o : redirect stderr to <file>, which can be a device (ie /dev/ttyp4)\n"),
-         PACKAGE, VERSION);
+         PACKAGE, LICQ_VERSION_STRING);
 }
 
 
 void CLicq::SaveLoadedPlugins()
 {
-  char szConf[MAX_FILENAME_LEN];
   char szKey[20];
 
-  CIniFile licqConf(INI_FxWARN | INI_FxALLOWxCREATE);
-  sprintf(szConf, "%s/licq.conf", BASE_DIR);
-  licqConf.LoadFile(szConf);
+  Licq::IniFile licqConf("licq.conf");
+  licqConf.loadFile();
 
-  licqConf.SetSection("plugins");
-  licqConf.WriteNum("NumPlugins", (unsigned short)list_plugins.size());
-  PluginsListIter iter;
+  licqConf.setSection("plugins");
+
+  Licq::GeneralPluginsList general;
+  gPluginManager.getGeneralPluginsList(general);
+
+  licqConf.set("NumPlugins", general.size());
+
   unsigned short i = 1;
-  for (iter = list_plugins.begin(); iter != list_plugins.end(); ++iter)
+  BOOST_FOREACH(GeneralPlugin::Ptr plugin, general)
   {
     sprintf(szKey, "Plugin%d", i++);
-    licqConf.WriteStr(szKey, (*iter)->LibName());
+    licqConf.set(szKey, plugin->getLibraryName());
   }
-  
-  licqConf.WriteNum("NumProtoPlugins", (unsigned short)(list_protoplugins.size() - 1));
-  ProtoPluginsListIter it;
+
+  Licq::ProtocolPluginsList protocols;
+  gPluginManager.getProtocolPluginsList(protocols);
+
+  // ICQ-PLUGIN: Remove -1
+  licqConf.set("NumProtoPlugins", (protocols.size() - 1));
+
   i = 1;
-  for (it = list_protoplugins.begin(); it != list_protoplugins.end(); it++)
+  BOOST_FOREACH(ProtocolPlugin::Ptr plugin, protocols)
   {
-    if (strcmp((*it)->LibName(), "") != 0)
+    // ICQ-PLUGIN: Remove if
+    if (!plugin->getLibraryName().empty())
     {
       sprintf(szKey, "ProtoPlugin%d", i++);
-      licqConf.WriteStr(szKey, (*it)->LibName());
+      licqConf.set(szKey, plugin->getLibraryName());
     }
   }
 
-  licqConf.FlushFile();
+  licqConf.writeFile();
 }
 
 
 void CLicq::ShutdownPlugins()
 {
   // Save plugins
-  if (list_plugins.size() > 0)
+  if (gPluginManager.getGeneralPluginsCount() > 0)
     SaveLoadedPlugins();
 
-  // Send shutdown signal to all the plugins
-  PluginsListIter iter;
-  pthread_mutex_lock(&mutex_plugins);
-  for (iter = list_plugins.begin(); iter != list_plugins.end(); ++iter)
-  {
-    (*iter)->Shutdown();
-  }
-  pthread_mutex_unlock(&mutex_plugins);
-  
-  ProtoPluginsListIter p_iter;
-  pthread_mutex_lock(&mutex_protoplugins);
-  for (p_iter = list_protoplugins.begin(); p_iter != list_protoplugins.end(); ++p_iter)
-  {
-    (*p_iter)->Shutdown();
-  }
-  pthread_mutex_unlock(&mutex_protoplugins);
+  gPluginManager.shutdownAllPlugins();
 }
 
 
 bool CLicq::Install()
 {
-  char cmd[MAX_FILENAME_LEN + 128];
-
-  cmd[sizeof(cmd) - 1] = '\0';
+  string baseDir = gDaemon.baseDir();
 
   // Create the directory if necessary
-  if (mkdir(BASE_DIR, 0700) == -1 && errno != EEXIST)
+  if (mkdir(baseDir.c_str(), 0700) == -1 && errno != EEXIST)
   {
-    fprintf(stderr, "Couldn't mkdir %s: %s\n", BASE_DIR, strerror(errno));
+    fprintf(stderr, "Couldn't mkdir %s: %s\n", baseDir.c_str(), strerror(errno));
     return (false);
   }
-  snprintf(cmd, sizeof(cmd) - 1, "%s/%s", BASE_DIR, HISTORY_DIR);
-  if (mkdir(cmd, 0700) == -1 && errno != EEXIST)
+  string cmd = baseDir + "users";
+  if (mkdir(cmd.c_str(), 0700) == -1 && errno != EEXIST)
   {
-    fprintf(stderr, "Couldn't mkdir %s: %s\n", cmd, strerror(errno));
-    return (false);
-  }
-  snprintf(cmd, sizeof(cmd) - 1, "%s/%s", BASE_DIR, USER_DIR);
-  if (mkdir(cmd, 0700) == -1 && errno != EEXIST)
-  {
-    fprintf(stderr, "Couldn't mkdir %s: %s\n", cmd, strerror(errno));
+    fprintf(stderr, "Couldn't mkdir %s: %s\n", cmd.c_str(), strerror(errno));
     return (false);
   }
 
   // Create licq.conf
-  snprintf(cmd, sizeof(cmd) - 1, "%s/licq.conf", BASE_DIR);
-  FILE *f = fopen(cmd, "w");
-  chmod(cmd, 00600);
-  fprintf(f, "%s", LICQ_CONF);
-  fclose(f);
-
+  Licq::IniFile licqConf("licq.conf");
+  licqConf.loadFile();
+  licqConf.setSection("licq");
+  licqConf.set("Version", LICQ_VERSION);
+  licqConf.setSection("plugins");
+  licqConf.set(string("NumPlugins"), 0);
+  licqConf.set(string("NumProtoPlugins"), 0);
+  licqConf.setSection("network");
+  licqConf.setSection("onevent");
+  licqConf.setSection("groups");
+  licqConf.set(string("NumOfGroups"), 0);
+  licqConf.setSection("owners");
+  licqConf.set(string("NumOfOwners"), 0);
+  licqConf.writeFile();
 
   // Create users.conf
-  snprintf(cmd, sizeof(cmd) - 1, "%s/users.conf", BASE_DIR);
-  CIniFile usersConf(INI_FxALLOWxCREATE);
-  usersConf.LoadFile(cmd);
-  usersConf.SetSection("users");
-  usersConf.WriteNum("NumOfUsers", 0ul);
-  usersConf.FlushFile();
-
-  snprintf (cmd, sizeof(cmd) - 1, "%s/owner.Licq", BASE_DIR);
-  CIniFile licqConf(INI_FxALLOWxCREATE);
-  licqConf.LoadFile(cmd);
-  licqConf.SetSection("user");
-  licqConf.WriteStr("Alias", "None");
-  licqConf.WriteStr("Password", "");
-  licqConf.WriteNum("Uin", 0ul);
-  licqConf.WriteBool("WebPresence", false);
-  licqConf.WriteBool("HideIP", false);
-  licqConf.FlushFile();
+  Licq::IniFile usersConf("users.conf");
+  usersConf.loadFile();
+  usersConf.setSection("users");
+  usersConf.set(string("NumOfUsers"), 0);
+  usersConf.writeFile();
 
   return(true);
 }

@@ -1,6 +1,21 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1999-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -79,7 +94,7 @@ CWindow::CWindow(int _rows, int _cols, int _y, int _x, int _scrollback, int _use
       printf("Couldn't create cdk screen!\n");
   }
 
-  sLastContact = USERID_NONE;
+  sLastContact = Licq::UserId();
   nLastHistory = 1;
 }
 
@@ -141,7 +156,7 @@ CWindow& CWindow::operator<<(unsigned char d)
 }
 
 
-CWindow& CWindow::operator<<(const char *d)
+CWindow& CWindow::operator<<(char* d)
 {
   waddstr(win, d);
   RefreshWin();
@@ -167,7 +182,7 @@ void CWindow::wprintf(const char *formatIn, ...)
    va_list argp;
    char formatOut[1024], out[1024];
    unsigned short i = 0, j = 0;
-   attr_t save = win->_attrs;
+   chtype save = win->_attrs;
 
    va_start(argp, formatIn);
 

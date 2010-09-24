@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,13 +25,16 @@
 #include <QDialog>
 #include <QString>
 
-#include <licq_icqd.h>
+#include <licq/icq.h>
 
 class QGroupBox;
 class QProgressBar;
 class QPushButton;
 
-class LicqEvent;
+namespace Licq
+{
+class Event;
+}
 
 namespace LicqQtGui
 {
@@ -46,7 +49,7 @@ public:
 
   int go_message(const QString& msg);
   int go_url(const QString& url, const QString& desc);
-  int go_contact(StringList& users);
+  int go_contact(Licq::StringList& users);
 
 signals:
   /**
@@ -56,11 +59,11 @@ signals:
    *
    * @param event Event object that was sent
    */
-  void eventSent(const LicqEvent* event);
+  void eventSent(const Licq::Event* event);
 
 private:
   QString s1, s2;
-  StringList* myUsers;
+  Licq::StringList* myUsers;
 
   unsigned long m_nEventType;
   QGroupBox* grpSending;
@@ -71,7 +74,7 @@ private:
 
   void SendNext();
 private slots:
-  void slot_done(const LicqEvent* event);
+  void slot_done(const Licq::Event* event);
   void slot_cancel();
 };
 

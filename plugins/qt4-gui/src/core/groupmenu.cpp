@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008-2009 Licq developers
+ * Copyright (C) 2008-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,14 @@
 
 #include "config.h"
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <boost/foreach.hpp>
 
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/usermanager.h>
+
+#include "config/contactlist.h"
 #include "config/iconmanager.h"
-#include "contactlist/contactlist.h"
-#include "helpers/licqstrings.h"
+#include "dialogs/groupdlg.h"
 #include "views/userview.h"
 
 #include "licqgui.h"
@@ -52,10 +54,10 @@ GroupMenu::GroupMenu(QWidget* parent)
   connect(mySystemGroupActions, SIGNAL(triggered(QAction*)), SLOT(addUsersToGroup(QAction*)));
 
   // System groups
-  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
+  for (int i = ContactListModel::SystemGroupOffset; i <= ContactListModel::LastSystemGroup; ++i)
   {
-    a = mySystemGroupActions->addAction(LicqStrings::getSystemGroupName(i));
-    a->setData(i + ContactListModel::SystemGroupOffset);
+    a = mySystemGroupActions->addAction(ContactListModel::systemGroupName(i));
+    a->setData(i);
   }
 
   myGroupSeparator = myGroupsMenu->addSeparator();
@@ -65,6 +67,7 @@ GroupMenu::GroupMenu(QWidget* parent)
   myMoveUpAction = addAction(tr("Move &Up"), this, SLOT(moveGroupUp()));
   myMoveDownAction = addAction(tr("Move &Down"), this, SLOT(moveGroupDown()));
   myRenameAction = addAction(tr("Rename"), this, SLOT(renameGroup()));
+  mySettingsAction = addAction(tr("Sounds..."), this, SLOT(settings()));
   addMenu(myGroupsMenu);
   myRemoveGroupAction = addAction(tr("Remove Group"), this, SLOT(removeGroup()));
 
@@ -90,16 +93,19 @@ void GroupMenu::updateGroups()
   foreach (a, myUserGroupActions->actions())
     delete a;
 
-  FOR_EACH_GROUP_START_SORTED(LOCK_R)
+  Licq::GroupListGuard groupList;
+  BOOST_FOREACH(const Licq::Group* group, **groupList)
   {
+    Licq::GroupReadGuard pGroup(group);
+
     QString name = QString::fromLocal8Bit(pGroup->name().c_str());
+    name.replace("&", "&&");
 
     a = myUserGroupActions->addAction(name);
     a->setData(pGroup->id());
 
     myGroupsMenu->insertAction(myGroupSeparator, a);
   }
-  FOR_EACH_GROUP_END
 
   // Add groups to menu
   myGroupsMenu->insertActions(myGroupSeparator, myUserGroupActions->actions());
@@ -114,24 +120,26 @@ void GroupMenu::aboutToShowMenu()
     a->setVisible(a->data().toInt() != myGroupId);
 
   // Actions that are only available for user groups
-  bool special = (myGroupId >= ContactListModel::SystemGroupOffset || myGroupId == 0);
-  myRenameAction->setEnabled(!special);
-  myRemoveGroupAction->setEnabled(!special);
+  bool userGroup = (myGroupId < ContactListModel::SystemGroupOffset);
+  myRenameAction->setEnabled(userGroup);
+  myRemoveGroupAction->setEnabled(userGroup);
+
+  // OnEvent manager in daemon does not handle gui system groups
+  mySettingsAction->setEnabled(userGroup);
 
   mySortIndex = 0;
-  if (!special)
+  if (userGroup)
   {
-    LicqGroup* group = gUserManager.FetchGroup(myGroupId, LOCK_R);
-    if (group != NULL)
+    Licq::GroupReadGuard group(myGroupId);
+    if (group.isLocked())
     {
       mySortIndex = group->sortIndex();
       myGroupName = QString::fromLocal8Bit(group->name().c_str());
-      gUserManager.DropGroup(group);
     }
   }
 
-  myMoveUpAction->setEnabled(!special && mySortIndex > 0);
-  myMoveDownAction->setEnabled(!special && static_cast<unsigned int>(mySortIndex) < gUserManager.NumGroups()-1);
+  myMoveUpAction->setEnabled(userGroup && mySortIndex > 0);
+  myMoveDownAction->setEnabled(userGroup && static_cast<unsigned int>(mySortIndex) < Licq::gUserManager.NumGroups()-1);
 }
 
 void GroupMenu::setGroup(int groupId, bool online)
@@ -151,17 +159,22 @@ void GroupMenu::moveGroupUp()
   if (mySortIndex == 0)
     return;
 
-  gUserManager.ModifyGroupSorting(myGroupId, mySortIndex - 1);
+  Licq::gUserManager.ModifyGroupSorting(myGroupId, mySortIndex - 1);
 }
 
 void GroupMenu::moveGroupDown()
 {
-  gUserManager.ModifyGroupSorting(myGroupId, mySortIndex + 1);
+  Licq::gUserManager.ModifyGroupSorting(myGroupId, mySortIndex + 1);
 }
 
 void GroupMenu::renameGroup()
 {
   gMainWindow->getUserView()->editGroupName(myGroupId, myOnline);
+}
+
+void GroupMenu::settings()
+{
+  new GroupDlg(myGroupId);
 }
 
 void GroupMenu::removeGroup()
@@ -171,28 +184,23 @@ void GroupMenu::removeGroup()
   if (!QueryYesNo(this, warning))
     return;
 
-  gUserManager.RemoveGroup(myGroupId);
+  Licq::gUserManager.RemoveGroup(myGroupId);
 }
 
 void GroupMenu::addUsersToGroup(QAction* action)
 {
-  // Group id used by model
   int groupId = action->data().toInt();
 
-  // Group id used by daemon
-  GroupType gtype = (groupId < ContactListModel::SystemGroupOffset ? GROUPS_USER : GROUPS_SYSTEM);
-  int gid = (groupId < ContactListModel::SystemGroupOffset ? groupId - 1 : groupId - ContactListModel::SystemGroupOffset);
-
-  ContactListModel* list = LicqGui::instance()->contactList();
-  QModelIndex groupIndex = list->groupIndex(myGroupId);
-  int userCount = list->rowCount(groupIndex);
+  QModelIndex groupIndex = gGuiContactList->groupIndex(myGroupId);
+  int userCount = gGuiContactList->rowCount(groupIndex);
 
   for (int i = 0; i < userCount; ++i)
   {
-    QModelIndex userIndex = list->index(i, 0, groupIndex);
+    QModelIndex userIndex = gGuiContactList->index(i, 0, groupIndex);
 
-    UserId userId = userIndex.data(ContactListModel::UserIdRole).value<UserId>();
+    Licq::UserId userId = userIndex.data(ContactListModel::UserIdRole).value<Licq::UserId>();
 
-    gUserManager.setUserInGroup(userId, gtype, gid, true, gtype == GROUPS_SYSTEM);
+    // Call function that knows how to handle system groups
+    gLicqGui->setUserInGroup(userId, groupId, true, groupId >= ContactListModel::SystemGroupOffset);
   }
 }

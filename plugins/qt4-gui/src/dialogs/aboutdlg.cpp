@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,12 +21,15 @@
 #include "aboutdlg.h"
 
 #include "config.h"
+#include "pluginversion.h"
 
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
 #include <QLabel>
 
-#include <licq_icqd.h>
+#include <licq/daemon.h>
+
+#include "core/gui-defines.h"
 
 #include "helpers/support.h"
 
@@ -46,7 +49,7 @@ AboutDlg::AboutDlg(QWidget* parent)
       "<table width=100%>"
       "<tr><th colspan=2>%1</th></tr>"
       "<tr><td>Licq</td><td align=right>%2%3</td></tr>"
-      "<tr><td>Qt4-GUI</td><td align=right>%4%5</td></tr>"
+      "<tr><td>" DISPLAY_PLUGIN_NAME "</td><td align=right>%4%5</td></tr>"
       "<tr><td>%6</td><td align=right>%7</td></tr>"
       "</table>"
       "<hr>"
@@ -64,9 +67,9 @@ AboutDlg::AboutDlg(QWidget* parent)
       "</table>"
     )
     .arg(tr("Version"))
-    .arg(gLicqDaemon->Version())
-    .arg(CICQDaemon::CryptoEnabled() ? "/SSL" : "")
-    .arg(VERSION)
+    .arg(Licq::gDaemon.Version())
+    .arg(Licq::gDaemon.haveCryptoSupport() ? "/SSL" : "")
+    .arg(PLUGIN_VERSION_STRING)
 #ifdef USE_KDE
     .arg("/KDE")
 #else

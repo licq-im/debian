@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,14 +24,16 @@
 #include <QAbstractItemModel>
 #include <QList>
 
-#include <licq_icq.h>
-#include <licq_types.h>
+#include <licq/userid.h>
 
-class LicqUser;
+namespace Licq
+{
+class User;
+}
 
 // Allow UserId to be used in QVariant and QSet
-Q_DECLARE_METATYPE(UserId)
-uint qHash(const UserId& userId);
+Q_DECLARE_METATYPE(Licq::UserId)
+uint qHash(const Licq::UserId& userId);
 
 namespace LicqQtGui
 {
@@ -87,7 +89,6 @@ public:
     AccountIdRole,                      // Account id for user (UserItems only)
     PpidRole,                           // Protocol id for user (UserItems only)
     StatusRole,                         // Contact status (UserItems only)
-    FullStatusRole,                     // Contact full status (UserItems only)
     ExtendedStatusRole,                 // Various status flags needed by the delegate (UserItems only)
     UserIconRole,                       // User picture for use as icon (UserItems only)
     CarAnimationRole,                   // Auto response read animation counter (UserItems only)
@@ -115,20 +116,6 @@ public:
     OnlineSubGroup = 0,
     OfflineSubGroup,
     NotInListSubGroup,
-  };
-
-  /**
-   * Contact status (returned for StatusRole)
-   */
-  enum StatusType
-  {
-    OfflineStatus = ICQ_STATUS_OFFLINE,
-    OnlineStatus = ICQ_STATUS_ONLINE,
-    AwayStatus = ICQ_STATUS_AWAY,
-    DoNotDisturbStatus = ICQ_STATUS_DND,
-    NotAvailableStatus = ICQ_STATUS_NA,
-    OccupiedStatus = ICQ_STATUS_OCCUPIED,
-    FreeForChatStatus = ICQ_STATUS_FREEFORCHAT
   };
 
   /**
@@ -181,10 +168,33 @@ public:
   static const unsigned long NewUserStatus              = 1 << NewUserStatusBit;
   static const unsigned long AwaitingAuthStatus         = 1 << AwaitingAuthStatusBit;
 
-  /**
-   * Offset on group id for system groups
-   */
+  // Constants for system groups
   static const int SystemGroupOffset = 1000;
+  static const int OtherUsersGroupId = 0;
+
+  // "Normal" system groups
+  // Note: These constants are used by Config::Contactlist and written to config file
+  //       Changing existing numbers will make old config files be read wrong
+  static const int OnlineNotifyGroupId                  = SystemGroupOffset + 0;
+  static const int VisibleListGroupId                   = SystemGroupOffset + 1;
+  static const int InvisibleListGroupId                 = SystemGroupOffset + 2;
+  static const int IgnoreListGroupId                    = SystemGroupOffset + 3;
+  static const int NewUsersGroupId                      = SystemGroupOffset + 4;
+  static const int AwaitingAuthGroupId                  = SystemGroupOffset + 5;
+  static const int NumSystemGroups                      = 6;
+  static const int LastSystemGroup                      = SystemGroupOffset + NumSystemGroups - 1;
+  static const int AllUsersGroupId                      = SystemGroupOffset + 100;
+
+  // Not real group but need unique id in menus
+  static const int AllGroupsGroupId                     = SystemGroupOffset + 101;
+
+  /**
+   * Get display name for system groups
+   *
+   * @param groupId Id of a system group
+   * @return Name of group
+   */
+  static QString systemGroupName(int groupId);
 
   /**
    * Constructor
@@ -200,26 +210,18 @@ public:
   virtual ~ContactListModel();
 
   /**
-   * Refresh data and group membership for a user
-   * As the daemon does not signal some things the main window must use this function to notify us.
-   *
-   * @param userId Licq user id
-   */
-  void updateUser(const UserId& userId);
-
-  /**
    * Add a user to the contact list
    *
    * @param licqUser The user to add
    */
-  void addUser(const LicqUser* licqUser);
+  void addUser(const Licq::User* licqUser);
 
   /**
    * Remove a user from the contact list
    *
    * @param userId Licq user id
    */
-  void removeUser(const UserId& userId);
+  void removeUser(const Licq::UserId& userId);
 
   /**
    * Get a model index for a group or user that other components can use.
@@ -298,26 +300,31 @@ public:
    * @param column The column to return an index for
    * @return An index for the given user and column from the "All Users" group
    */
-  QModelIndex userIndex(const UserId& userId, int column) const;
+  QModelIndex userIndex(const Licq::UserId& userId, int column) const;
 
   /**
    * Get index for a group to use as root item for a view
-   * Requesting group id 0 will return either the all users group (if type is system) or other users group (if type is user)
    *
-   * @param type The type of group (user or system)
-   * @param id Id of the group or 0 to get special group
-   * @return An index for the group or an invalid index if the group does not exist
-   */
-  QModelIndex groupIndex(GroupType type, int id) const;
-
-  /**
-   * Get index for a group. This function uses model id for groups
-   * Requesting group id 0 will return other users group.
-   *
-   * @param id Id of the group or 0 to get other users group
+   * @param id Id of the group
    * @return An index for the group or an invalid index if the group does not exist
    */
   QModelIndex groupIndex(int id) const;
+
+  /**
+   * Get index for the All Users group
+   *
+   * @return Index for "All Users" group
+   */
+  QModelIndex allUsersGroupIndex() const
+  { return groupIndex(AllUsersGroupId); }
+
+  /**
+   * Convenience function to get name of a group
+   *
+   * @param groupId Id of user group or system group
+   * @return Name of group
+   */
+  QString groupName(int groupId) const;
 
 public slots:
   /**
@@ -327,7 +334,7 @@ public slots:
    * @param argument Additional data, usage depend on sub signal type
    * @param userId Id for affected user, if applicable
    */
-  void listUpdated(unsigned long subSignal, int argument, const UserId& userId);
+  void listUpdated(unsigned long subSignal, int argument, const Licq::UserId& userId);
 
   /**
    * The data for a user has changed in the daemon
@@ -336,7 +343,7 @@ public slots:
    * @param subSignal Sub signal telling what the change was
    * @param argument Additional data, usage depend on sub signal type
    */
-  void userUpdated(const UserId& userId, unsigned long subSignal, int argument);
+  void userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument);
 
   /**
    * Reload the entire contact list from the daemon
@@ -411,7 +418,7 @@ private slots:
    * @param user The model user to update groups for
    * @param licqUser The daemon user to get group membership from
    */
-  void updateUserGroups(ContactUserData* user, const LicqUser* licqUser);
+  void updateUserGroups(ContactUserData* user, const Licq::User* licqUser);
 
 private:
   /**
@@ -427,7 +434,7 @@ private:
    * @param userId Licq user id
    * @return The user object or NULL if it was not found
    */
-  ContactUserData* findUser(const UserId& userId) const;
+  ContactUserData* findUser(const Licq::UserId& userId) const;
 
   /**
    * Check if a user is member of a group and add/remove the user to/from the group if needed
@@ -446,12 +453,14 @@ private:
    */
   int groupRow(ContactGroup* group) const;
 
-  QList<ContactGroup*> myUserGroups;
-  ContactGroup* mySystemGroups[NUM_GROUPS_SYSTEM_ALL];
+  QList<ContactGroup*> myGroups;
+  ContactGroup* myAllUsersGroup;
   QList<ContactUserData*> myUsers;
   int myColumnCount;
   bool myBlockUpdates;
 };
+
+extern ContactListModel* gGuiContactList;
 
 } // namespace LicqQtGui
 

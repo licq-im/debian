@@ -1,6 +1,22 @@
-// This file is released under the GPL
-// author: Martin Maurer (martinmaurer@gmx.at)
-// first version 7 Apr 2003
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2003-2005 Martin Maurer (martinmaurer@gmx.at)
+ * Copyright (C) 2007-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include <cerrno>
 #include <cstdio>
@@ -13,17 +29,28 @@
 #include <locale.h>
 #include <unistd.h>
 
-#include <licq_plugin.h>
-#include <licq_icqd.h>
-#include <licq_events.h>
-#include <licq_file.h>
-#include <licq_log.h>
+#include <licq/logging/log.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/inifile.h>
+#include <licq/pluginbase.h>
+#include <licq/pluginmanager.h>
+#include <licq/pluginsignal.h>
+#include <licq/userevents.h>
 
-#include "config.h"
 #include "my_xosd.h"
 #include "licq_osd.conf.h"
+#include "pluginversion.h"
 
 using namespace std;
+using Licq::User;
+using Licq::UserId;
+using Licq::gLog;
+using Licq::gPluginManager;
+using Licq::gUserManager;
 
 //#if CVSLICQ==1
 //#warning compiling for licq>=1.2.8
@@ -37,16 +64,6 @@ using namespace std;
 // if you don't want to use codepage translation, comment out this
 #define CP_TRANSLATE
 
-// this string is prepended to all the OSD debug  messages
-#define L_OSD_STR "[OSD] "
-
-// licq does not define an invisible status constant
-// so I chose one which won't be taken most likely
-// by licq sources: include/licq_icq.h
-#define OSD_STATUS_INVISIBLE 0x8000
-// licq defines ICQ_STATUS_ONLINE as 0, that's not andable so we use our own
-#define OSD_STATUS_ONLINE 0x4000
-
 struct Config {
     unsigned long Showmessages; //=SHOWLOGON;
     unsigned long Showlogon; //=SHOWLOGON;
@@ -54,8 +71,8 @@ struct Config {
     unsigned long ShowAutoResponseCheck; //=SHOWAUTORESPONSECHECK;
     unsigned long quiettimeout; //=QUIETTIMEOUT;
     string pluginfont;
-    unsigned long ShowInModes;
-    unsigned long ShowMsgsInModes;
+  unsigned showInModes;
+  unsigned showMsgsInModes;
     string colour;
     string controlcolour;
     bool osd_wait;
@@ -76,11 +93,11 @@ struct Config {
 
 
 // some forward declarations
-void ProcessSignal(LicqSignal* s);
-void ProcessEvent(ICQEvent *e);
+void ProcessSignal(Licq::PluginSignal* s);
+void ProcessEvent(Licq::Event* e);
 #ifdef CP_TRANSLATE
     const char *get_iconv_encoding_name(const char *licq_encoding_name);
-char* my_translate(const UserId& userId, const char* msg, const char* userenc);
+string my_translate(const UserId& userId, const string& msg, const char* userenc);
 #endif
 
 // some variables representing the internal state
@@ -99,7 +116,7 @@ const char *LP_Usage(void) // when licq --help is called
 
 const char *LP_Name(void) // plugin name as seen in the licq load plugins menupoint
 {
-    static const char name[] = "OSD Plugin";
+    static const char name[] = "OSD";
     return name;
 }
 
@@ -114,7 +131,7 @@ const char *LP_ConfigFile(void)
 // displayed in plugin selector
 const char *LP_Version(void)
 {
-    static const char version[] = VERSION;
+    static const char version[] = PLUGIN_VERSION_STRING;
     return version;
 }
 
@@ -140,9 +157,9 @@ const char *LP_Description(void)
 void log(int mode, const char *message)
 {
     if (mode==0) // warn/info
-	gLog.Warn("%s%s\n", L_OSD_STR, message);
+      gLog.warning("%s", message);
     if (mode==1) // error
-	gLog.Error("%s%s\n", L_ERRORxSTR, message);
+      gLog.error("%s", message);
 }
 
 // issue a few warnings for wrong config values.
@@ -156,81 +173,77 @@ void verifyconfig(string pluginfont, unsigned long /* timeout */,
 {
     try {
 	if ((pluginfont=="") || (pluginfont.at(0)=='"') || (pluginfont.at(0)=='\''))
-	    gLog.Error("%sCONFIG: Invalid pluginfont %s. This will fail\n", L_ERRORxSTR, pluginfont.c_str());
+	    gLog.error("CONFIG: Invalid pluginfont %s. This will fail", pluginfont.c_str());
 	if (hoffset>10000)
-	    gLog.Warn("%sCONFIG: Very high horizontal offset %lu. This might fail\n", L_OSD_STR, hoffset);
+	    gLog.warning("CONFIG: Very high horizontal offset %lu. This might fail", hoffset);
 	if (voffset>10000)
-	    gLog.Warn("%sCONFIG: Very high vertical offset %lu. This might fail\n", L_OSD_STR, voffset);
+	    gLog.warning("CONFIG: Very high vertical offset %lu. This might fail", voffset);
 	if ((vpos!="top") && (vpos!="bottom") && (vpos!="middle"))
-            gLog.Error("%sCONFIG: Invalid vertical position %s. Should be \"top\" or \"bottom\" or \"middle\". This will fail.\n", L_ERRORxSTR, vpos.c_str());
+            gLog.error("CONFIG: Invalid vertical position %s. Should be \"top\" or \"bottom\" or \"middle\". This will fail.", vpos.c_str());
 	if ((hpos!="left") && (hpos!="right") && (hpos!="center"))
-	    gLog.Error("%sCONFIG: Invalid horizontal position %s. Should be \"left\" or \"right\" or \"center\". This will fail.\n", L_ERRORxSTR, hpos.c_str());
+	    gLog.error("CONFIG: Invalid horizontal position %s. Should be \"left\" or \"right\" or \"center\". This will fail.", hpos.c_str());
 	if (lines>50)
-	    gLog.Error("%sCONFIG: More than 50 lines not allowed. You used %lu\n", L_ERRORxSTR, lines);
+	    gLog.error("CONFIG: More than 50 lines not allowed. You used %lu", lines);
 	if (linelen>500)
-	    gLog.Error("%sCONFIG: More than 500 characters per line not allowed. You used %lu\n", L_ERRORxSTR, linelen);
+	    gLog.error("CONFIG: More than 500 characters per line not allowed. You used %lu", linelen);
 	if (quiettimeout>500)
-	    gLog.Warn("%sCONFIG: Your quiettimeout %lu is higher than 500. Do you really want this ?\n", L_OSD_STR, quiettimeout);
+	    gLog.warning("CONFIG: Your quiettimeout %lu is higher than 500. Do you really want this?", quiettimeout);
 	if (colour=="")
-	    gLog.Error("%sCONFIG: Invalid colour %s. For possible values look at rgb.txt from your Xfree86 distribution\n", L_ERRORxSTR, colour.c_str());
+	    gLog.error("CONFIG: Invalid colour %s. For possible values look at rgb.txt from your Xfree86 distribution", colour.c_str());
 	if (showmessages>4)
-            gLog.Error("%sCONFIG: Invalid value for showmessages %lu\n", L_ERRORxSTR, showmessages);
+            gLog.error("CONFIG: Invalid value for showmessages %lu", showmessages);
 	if (showlogon>2)
-            gLog.Error("%sCONFIG: Invalid value for showlogon %lu\n", L_ERRORxSTR, showlogon);
+            gLog.error("CONFIG: Invalid value for showlogon %lu", showlogon);
 	if (shadowoffset>200)
-            gLog.Warn("%sCONFIG: Very high Shadowoffset value %lu\n", L_OSD_STR, shadowoffset);
+            gLog.warning("CONFIG: Very high Shadowoffset value %lu", shadowoffset);
 	if (outlineoffset>200)
-            gLog.Warn("%sCONFIG: Very high Outlineoffset value %lu\n", L_OSD_STR, outlineoffset);
+            gLog.warning("CONFIG: Very high Outlineoffset value %lu", outlineoffset);
 	if (shadowcolour=="")
-	    gLog.Error("%sCONFIG: Invalid shadow colour %s. For possible values look at rgb.txt from your Xfree86 distribution\n", L_ERRORxSTR, shadowcolour.c_str());
+	    gLog.error("CONFIG: Invalid shadow colour %s. For possible values look at rgb.txt from your Xfree86 distribution", shadowcolour.c_str());
 	if (outlinecolour=="")
-	    gLog.Error("%sCONFIG: Invalid outline colour %s. For possible values look at rgb.txt from your Xfree86 distribution\n", L_ERRORxSTR, outlinecolour.c_str());
+	    gLog.error("CONFIG: Invalid outline colour %s. For possible values look at rgb.txt from your Xfree86 distribution", outlinecolour.c_str());
 	if (localencoding=="")
-	    gLog.Warn("%sLocalencoding could not be determined from your locale\n", L_OSD_STR);
+	    gLog.warning("Localencoding could not be determined from your locale");
     }
     catch (...)
     {
-	gLog.Error("%sCONFIG: Exception while verifying config values", L_OSD_STR);
+	gLog.error("CONFIG: Exception while verifying config values");
     }
 }
 
-
-unsigned long parseShowInModesStr(char *ShowInModesStr)
+unsigned parseShowInModesStr(const char* ShowInModesStr)
 {
-    unsigned long ShowInModes=0;
+  unsigned showInModes = 0;
     if (strstr(ShowInModesStr, "Online"))
-	ShowInModes|=OSD_STATUS_ONLINE;
+    showInModes |= User::OnlineStatus;
     if (strstr(ShowInModesStr, "FreeForChat"))
-	ShowInModes|=ICQ_STATUS_FREEFORCHAT;
+    showInModes |= User::FreeForChatStatus;
     if (strstr(ShowInModesStr, "Away"))
-	ShowInModes|=ICQ_STATUS_AWAY;
+    showInModes |= User::AwayStatus;
     if (strstr(ShowInModesStr, "NA"))
-	ShowInModes|=ICQ_STATUS_NA;
+    showInModes |= User::NotAvailableStatus;
     if (strstr(ShowInModesStr, "Occupied"))
-	ShowInModes|=ICQ_STATUS_OCCUPIED;
+    showInModes |= User::OccupiedStatus;
     if (strstr(ShowInModesStr, "DND"))
-	ShowInModes|=ICQ_STATUS_DND;
+    showInModes |= User::DoNotDisturbStatus;
     if (strstr(ShowInModesStr, "Invisible"))
-	ShowInModes|=OSD_STATUS_INVISIBLE;
-    return ShowInModes;
+    showInModes |= User::InvisibleStatus;
+  return showInModes;
 }
 
 // called once on Load of the plugin
 bool LP_Init(int /* argc */, char** /* argv */)
 {
-    char ShowInModesStr[MAX_LINE_LEN+1];
-    char ShowMsgsInModesStr[MAX_LINE_LEN+1];
-    char temp[MAX_LINE_LEN+1];
-    string filename;
+  string showInModes;
+  string showMsgsInModes;
     try {
 	Configured=false;
-	gLog.Info("%sOSD Plugin initializing\n", L_OSD_STR);
+	gLog.info("OSD Plugin initializing\n");
 
-	filename=BASE_DIR;
-	filename+="/licq_osd.conf";
-	CIniFile conf;
-	if (!conf.LoadFile(filename.c_str())) // no configfile found
-	{
+    string filename = "licq_osd.conf";
+    Licq::IniFile conf(filename);
+    if (!conf.loadFile()) // no configfile found
+    {
 	    FILE *f = fopen(filename.c_str(), "w");
 	    if (f) // create config file
 	    {
@@ -239,72 +252,43 @@ bool LP_Init(int /* argc */, char** /* argv */)
 	    }
 	    else // configfile cannot be created
 	    {
-		gLog.Error("%sConfigfile can not be created. Check the permissions on %s\n", L_ERRORxSTR, filename.c_str());
+		gLog.error("Configfile can not be created. Check the permissions on %s", filename.c_str());
 		return 0;
 	    }
-	    if (!conf.LoadFile(filename.c_str())) // configfile cannot be read after creating it - this should not happen
-	    {
-		gLog.Error("%sConfigfile created but cannot be loaded. This should not happen.\n", L_ERRORxSTR);
+      if (!conf.loadFile()) // configfile cannot be read after creating it - this should not happen
+      {
+		gLog.error("Configfile created but cannot be loaded. This should not happen");
 		return 0;
-	    }
-	}
-	conf.SetSection("Main");
-	conf.ReadBool("Wait", config.osd_wait, WAIT);
+      }
+    }
+    conf.setSection("Main");
+    conf.get("Wait", config.osd_wait, WAIT);
+    conf.get("Font", config.pluginfont, FONT);
+    conf.get("Timeout", config.timeout, DISPLAYTIMEOUT);
+    conf.get("HOffset", config.hoffset, HORIZONTAL_OFFSET);
+    conf.get("VOffset", config.voffset, VERTICAL_OFFSET);
+    conf.get("VPos", config.vpos, VPOS);
+    conf.get("HPos", config.hpos, HPOS);
+    conf.get("Lines", config.lines, LINES);
+    conf.get("Linelen", config.linelen, LINELEN);
+    conf.get("Quiettimeout", config.quiettimeout, QUIETTIMEOUT);
+    conf.get("Colour", config.colour, COLOUR);
+    conf.get("ControlColour", config.controlcolour, CONTROLCOLOUR);
+    conf.get("Showmessages", config.Showmessages, SHOWMESSAGES);
+    conf.get("ShowAutoResponseCheck", config.ShowAutoResponseCheck, SHOWAUTORESPONSECHECK);
+    conf.get("Showlogon", config.Showlogon, SHOWLOGON);
+    conf.get("DelayPerCharacter", config.DelayPerCharacter, DELAYPERCHARACTER);
+    conf.get("ShowStatusChange", config.ShowStatusChange, SHOWSTATUSCHANGE);
+    conf.get("ShadowOffset", config.shadowoffset, SHADOW_OFFSET);
+    conf.get("OutlineOffset", config.outlineoffset, OUTLINE_OFFSET);
+    conf.get("MarkSecureMessages", config.marksecuremessages, MARKSECUREMESSAGES);
+    conf.get("ShadowColour", config.shadowcolour, SHADOW_COLOUR);
+    conf.get("OutlineColour", config.outlinecolour, OUTLINE_COLOUR);
+    conf.get("ShowInModes", showInModes, SHOWINMODESSTR);
+    conf.get("ShowMsgsInModes", showMsgsInModes, SHOWMSGSINMODESSTR);
 
-	conf.ReadStr("Font", temp, FONT);
-	temp[MAX_LINE_LEN]=0;
-        config.pluginfont=temp;
-
-	conf.ReadNum("Timeout", config.timeout, DISPLAYTIMEOUT);
-	conf.ReadNum("HOffset", config.hoffset, HORIZONTAL_OFFSET);
-	conf.ReadNum("VOffset", config.voffset, VERTICAL_OFFSET);
-
-	conf.ReadStr("VPos", temp, VPOS);
-	temp[MAX_LINE_LEN]=0;
-        config.vpos=temp;
-
-	conf.ReadStr("HPos", temp, HPOS);
-	temp[MAX_LINE_LEN]=0;
-        config.hpos=temp;
-
-	conf.ReadNum("Lines", config.lines, LINES);
-	conf.ReadNum("Linelen", config.linelen, LINELEN);
-	conf.ReadNum("Quiettimeout", config.quiettimeout, QUIETTIMEOUT);
-
-	conf.ReadStr("Colour", temp, COLOUR);
-	temp[MAX_LINE_LEN]=0;
-        config.colour=temp;
-	conf.ReadStr("ControlColour", temp, CONTROLCOLOUR);
-	temp[MAX_LINE_LEN]=0;
-        config.controlcolour=temp;
-
-	conf.ReadNum("Showmessages", config.Showmessages, SHOWMESSAGES);
-	conf.ReadNum("ShowAutoResponseCheck", config.ShowAutoResponseCheck, SHOWAUTORESPONSECHECK);
-	conf.ReadNum("Showlogon", config.Showlogon, SHOWLOGON);
-	conf.ReadNum("DelayPerCharacter", config.DelayPerCharacter, DELAYPERCHARACTER);
-	conf.ReadNum("ShowStatusChange", config.ShowStatusChange, SHOWSTATUSCHANGE);
-	conf.ReadNum("ShadowOffset", config.shadowoffset, SHADOW_OFFSET);
-	conf.ReadNum("OutlineOffset", config.outlineoffset, OUTLINE_OFFSET);
-
-	conf.ReadBool("MarkSecureMessages", config.marksecuremessages, MARKSECUREMESSAGES);
-
-	conf.ReadStr("ShadowColour", temp, SHADOW_COLOUR);
-	temp[MAX_LINE_LEN]=0;
-        config.shadowcolour=temp;
-
-	conf.ReadStr("OutlineColour", temp, OUTLINE_COLOUR);
-	temp[MAX_LINE_LEN]=0;
-        config.outlinecolour=temp;
-
-	conf.ReadStr("ShowInModes", ShowInModesStr, SHOWINMODESSTR);
-        ShowInModesStr[MAX_LINE_LEN]=0;
-	conf.ReadStr("ShowMsgsInModes", ShowMsgsInModesStr, SHOWMSGSINMODESSTR);
-        ShowMsgsInModesStr[MAX_LINE_LEN]=0;
-
-	conf.CloseFile();
-
-	config.ShowInModes=parseShowInModesStr(ShowInModesStr);
-	config.ShowMsgsInModes=parseShowInModesStr(ShowMsgsInModesStr);
+    config.showInModes = parseShowInModesStr(showInModes.c_str());
+    config.showMsgsInModes = parseShowInModesStr(showMsgsInModes.c_str());
 
 	setlocale(LC_ALL, "");
 
@@ -327,16 +311,17 @@ bool LP_Init(int /* argc */, char** /* argv */)
 
 
 // run method of plugin
-int LP_Main(CICQDaemon *_licqDaemon)
+int LP_Main()
 {
     // register plugin at the licq daemon
-    int nPipe = _licqDaemon->RegisterPlugin(SIGNAL_UPDATExUSER | SIGNAL_LOGON| SIGNAL_LOGOFF);
+  int nPipe = gPluginManager.registerGeneralPlugin(Licq::PluginSignal::SignalUser |
+      Licq::PluginSignal::SignalLogon | Licq::PluginSignal::SignalLogoff);
     bool Exit=false; // exit plugin?
     char buf[16];
 
     if (nPipe==-1)
     {
-	gLog.Warn("%sInvalid Pipe received\n", L_ERRORxSTR);
+	gLog.warning("Invalid Pipe received");
 	return 1;
     }
 
@@ -356,10 +341,10 @@ int LP_Main(CICQDaemon *_licqDaemon)
 
 	switch (buf[0])
 	{
-	case 'S':  // A signal is pending
-	    {
+      case Licq::GeneralPlugin::PipeSignal:
+      {
 		// read the actual signal from the daemon
-        LicqSignal* s = _licqDaemon->popPluginSignal();
+        Licq::PluginSignal* s = Licq::gDaemon.popPluginSignal();
 		if (s)
 		{
 		    ProcessSignal(s);
@@ -372,37 +357,32 @@ int LP_Main(CICQDaemon *_licqDaemon)
 	    // An event is pending - skip it - shouldnt happen
 	    // events are responses to some requests to the licq daemon
 	    // like send a message - we never do such a thing
-	case 'E':
-	    {
-		gLog.Warn("%sEvent received - should not happen in this plugin\n", L_WARNxSTR);
-		ICQEvent *e = _licqDaemon->PopPluginEvent();
-		if (e)
-		{
-		    delete e;
-		    e=0;
-		}
-		break;
-	    }
+      case Licq::GeneralPlugin::PipeEvent:
+      {
+        gLog.warning("Event received - should not happen in this plugin");
+        Licq::Event* e = Licq::gDaemon.PopPluginEvent();
+        delete e;
+        break;
+      }
 	    // shutdown command from daemon
 	    // every plugin has to implement this command
-	case 'X':  // Shutdown = plugin unloaded or licq shutting down
-	    {
+      case Licq::GeneralPlugin::PipeShutdown:
+      {
 		Exit = true;
-		gLog.Info("%sOSD Plugin shutting down\n", L_OSD_STR);
+		gLog.info("OSD Plugin shutting down");
 		break;
 	    }
 
-	case '0': // disable plugin (see plugin selector window)
+      case Licq::GeneralPlugin::PipeDisable:
 	    Enabled=false;
-	    gLog.Info("%sOSD Plugin disabled\n", L_OSD_STR);
+	    gLog.info("OSD Plugin disabled");
 	    break;
-	case '1': // enable plugin (see plugin selector window)
+      case Licq::GeneralPlugin::PipeEnable:
 	    Enabled=true;
-	    gLog.Info("%sOSD Plugin enabled\n", L_OSD_STR);
+	    gLog.info("OSD Plugin enabled");
 	    break;
 	default:
-	    gLog.Warn("%sUnknown message type %d\n", L_WARNxSTR, buf[0]);
-	    //            cout << "Unknown message type !!! " << endl;
+	    gLog.warning("Unknown message type %d", buf[0]);
 	}
     }
 
@@ -412,33 +392,28 @@ int LP_Main(CICQDaemon *_licqDaemon)
         Configured=false;
     }
     // unregister the plugin
-    _licqDaemon->UnregisterPlugin();
+  gPluginManager.unregisterGeneralPlugin();
 
     return 0;
 }
 
 
-void ProcessSignal(LicqSignal* s)
+void ProcessSignal(Licq::PluginSignal* s)
 {
     string username;
     bool notify=false;
     bool ignore=false;
-    bool invisible=false;
   bool want_osd = true; // if we are in DND,... we maybe don't want OSD
     bool want_osd_msgs_only=false; // though we don't want OSD we want msgs
     bool secure=false;
-    unsigned long status=0;
-  const char* userencoding = NULL;
-  const CUserEvent* e = NULL;
+  unsigned status = User::OnlineStatus;
+  string userencoding;
+  const Licq::UserEvent* e = NULL;
 
-    switch (s->Signal()) // signaltype
+  switch (s->signal()) // signaltype
+  {
+    case Licq::PluginSignal::SignalUser:
     {
-    case SIGNAL_UPDATExUSER:
-	{
-
-	    ICQUser *u;
-	    ICQOwner *o;
-
 	    // FIX: we seem to get others logged on messages before
 	    // our own one - so start quiettimeout in this case too
 	    if (!Online)
@@ -456,92 +431,81 @@ void ProcessSignal(LicqSignal* s)
 
             if (want_osd)
 	    {
-        o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-        if (o != NULL)
+        Licq::OwnerReadGuard o(LICQ_PPID);
+        if (o.isLocked())
         {
-		    status=o->Status();
+          status = o->status();
 		    //want_osd=true;
 
-		    if ((status&ICQ_STATUS_DND) && (!(config.ShowInModes&ICQ_STATUS_DND)))
+          if ((status & User::DoNotDisturbStatus) && (!(config.showInModes & User::DoNotDisturbStatus)))
 			want_osd=false;
-		    else if ((status&ICQ_STATUS_OCCUPIED) && (!(config.ShowInModes&ICQ_STATUS_OCCUPIED)))
+          else if ((status & User::OccupiedStatus) && (!(config.showInModes & User::OccupiedStatus)))
 			want_osd=false;
-		    else if ((status&ICQ_STATUS_NA) && (!(config.ShowInModes&ICQ_STATUS_NA)))
+          else if ((status & User::NotAvailableStatus) && (!(config.showInModes & User::NotAvailableStatus)))
 			want_osd=false;
-		    else if ((status&ICQ_STATUS_AWAY) && (!(config.ShowInModes&ICQ_STATUS_AWAY)))
+          else if ((status & User::AwayStatus) && (!(config.showInModes & User::AwayStatus)))
 			want_osd=false;
-		    else if ((status==0) && (!(config.ShowInModes&OSD_STATUS_ONLINE)))
+          else if ((status & User::FreeForChatStatus) && (!(config.showInModes & User::FreeForChatStatus)))
 			want_osd=false;
-		    else if ((status&ICQ_STATUS_FREEFORCHAT) && (!(config.ShowInModes&ICQ_STATUS_FREEFORCHAT)))
+          else if ((status & User::InvisibleStatus) && (!(config.showInModes & User::InvisibleStatus)))
 			want_osd=false;
-		    else if ((o->StatusInvisible()) && (!(config.ShowInModes&OSD_STATUS_INVISIBLE))) // is reached when a user gets invisible
-			want_osd=false;
+          else if (!(config.showInModes & User::OnlineStatus))
+            want_osd = false;
 
 		    if (!want_osd) {
-			if ((status&ICQ_STATUS_DND) && (config.ShowMsgsInModes&ICQ_STATUS_DND))
+            if ((status & User::DoNotDisturbStatus) && (config.showMsgsInModes & User::DoNotDisturbStatus))
 			    want_osd_msgs_only=true;
-			else if ((status&ICQ_STATUS_OCCUPIED) && (config.ShowMsgsInModes&ICQ_STATUS_OCCUPIED))
+            else if ((status & User::OccupiedStatus) && (config.showMsgsInModes & User::OccupiedStatus))
 			    want_osd_msgs_only=true;
-			else if ((status&ICQ_STATUS_NA) && (config.ShowMsgsInModes&ICQ_STATUS_NA))
+            else if ((status & User::NotAvailableStatus) && (config.showMsgsInModes & User::NotAvailableStatus))
 			    want_osd_msgs_only=true;
-			else if ((status&ICQ_STATUS_AWAY) && (config.ShowMsgsInModes&ICQ_STATUS_AWAY))
+            else if ((status & User::AwayStatus) && (config.showMsgsInModes & User::AwayStatus))
 			    want_osd_msgs_only=true;
-			else if ((status==0) && (config.ShowMsgsInModes&OSD_STATUS_ONLINE))
+            else if ((status & User::FreeForChatStatus) && (config.showMsgsInModes & User::FreeForChatStatus))
 			    want_osd_msgs_only=true;
-			else if ((status&ICQ_STATUS_FREEFORCHAT) && (config.ShowMsgsInModes&ICQ_STATUS_FREEFORCHAT))
+            else if ((status & User::InvisibleStatus) && (config.showMsgsInModes & User::InvisibleStatus))
 			    want_osd_msgs_only=true;
-			else if ((o->StatusInvisible()) && (config.ShowMsgsInModes&OSD_STATUS_INVISIBLE)) // is reached when a user gets invisible
-			    want_osd_msgs_only=true;
+            else if (config.showMsgsInModes & User::OnlineStatus)
+              want_osd_msgs_only = true;
 
 			if (want_osd_msgs_only) {
 			    want_osd=true;
 			}
 		    }
-
-          gUserManager.DropOwner(o);
         }
 	    }
 
 	    if (want_osd)
 	    {
-        u = gUserManager.fetchUser(s->userId(), LOCK_R);
-		if (u)
-		{
+        Licq::UserReadGuard u(s->userId());
+        if (u.isLocked())
+        {
 		    // user alias as displayed in licq -
 		    // (if no alias known, ICQ number as string returned)
-		    username=u->GetAlias();
+          username = u->getAlias();
 		    notify=u->OnlineNotify();
 		    ignore=u->InvisibleList() || u->IgnoreList();
-		    status=u->Status();
-		    invisible=u->StatusInvisible();
-			userencoding=u->UserEncoding(); // needed in translate function
+          status = u->status();
+          userencoding = u->userEncoding(); // needed in translate function
             secure=u->Secure();
 
-          char* username_translated_temp = my_translate(s->userId(), username.c_str(), "UTF-8");
-		    username = username_translated_temp;
-		    free(username_translated_temp);
+          username = my_translate(s->userId(), username, "UTF-8");
 
-                    if (
-			(s->SubSignal() == USER_EVENTS) &&
-			(s->Argument() > 0) // message
-		       )
-		    {
+          if (s->subSignal() == Licq::PluginSignal::UserEvents && s->argument() > 0) // message
+          {
 			// get the user event whose ID we got as the signal argument
-			e = u->EventPeekId(s->Argument());
+            e = u->EventPeekId(s->argument());
 
 			if (e == NULL) // event not found
 			{
-              gLog.Warn("%sEvent for user %s not found\n", L_WARNxSTR, USERID_TOSTR(s->userId()));
+              gLog.warning("Event for user %s not found", s->userId().toString().c_str());
                             want_osd=false;
 			}
 		    }
-
-		    // free user object as we no longer need it
-		    gUserManager.DropUser(u);
 		}
 		else
 		{
-          gLog.Warn("%sUser %s not found\n", L_WARNxSTR, USERID_TOSTR(s->userId()));
+          gLog.warning("User %s not found", s->userId().toString().c_str());
 		    want_osd=false;
 		}
 	    }
@@ -558,10 +522,10 @@ void ProcessSignal(LicqSignal* s)
 	    // that you realize when they check your auto-response
 	    // i implemented this just for fun :)
 	    if ((want_osd) && (!want_osd_msgs_only) && // not ignored or disabled
-		(s->SubSignal() == USER_EVENTS) &&
-		(s->Argument() == 0) // auto response
-	       )
-	    {
+          (s->subSignal() == Licq::PluginSignal::UserEvents) &&
+          (s->argument() == 0) // auto response
+          )
+      {
 		if (
 		     (config.ShowAutoResponseCheck==1) ||  // display auto_reponse checks
 		     ((config.ShowAutoResponseCheck==2)&&(notify))
@@ -575,8 +539,8 @@ void ProcessSignal(LicqSignal* s)
 
 	    // messages that are not sent by myself
 	    if ((want_osd) && // not ignored or disabled
-		(s->SubSignal() == USER_EVENTS) &&
-		(s->Argument() > 0) // message
+          (s->subSignal() == Licq::PluginSignal::UserEvents) &&
+          (s->argument() > 0) // message
 	       )
 	    {
 		if (
@@ -584,13 +548,11 @@ void ProcessSignal(LicqSignal* s)
 		    ((config.Showmessages==2)&&(notify))
 		   )
 		{
-          char* translated = my_translate(s->userId(), e->Text(), userencoding);
 		    string msg="";
 		    if (secure && config.marksecuremessages)
 			msg="(S) ";
-		    msg+=translated;
+          msg += my_translate(s->userId(), e->text(), userencoding.c_str());
 		    my_xosd_display(username.c_str(), msg.c_str(), config.colour);
-		    free(translated);
 		}
 		if (
 		    (config.Showmessages==3) ||   // only display information about message on screen
@@ -602,17 +564,17 @@ void ProcessSignal(LicqSignal* s)
 		    my_xosd_display("", msg, config.colour);
 		}
 	    }
-	    if (want_osd && (!want_osd_msgs_only) && (s->SubSignal() == USER_STATUS)) // logon/logoff or status change
+      if (want_osd && (!want_osd_msgs_only) && (s->subSignal() == Licq::PluginSignal::UserStatus)) // logon/logoff or status change
 	    {
 		string msg = username;
-		if (s->Argument()!=0) // logon/logoff
-		{
+        if (s->argument()!=0) // logon/logoff
+        {
                     if (
 			(config.Showlogon==1) ||
 			((notify)&&(config.Showlogon==2))
 		       )
-		    {
-			if (s->Argument()>0)
+          {
+            if (s->argument() > 0)
 			    msg+=_(" logged on");
 			else
 			    msg+=_(" logged off");
@@ -629,24 +591,24 @@ void ProcessSignal(LicqSignal* s)
 		    {
 			string msg = username;
 			msg+=_(" changed status to: ");
-			if (status&ICQ_STATUS_DND)
+            if (status == User::OfflineStatus)
+              msg += _("offline");
+            else if (status & User::DoNotDisturbStatus)
 			    msg+=_("do not disturb");
-			else if (status&ICQ_STATUS_OCCUPIED)
+            else if (status & User::OccupiedStatus)
 			    msg+=_("occupied");
-			else if (status&ICQ_STATUS_NA)
+            else if (status & User::NotAvailableStatus)
 			    msg+=_("not available");
-			else if (status&ICQ_STATUS_AWAY)
+            else if (status & User::AwayStatus)
 			    msg+=_("away");
-			else if (status==ICQ_STATUS_ONLINE)
-			    msg+=_("online");
-			else if (status&ICQ_STATUS_FREEFORCHAT)
+            else if (status & User::FreeForChatStatus)
 			    msg+=_("free for chat");
-			else if (invisible)
+            else if (status & User::InvisibleStatus)
 			    msg+=_("invisible");
-			else if (status==ICQ_STATUS_OFFLINE)
-			    msg+=_("offline");
-			else // shouldnt be reached
-			    msg+=_("unknown");
+            else if (status & User::IdleStatus)
+              msg += _("idle");
+            else
+              msg += _("online");
 //			my_xosd_settimeout(config.timeout);
 			my_xosd_display("", msg, config.controlcolour);
 		    }
@@ -655,25 +617,23 @@ void ProcessSignal(LicqSignal* s)
 	    }
 	}
 	break;
-    case SIGNAL_LOGOFF:
-	gLog.Info("%sOSD Plugin received logoff\n", L_OSD_STR);
+    case Licq::PluginSignal::SignalLogoff:
+	gLog.info("OSD Plugin received logoff");
 	disabletimer=time(0);
 	Online=false;
 	break;
-    case SIGNAL_LOGON:
-	gLog.Info("%sOSD Plugin received logon\n", L_OSD_STR);
+    case Licq::PluginSignal::SignalLogon:
+	gLog.info("OSD Plugin received logon");
 	disabletimer=time(0);
 	Online=true;
 	break;
 	// we are not interested in those
-    case SIGNAL_ADDxSERVERxLIST:
-    case SIGNAL_UI_MESSAGE:
-	break;
-    case SIGNAL_UPDATExLIST:
+    case Licq::PluginSignal::SignalAddedToServer:
+    case Licq::PluginSignal::SignalUiMessage:
+      break;
     default: // shouldnt happen
-	gLog.Warn("%sUnknown signal %ld\n", L_WARNxSTR, s->Signal());
-	//        cout << "Unknown signal" << s->Signal() << endl;
-	break;
+      gLog.warning("Unknown signal %d", s->signal());
+      break;
     }
 }
 
@@ -779,50 +739,46 @@ const char *get_iconv_encoding_name(const char *licq_encoding_name)
 //translates incoming messages or user names to our codepage.
 // this works only if it is convertable by iconv
 // the codepage of the other user is determined by the UserEncoding property of
-// the other user. (change it for example via the licq-qt-gui message window)
-// LicqSignal is needed to get the User for this message -
+// the other user. (change it for example via the qt4-gui message window)
+// Licq:PluginSignal is needed to get the User for this message -
 // some day i will do this more elegant
-char* my_translate(const UserId& /* userId */, const char* msg, const char* userenc)
+string my_translate(const UserId& /* userId */, const string& msg, const char* userenc)
 {
-    // will be deleted outside of this function
-    char *result = (char*)malloc(strlen(msg) + 1);
-
     iconv_t conv;
     size_t fromsize, tosize, ressize;
     const char *msgptr;
     char *resptr;
 
     if (config.localencoding == "") {
-		gLog.Warn("%sDidn't get our local encoding\n", L_OSD_STR);
-	strcpy(result,msg);
-	return result;
-    }
+      gLog.warning("Didn't get our local encoding");
+    return msg;
+  }
 
     if ((userenc == 0) || (*userenc == 0))
 	{
-		strcpy(result, msg);
-		gLog.Info("%sNo translation needs to be done\n", L_OSD_STR);
-        return result;
-    }
+          gLog.info("No translation needs to be done");
+    return msg;
+  }
     conv=iconv_open(config.localencoding.c_str(), get_iconv_encoding_name(userenc));
 
     // no translation possible?
     if (conv==(iconv_t)-1)
     {
-	gLog.Warn("%sError initializing iconv\n", L_OSD_STR);
-	strcpy(result, msg); // return original string
-	return result;
-    }
+      gLog.warning("Error initializing iconv");
+    return msg;
+  }
 
-    fromsize=strlen(msg);
+  fromsize = msg.size();
     tosize=fromsize;
     ressize=tosize;
-    msgptr=msg;
+  msgptr = msg.c_str();
+
+  char* result = (char*)malloc(msg.size() + 1);
     resptr=result;
 
     while ((fromsize>0) && (tosize>0))
     {
-	if ((int)iconv(conv, (char **)&msgptr, &fromsize, &resptr, &tosize)==-1)
+	if ((int)iconv(conv, (ICONV_CONST char **)&msgptr, &fromsize, &resptr, &tosize)==-1)
 	{
 	    // array is not enough
 	    if (errno == E2BIG)
@@ -834,21 +790,24 @@ char* my_translate(const UserId& /* userId */, const char* msg, const char* user
 		tosize += fromsize + 4;
 		continue;
 	    }
-      gLog.Warn("%sError in my_translate - stopping translation, error on %ld. char\n",
-          L_OSD_STR, (long int)(msgptr-msg+1));
-	    strcpy(result, msg); // return original string
-	    return result;
-	}
+	    gLog.warning("Error in my_translate - stopping translation, error on %ld. char",
+                         (long int)(msgptr - msg.c_str() + 1));
+      free(result);
+      return msg;
     }
+  }
     *resptr = 0;
     iconv_close(conv);
-    return result;
+
+  string ret(result);
+  free(result);
+  return ret;
 }
 #else
 // a dummy function which helps me to remove the #ifdef CP_TRANSLATEs in a lot of my code
-char* my_translate(const UserId& /* userId */, const char* msg, LicqSignal* s)
+string my_translate(const UserId& /* userId */, const string& msg, Licq::PluginSignal* /* s */)
 {
-    return strdup(msg);
+    return strdup(msg.c_str());
 }
 
 #endif

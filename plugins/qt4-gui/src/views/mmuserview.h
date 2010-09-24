@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,10 @@
 
 #include "userviewbase.h"
 
+#include <set>
+
+#include <licq/userid.h>
+
 class QMenu;
 
 
@@ -33,12 +37,12 @@ class MMUserView : public UserViewBase
 {
   Q_OBJECT
 public:
-  MMUserView(const UserId& userId, ContactListModel* contactList, QWidget* parent = 0);
+  MMUserView(const Licq::UserId& userId, ContactListModel* contactList, QWidget* parent = 0);
   virtual ~MMUserView();
 
-  const std::set<UserId>& contacts() const;
+  const std::set<Licq::UserId>& contacts() const;
 
-  void add(const UserId& userId);
+  void add(const Licq::UserId& userId);
   void removeFirst();
 
 public slots:
@@ -46,7 +50,7 @@ public slots:
 
 private:
   QMenu* myMenu;
-  UserId myUserId;
+  Licq::UserId myUserId;
 
   virtual void mousePressEvent(QMouseEvent* event);
   virtual void keyPressEvent(QKeyEvent* event);

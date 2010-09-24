@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,7 +26,10 @@
 #include <QObject>
 #include <QRect>
 
-class CIniFile;
+namespace Licq
+{
+class IniFile;
+}
 
 namespace LicqQtGui
 {
@@ -66,7 +69,8 @@ public:
 
   // Get functions
   bool autoClose() const { return myAutoClose; }
-  unsigned short autoPopup() const { return myAutoPopup; }
+  int autoPopup() const { return myAutoPopup; }
+  bool autoPopupUrgentOnly() const { return myAutoPopupUrgentOnly; }
   bool autoFocus() const { return myAutoFocus; }
   bool manualNewUser() const { return myManualNewUser; }
   bool sendFromClipboard() const { return mySendFromClipboard; }
@@ -92,10 +96,9 @@ public:
 #endif
   bool histVertSpacing() const { return myHistVertSpacing; }
   bool reverseHistory() const { return myReverseHistory; }
-  bool useCustomUrlBrowser() const { return myUseCustomUrlBrowser; }
   bool noSoundInActiveChat() const { return myNoSoundInActiveChat; }
-  unsigned short chatMsgStyle() const { return myChatMsgStyle; }
-  unsigned short histMsgStyle() const { return myHistMsgStyle; }
+  int chatMsgStyle() const { return myChatMsgStyle; }
+  int histMsgStyle() const { return myHistMsgStyle; }
   const QString& chatDateFormat() const { return myChatDateFormat; }
   const QString& histDateFormat() const { return myHistDateFormat; }
   const QString& recvHistoryColor() const { return myRecvHistoryColor; }
@@ -113,16 +116,17 @@ public slots:
   /**
    * Load configuration from file
    */
-  void loadConfiguration(CIniFile& iniFile);
+  void loadConfiguration(Licq::IniFile& iniFile);
 
   /**
    * Save configuration to file
    */
-  void saveConfiguration(CIniFile& iniFile) const;
+  void saveConfiguration(Licq::IniFile& iniFile) const;
 
   // Set functions
   void setAutoClose(bool autoClose);
-  void setAutoPopup(unsigned short autoPopup);
+  void setAutoPopup(int autoPopup);
+  void setAutoPopupUrgentOnly(bool autoPopupUrgentOnly);
   void setAutoFocus(bool autoFocus);
   void setManualNewUser(bool manualNewUser);
   void setSendFromClipboard(bool sendFromClipboard);
@@ -148,10 +152,9 @@ public slots:
 #endif
   void setHistVertSpacing(bool histVertSpacing);
   void setReverseHistory(bool reverseHistory);
-  void setUseCustomUrlBrowser(bool customUrlBrowser);
   void setNoSoundInActiveChat(bool noSoundInActiveChat);
-  void setChatMsgStyle(unsigned short chatMsgStyle);
-  void setHistMsgStyle(unsigned short histMsgStyle);
+  void setChatMsgStyle(int chatMsgStyle);
+  void setHistMsgStyle(int histMsgStyle);
   void setChatDateFormat(const QString& chatDateFormat);
   void setHistDateFormat(const QString& histDateFormat);
   void setRecvHistoryColor(const QString& recvHistoryColor);
@@ -176,7 +179,8 @@ private:
   bool myColorsHaveChanged;
 
   bool myAutoFocus;
-  unsigned short myAutoPopup;
+  int myAutoPopup;
+  bool myAutoPopupUrgentOnly;
   bool myAutoClose;
   bool myManualNewUser;
   bool mySendFromClipboard;
@@ -205,8 +209,8 @@ private:
   bool myUseCustomUrlBrowser;
   bool myNoSoundInActiveChat;
 
-  unsigned short myChatMsgStyle;
-  unsigned short myHistMsgStyle;
+  int myChatMsgStyle;
+  int myHistMsgStyle;
 
   QString myChatDateFormat;
   QString myHistDateFormat;

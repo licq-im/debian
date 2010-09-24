@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,21 +31,19 @@
 #define QTGUI_CONFIGFILE QTGUI_DIR "config.ini"
 
 #define MAX_COLUMNCOUNT 4
-#define DEFAULT_URL_VIEWER "viewurl-mozilla.sh"
 
 #ifdef USE_KDE
 # define PLUGIN_NAME "kde4-gui"
+# define DISPLAY_PLUGIN_NAME "KDE4 GUI"
 #else
 # define PLUGIN_NAME "qt4-gui"
+# define DISPLAY_PLUGIN_NAME "Qt4 GUI"
 #endif
 
 #ifdef HAVE_HUNSPELL
 // Default path to find Hunspell dictionaries in, not used if KDE support is enabled
 # define HUNSPELL_DICTS_DIR "/usr/share/myspell/dicts/"
 #endif
-
-// Defined here until there is a way to get constant from daemon
-#define MSN_PPID 0x4D534E5F
 
 namespace LicqQtGui
 {

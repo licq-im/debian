@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 #include <QHeaderView>
 #include <QMouseEvent>
 
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
 
 #include "config/contactlist.h"
 #include "contactlist/contactlist.h"
@@ -38,7 +38,7 @@ using namespace LicqQtGui;
 
 UserFloatyList FloatyView::floaties;
 
-FloatyView::FloatyView(ContactListModel* contactList, const UserId& userId,  QWidget* parent)
+FloatyView::FloatyView(ContactListModel* contactList, const Licq::UserId& userId,  QWidget* parent)
   : UserViewBase(contactList, parent),
   myUserId(userId)
 {
@@ -51,7 +51,7 @@ FloatyView::FloatyView(ContactListModel* contactList, const UserId& userId,  QWi
   Support::setWidgetProps(this, name);
 
   {
-    LicqUserReadGuard u(myUserId);
+    Licq::UserReadGuard u(myUserId);
 
     setWindowTitle(tr("%1 Floaty (%2)")
         .arg(QString::fromUtf8(u->GetAlias()))
@@ -79,7 +79,7 @@ FloatyView::~FloatyView()
     floaties.remove(pos);
 }
 
-FloatyView* FloatyView::findFloaty(const UserId& userId)
+FloatyView* FloatyView::findFloaty(const Licq::UserId& userId)
 {
   for (int i = 0; i < floaties.size(); i++)
   {
@@ -103,6 +103,6 @@ void FloatyView::mouseMoveEvent(QMouseEvent* event)
 void FloatyView::configUpdated()
 {
   // Set column widths
-  for (unsigned short i = 0; i < Config::ContactList::instance()->columnCount(); i++)
+  for (int i = 0; i < Config::ContactList::instance()->columnCount(); i++)
     setColumnWidth(i, Config::ContactList::instance()->columnWidth(i));
 }

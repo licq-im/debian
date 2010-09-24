@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
 #include <ctype.h>
 
 #include <QDragEnterEvent>
@@ -31,8 +32,9 @@
 #include <QMenu>
 #include <QMouseEvent>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
 
 #include "config/contactlist.h"
 
@@ -48,7 +50,7 @@ using std::set;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::MMUserView */
 
-MMUserView::MMUserView(const UserId& userId, ContactListModel* contactList, QWidget* parent)
+MMUserView::MMUserView(const Licq::UserId& userId, ContactListModel* contactList, QWidget* parent)
   : UserViewBase(contactList, parent),
     myUserId(userId)
 {
@@ -70,7 +72,7 @@ MMUserView::MMUserView(const UserId& userId, ContactListModel* contactList, QWid
   dynamic_cast<SortedContactListProxy*>(myListProxy)->sort(0);
   header()->setVisible(Config::ContactList::instance()->showHeader());
 
-  for (unsigned short i = 0; i < Config::ContactList::instance()->columnCount(); i++)
+  for (int i = 0; i < Config::ContactList::instance()->columnCount(); i++)
     setColumnWidth(i, Config::ContactList::instance()->columnWidth(i));
 }
 
@@ -79,7 +81,7 @@ MMUserView::~MMUserView()
   // Empty
 }
 
-void MMUserView::add(const UserId& userId)
+void MMUserView::add(const Licq::UserId& userId)
 {
   if (userId == myUserId)
     return;
@@ -88,11 +90,11 @@ void MMUserView::add(const UserId& userId)
 
 void MMUserView::removeFirst()
 {
-  UserId userId = *contacts().begin();
+  Licq::UserId userId = *contacts().begin();
   dynamic_cast<MultiContactProxy*>(myListProxy)->remove(userId);
 }
 
-const set<UserId>& MMUserView::contacts() const
+const set<Licq::UserId>& MMUserView::contacts() const
 {
   return dynamic_cast<MultiContactProxy*>(myListProxy)->contacts();
 }
@@ -114,10 +116,12 @@ void MMUserView::clear()
 
 void MMUserView::addCurrentGroup()
 {
-  GroupType groupType = Config::ContactList::instance()->groupType();
-  unsigned long groupId = Config::ContactList::instance()->groupId();
+  int groupId = Config::ContactList::instance()->groupId();
 
-  dynamic_cast<MultiContactProxy*>(myListProxy)->addGroup(groupType, groupId);
+  if (groupId == ContactListModel::AllGroupsGroupId)
+    groupId = ContactListModel::AllUsersGroupId;
+
+  dynamic_cast<MultiContactProxy*>(myListProxy)->addGroup(groupId);
 
   // Make sure current user isn't added
   dynamic_cast<MultiContactProxy*>(myListProxy)->remove(myUserId);
@@ -126,7 +130,7 @@ void MMUserView::addCurrentGroup()
 void MMUserView::addAll()
 {
   // Add all contacts from "All users" group
-  dynamic_cast<MultiContactProxy*>(myListProxy)->addGroup(GROUPS_SYSTEM, GROUP_ALL_USERS);
+  dynamic_cast<MultiContactProxy*>(myListProxy)->addGroup(ContactListModel::AllUsersGroupId);
 
   // Make sure current user isn't added
   dynamic_cast<MultiContactProxy*>(myListProxy)->remove(myUserId);
@@ -149,15 +153,21 @@ void MMUserView::dropEvent(QDropEvent* event)
     QString text = event->mimeData()->text();
 
     unsigned long ppid = 0;
-    FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
+
     {
-      if (text.startsWith(PPIDSTRING((*_ppit)->PPID())))
+      Licq::OwnerListGuard ownerList;
+      BOOST_FOREACH(Licq::Owner* owner, **ownerList)
       {
-        ppid = (*_ppit)->PPID();
-        break;
+        unsigned long protocolId = owner->ppid();
+        char ppidStr[5];
+        Licq::protocolId_toStr(ppidStr, protocolId);
+        if (text.startsWith(ppidStr))
+        {
+          ppid = protocolId;
+          break;
+        }
       }
     }
-    FOR_EACH_PROTO_PLUGIN_END;
 
     if (ppid == 0)
       return;
@@ -167,7 +177,7 @@ void MMUserView::dropEvent(QDropEvent* event)
     if (id.isEmpty())
       return;
 
-    add(LicqUser::makeUserId(id.toLatin1().data(), ppid));
+    add(Licq::UserId(id.toLatin1().data(), ppid));
   }
   else
     return; // Not accepted

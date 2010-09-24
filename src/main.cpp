@@ -1,14 +1,12 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2009 Licq developers
+ * Copyright (C) 1998-2010 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
 
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <signal.h>
 #include <cstdlib>
@@ -17,7 +15,6 @@
 #include <locale>
 
 #include "licq.h"
-#include "licq_sighandler.h"
 
 #ifdef USE_SOCKS5
 #define SOCKS
@@ -30,12 +27,8 @@ extern "C" {
 // Localization
 #include "gettext.h"
 
-// define a global variable for the base directory containing the data and config subdirectories
-char BASE_DIR[MAX_FILENAME_LEN];
-char SHARE_DIR[MAX_FILENAME_LEN];
-char LIB_DIR[MAX_FILENAME_LEN];
-unsigned short DEBUG_LEVEL;
-
+// sighandler.cpp
+void licq_install_signal_handlers();
 
 int main(int argc, char **argv)
 {
@@ -53,7 +46,7 @@ int main(int argc, char **argv)
    SOCKSinit(argv[0]);
 #endif
 
-  licq_signal_handler();
+  licq_install_signal_handlers();
 
   CLicq licq;
   if (!licq.Init(argc, argv))

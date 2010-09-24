@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,10 +36,13 @@
 #include <KDE/KFileDialog>
 #endif
 
-#include <licq_icqd.h>
+#include <licq/contactlist/user.h>
+#include <licq/event.h>
+#include <licq/icqdefines.h>
+#include <licq/protocolmanager.h>
+#include <licq/userevents.h>
 
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 
 #include "dialogs/filedlg.h"
@@ -48,12 +51,11 @@
 #include "widgets/infofield.h"
 #include "widgets/mledit.h"
 
-#include "usereventtabdlg.h"
-
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendFileEvent */
 
-UserSendFileEvent::UserSendFileEvent(const UserId& userId, QWidget* parent)
+UserSendFileEvent::UserSendFileEvent(const Licq::UserId& userId, QWidget* parent)
   : UserSendCommon(FileEvent, userId, parent, "UserSendFileEvent")
 {
   myMassMessageCheck->setChecked(false);
@@ -83,10 +85,6 @@ UserSendFileEvent::UserSendFileEvent(const UserId& userId, QWidget* parent)
 
   myBaseTitle += tr(" - File Transfer");
 
-  UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
-  if (tabDlg != NULL && tabDlg->tabIsSelected(this))
-    tabDlg->setWindowTitle(myBaseTitle);
-
   setWindowTitle(myBaseTitle);
   myEventTypeGroup->actions().at(FileEvent)->setChecked(true);
 }
@@ -110,7 +108,7 @@ void UserSendFileEvent::setFile(const QString& file, const QString& description)
 
 void UserSendFileEvent::addFile(const QString& file)
 {
-  if (myFileList.size() == 0)
+  if (myFileList.empty())
     return;
 
   myFileList.push_back(strdup(file.toLocal8Bit()));
@@ -119,28 +117,27 @@ void UserSendFileEvent::addFile(const QString& file)
   myFileEdit->setText(QString(tr("%1 Files")).arg(myFileList.size()));
 }
 
-bool UserSendFileEvent::sendDone(const LicqEvent* e)
+bool UserSendFileEvent::sendDone(const Licq::Event* e)
 {
-  if (!e->ExtendedAck() || !e->ExtendedAck()->Accepted())
+  if (!e->ExtendedAck() || !e->ExtendedAck()->accepted())
   {
-    const LicqUser* u = gUserManager.fetchUser(myUsers.front());
-    if (u == NULL)
+    Licq::UserReadGuard u(myUsers.front());
+    if (!u.isLocked())
       return true;
     QString s = !e->ExtendedAck() ?
       tr("No reason provided") :
-      myCodec->toUnicode(e->ExtendedAck()->Response());
+      myCodec->toUnicode(e->ExtendedAck()->response().c_str());
     QString result = tr("File transfer with %1 refused:\n%2")
       .arg(QString::fromUtf8(u->GetAlias()))
       .arg(s);
-    if (u != NULL)
-      gUserManager.DropUser(u);
+    u.unlock();
     InformUser(this, result);
   }
   else
   {
-    const CEventFile* f = dynamic_cast<const CEventFile*>(e->UserEvent());
+    const Licq::EventFile* f = dynamic_cast<const Licq::EventFile*>(e->userEvent());
     FileDlg* fileDlg = new FileDlg(myUsers.front());
-    fileDlg->SendFiles(f->FileList(), e->ExtendedAck()->Port());
+    fileDlg->SendFiles(f->FileList(), e->ExtendedAck()->port());
   }
 
   return true;
@@ -196,7 +193,7 @@ void UserSendFileEvent::updateLabel(unsigned count)
       break;
 
     case 1:
-      f = myFileList.front();
+      f = myFileList.front().c_str();
       break;
 
     default:
@@ -212,7 +209,7 @@ void UserSendFileEvent::send()
   // Take care of typing notification now
   mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
+  gProtocolManager.sendTypingNotification(myUsers.front(), false, myConvoId);
 
   if (myFileEdit->text().trimmed().isEmpty())
   {
@@ -222,7 +219,7 @@ void UserSendFileEvent::send()
 
   unsigned long icqEventTag;
   //TODO in daemon
-  icqEventTag = gLicqDaemon->fileTransferPropose(
+  icqEventTag = gProtocolManager.fileTransferPropose(
       myUsers.front(),
       myCodec->fromUnicode(myFileEdit->text()).data(),
       myCodec->fromUnicode(myMessageEdit->toPlainText()).data(),

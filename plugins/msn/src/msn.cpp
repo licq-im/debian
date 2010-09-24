@@ -1,29 +1,26 @@
 /*
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
-// written by Jon Keating <jon@licq.org>
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2004-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <list>
-#include <openssl/md5.h>
 #include <pthread.h>
 #include <sys/select.h>
 #include <sys/time.h>
@@ -32,13 +29,23 @@
 #include <unistd.h>
 #include <vector>
 
-#include "licq_log.h"
-#include "licq_message.h"
+#include <licq/logging/log.h>
+#include <licq/socket.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/conversation.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/inifile.h>
+#include <licq/plugin.h>
+#include <licq/protocolsignal.h>
 
 #include "msn.h"
 #include "msnpacket.h"
 
 using namespace std;
+using Licq::gConvoManager;
+using Licq::gLog;
 
 #ifndef HAVE_STRNDUP
 
@@ -64,13 +71,12 @@ char *strndup(const char *s, size_t n)
 #endif // HAVE_STRNDUP
 
 //Global socket manager
-CSocketManager gSocketMan;
+Licq::SocketManager gSocketMan;
 
 void *MSNPing_tep(void *);
 
-CMSN::CMSN(CICQDaemon *_pDaemon, int _nPipe) : m_vlPacketBucket(211)
+CMSN::CMSN(int _nPipe) : m_vlPacketBucket(211)
 {
-  m_pDaemon = _pDaemon;
   m_bExit = false;
   m_bWaitingPingReply = m_bCanPing = false;
   m_nPipe = _nPipe;
@@ -78,33 +84,20 @@ CMSN::CMSN(CICQDaemon *_pDaemon, int _nPipe) : m_vlPacketBucket(211)
   m_pPacketBuf = 0;
   m_pNexusBuff = 0;
   m_pSSLPacket = 0;
-  m_nStatus = ICQ_STATUS_OFFLINE;
-  m_nOldStatus = ICQ_STATUS_ONLINE;
+  myStatus = Licq::User::OfflineStatus;
+  myOldStatus = Licq::User::OnlineStatus;
   m_szUserName = 0;
-  m_szPassword = 0;
+  myPassword = "";
   m_nSessionStart = 0;
-  
+
   // Config file
-  char szFileName[MAX_FILENAME_LEN];
-  sprintf(szFileName, "%s/licq_msn.conf", BASE_DIR);
-  CIniFile msnConf;
-  if (!msnConf.LoadFile(szFileName))
-  {
-    FILE *f = fopen(szFileName, "w");
-    fprintf(f, "[network]");
-    fclose(f);
-    msnConf.LoadFile(szFileName);
-  }  
+  Licq::IniFile msnConf("licq_msn.conf");
+  msnConf.loadFile();
 
-  char tmpStr[MAX_LINE_LEN];
-
-  msnConf.SetSection("network");
-  msnConf.ReadNum("ListVersion", m_nListVersion, 0);
-  msnConf.ReadStr("MsnServerAddress", tmpStr, MSN_DEFAULT_SERVER_ADDRESS);
-  myServerAddress = tmpStr;
-  msnConf.ReadNum("MsnServerPort", myServerPort, MSN_DEFAULT_SERVER_PORT);
-
-  msnConf.CloseFile();
+  msnConf.setSection("network");
+  msnConf.get("ListVersion", m_nListVersion, 0);
+  msnConf.get("MsnServerAddress", myServerAddress, MSN_DEFAULT_SERVER_ADDRESS);
+  msnConf.get("MsnServerPort", myServerPort, MSN_DEFAULT_SERVER_PORT);
 
   // pthread stuff now
   pthread_mutex_init(&mutex_StartList, 0);
@@ -119,21 +112,20 @@ CMSN::~CMSN()
     delete m_pPacketBuf;
   if (m_szUserName)
     free(m_szUserName);
-  if (m_szPassword)
-    free(m_szPassword);
-    
+
+  saveConfig();
+}
+
+void CMSN::saveConfig()
+{
   // Config file
-  char szFileName[MAX_FILENAME_LEN];
-  sprintf(szFileName, "%s/licq_msn.conf", BASE_DIR);
-  CIniFile msnConf;
-  if (msnConf.LoadFile(szFileName))
-  {
-    msnConf.SetSection("network");
-    
-    msnConf.WriteNum("ListVersion", m_nListVersion);
-    msnConf.FlushFile();
-    msnConf.CloseFile();
-  }
+  Licq::IniFile msnConf("licq_msn.conf");
+  msnConf.loadFile();
+  msnConf.setSection("network");
+  msnConf.set("ListVersion", m_nListVersion);
+  msnConf.set("MsnServerAddress", myServerAddress);
+  msnConf.set("MsnServerPort", myServerPort);
+  msnConf.writeFile();
 }
 
 void CMSN::StorePacket(SBuffer *_pBuf, int _nSock)
@@ -204,11 +196,11 @@ SBuffer *CMSN::RetrievePacket(const string &_strUser, int _nSock)
   return 0;
 }
   
-ICQEvent *CMSN::RetrieveEvent(unsigned long _nTag)
+Licq::Event *CMSN::RetrieveEvent(unsigned long _nTag)
 {
-  ICQEvent *e = 0;
-  
-  list<ICQEvent *>::iterator it;
+  Licq::Event *e = 0;
+
+  list<Licq::Event*>::iterator it;
   for (it = m_pEvents.begin(); it != m_pEvents.end(); it++)
   {
     if ((*it)->Sequence() == _nTag)
@@ -368,8 +360,8 @@ string CMSN::Decode(const string &strIn)
 
 unsigned long CMSN::SocketToCID(int _nSocket)
 {
-  CConversation *pConv = m_pDaemon->FindConversation(_nSocket);
-  return pConv ? pConv->CID() : 0;
+  Licq::Conversation* convo = gConvoManager.getFromSocket(_nSocket);
+  return (convo != NULL ? convo->id() : 0);
 }
 
 string CMSN::Encode(const string &strIn)
@@ -400,7 +392,7 @@ void CMSN::Run()
   int nResult = pthread_create(&m_tMSNPing, NULL, &MSNPing_tep, this);
   if (nResult)
   {
-    gLog.Error("%sUnable to start ping thread:\n%s%s.\n", L_ERRORxSTR, L_BLANKxSTR, strerror(nResult));
+    gLog.error("Unable to start ping thread: %s", strerror(nResult));
   }
   
   nResult = 0;
@@ -409,7 +401,7 @@ void CMSN::Run()
   {
     pthread_mutex_lock(&mutex_ServerSocket);
     FD_ZERO(&f);
-    f = gSocketMan.SocketSet();
+    f = gSocketMan.socketSet();
     nNumDesc = gSocketMan.LargestSocket() + 1;
  
     if (m_nPipe != -1)
@@ -445,8 +437,8 @@ void CMSN::Run()
         
         else if (nCurrent == m_nServerSocket)
         {
-          INetSocket *s = gSocketMan.FetchSocket(m_nServerSocket);
-          TCPSocket *sock = static_cast<TCPSocket *>(s);
+          Licq::INetSocket* s = gSocketMan.FetchSocket(m_nServerSocket);
+          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
           if (sock->RecvRaw())
           {
             CMSNBuffer packet(sock->RecvBuffer());
@@ -458,20 +450,20 @@ void CMSN::Run()
           else
           {
             // Time to reconnect
-            gLog.Info("%sDisconnected from server, reconnecting.\n", L_MSNxSTR);
+            gLog.info("Disconnected from server, reconnecting");
             sleep(1);
             int nSD = m_nServerSocket;
             m_nServerSocket = -1;
             gSocketMan.DropSocket(sock);
             gSocketMan.CloseSocket(nSD);
-            MSNLogon(myServerAddress.c_str(), myServerPort, m_nStatus);
+            MSNLogon(myServerAddress.c_str(), myServerPort, myStatus);
           }
         }
         
         else if (nCurrent == m_nNexusSocket)
         {
-          INetSocket *s = gSocketMan.FetchSocket(m_nNexusSocket);
-          TCPSocket *sock = static_cast<TCPSocket *>(s);
+          Licq::INetSocket* s = gSocketMan.FetchSocket(m_nNexusSocket);
+          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
           if (sock->SSLRecv())
           {
             CMSNBuffer packet(sock->RecvBuffer());
@@ -483,8 +475,8 @@ void CMSN::Run()
 
         else if (nCurrent == m_nSSLSocket)
         {
-          INetSocket *s = gSocketMan.FetchSocket(m_nSSLSocket);
-          TCPSocket *sock = static_cast<TCPSocket *>(s);
+          Licq::INetSocket* s = gSocketMan.FetchSocket(m_nSSLSocket);
+          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
           if (sock->SSLRecv())
           {
             CMSNBuffer packet(sock->RecvBuffer());
@@ -497,13 +489,13 @@ void CMSN::Run()
         else
         {
           //SB socket
-          INetSocket *s = gSocketMan.FetchSocket(nCurrent);
-          TCPSocket *sock = static_cast<TCPSocket *>(s);
+          Licq::INetSocket* s = gSocketMan.FetchSocket(nCurrent);
+          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
           if (sock && sock->RecvRaw())
           {
             CMSNBuffer packet(sock->RecvBuffer());
             sock->ClearRecvBuffer();
-            char *szUser = strdup(LicqUser::getUserAccountId(sock->userId()).c_str());
+            char *szUser = strdup(sock->userId().accountId().c_str());
             gSocketMan.DropSocket(sock);
 
             HandlePacket(nCurrent, packet, szUser);
@@ -540,127 +532,118 @@ void CMSN::ProcessPipe()
   read(m_nPipe, buf, 1);
   switch (buf[0])
   {
-  case 'S':  // A signal is pending
+    case Licq::ProtocolPlugin::PipeSignal:
     {
-      CSignal *s = m_pDaemon->PopProtoSignal();
+      Licq::ProtocolSignal* s = Licq::gDaemon.PopProtoSignal();
       ProcessSignal(s);
       break;
     }
 
-  case 'X': // Bye
-    gLog.Info("%sExiting.\n", L_MSNxSTR);
+    case Licq::ProtocolPlugin::PipeShutdown:
+    gLog.info("Exiting");
     m_bExit = true;
     break;
   }
 }
 
-void CMSN::ProcessSignal(CSignal *s)
+void CMSN::ProcessSignal(Licq::ProtocolSignal* s)
 {
-  if (m_nServerSocket < 0 && s->Type() != PROTOxLOGON)
+  if (m_nServerSocket < 0 && s->signal() != Licq::ProtocolSignal::SignalLogon)
   {
     delete s;
     return;
   }
 
-  switch (s->Type())
+  switch (s->signal())
   {
-    case PROTOxLOGON:
+    case Licq::ProtocolSignal::SignalLogon:
     {
       if (m_nServerSocket < 0)
       {
-        CLogonSignal *sig = static_cast<CLogonSignal *>(s);
-        MSNLogon(myServerAddress.c_str(), myServerPort, sig->LogonStatus());
+        Licq::ProtoLogonSignal* sig = static_cast<Licq::ProtoLogonSignal*>(s);
+        MSNLogon(myServerAddress.c_str(), myServerPort, sig->status());
       }
       break;
     }
-    
-    case PROTOxCHANGE_STATUS:
+    case Licq::ProtocolSignal::SignalChangeStatus:
     {
-      CChangeStatusSignal *sig = static_cast<CChangeStatusSignal *>(s);
-      MSNChangeStatus(sig->Status());
+      Licq::ProtoChangeStatusSignal* sig = static_cast<Licq::ProtoChangeStatusSignal*>(s);
+      MSNChangeStatus(sig->status());
       break;
     }
-    
-    case PROTOxLOGOFF:
+    case Licq::ProtocolSignal::SignalLogoff:
     {
       MSNLogoff();
       break;
     }
-    
-    case PROTOxADD_USER:
+    case Licq::ProtocolSignal::SignalAddUser:
     {
-      CAddUserSignal *sig = static_cast<CAddUserSignal *>(s);
-      MSNAddUser(sig->Id());
+      Licq::ProtoAddUserSignal* sig = static_cast<Licq::ProtoAddUserSignal*>(s);
+      MSNAddUser(sig->userId());
       break;
     }
-    
-    case PROTOxREM_USER:
+    case Licq::ProtocolSignal::SignalRemoveUser:
     {
-      CRemoveUserSignal *sig = static_cast<CRemoveUserSignal *>(s);
-      MSNRemoveUser(sig->Id());
+      Licq::ProtoRemoveUserSignal* sig = static_cast<Licq::ProtoRemoveUserSignal*>(s);
+      MSNRemoveUser(sig->userId());
       break;
     }
-    
-    case PROTOxRENAME_USER:
+    case Licq::ProtocolSignal::SignalRenameUser:
     {
-      CRenameUserSignal *sig = static_cast<CRenameUserSignal *>(s);
-      MSNRenameUser(sig->Id());
+      Licq::ProtoRenameUserSignal* sig = static_cast<Licq::ProtoRenameUserSignal*>(s);
+      MSNRenameUser(sig->userId());
       break;
     }
-
-    case PROTOxSENDxTYPING_NOTIFICATION:
+    case Licq::ProtocolSignal::SignalNotifyTyping:
     {
-      CTypingNotificationSignal *sig =
-        static_cast<CTypingNotificationSignal *>(s);
-      if (sig->Active())
-        MSNSendTypingNotification(sig->Id(), sig->CID());
+      Licq::ProtoTypingNotificationSignal* sig = static_cast<Licq::ProtoTypingNotificationSignal*>(s);
+      if (sig->active())
+        MSNSendTypingNotification(sig->userId(), sig->convoId());
       break;
     }
-    
-    case PROTOxSENDxMSG:
+    case Licq::ProtocolSignal::SignalSendMessage:
     {
-      CSendMessageSignal *sig = static_cast<CSendMessageSignal *>(s);
-      MSNSendMessage(sig->Id(), sig->Message(), sig->Thread(), sig->CID());
+      Licq::ProtoSendMessageSignal* sig = static_cast<Licq::ProtoSendMessageSignal*>(s);
+      MSNSendMessage(sig->eventId(), sig->userId(), sig->message(), sig->callerThread(), sig->convoId());
       break;
     }
-
-    case PROTOxSENDxGRANTxAUTH:
+    case Licq::ProtocolSignal::SignalGrantAuth:
     {
-      CGrantAuthSignal *sig = static_cast<CGrantAuthSignal *>(s);
-      MSNGrantAuth(sig->Id());
+      Licq::ProtoGrantAuthSignal* sig = static_cast<Licq::ProtoGrantAuthSignal*>(s);
+      MSNGrantAuth(sig->userId());
       break;
     }
-
-    case PROTOxSENDxREFUSExAUTH:
+    case Licq::ProtocolSignal::SignalRefuseAuth:
     {
-//      CRefuseAuthSignal *sig = static_cast<CRefuseAuthSignal *>(s);
+//      Licq::ProtoRefuseAuthSignal* sig = static_cast<Licq::ProtoRefuseAuthSignal*>(s);
       break;
     }
-
-    case PROTOxREQUESTxINFO:
+    case Licq::ProtocolSignal::SignalRequestInfo:
     {
-//      CRequestInfo *sig = static_cast<CRequestInfo *>(s);
+//      Licq::ProtoRequestInfo* sig = static_cast<Licq::ProtoRequestInfo*>(s);
       break;
     }
-
-    case PROTOxUPDATExINFO:
+    case Licq::ProtocolSignal::SignalUpdateInfo:
     {
-      CUpdateInfoSignal *sig = static_cast<CUpdateInfoSignal *>(s);
-      MSNUpdateUser(sig->Alias());
+      string newAlias;
+      {
+        Licq::OwnerReadGuard o(MSN_PPID);
+        if (o.isLocked())
+          newAlias = o->getAlias();
+      }
+      MSNUpdateUser(newAlias);
       break;
     }
-
-    case PROTOxBLOCKxUSER:
+    case Licq::ProtocolSignal::SignalBlockUser:
     {
-      CBlockUserSignal *sig = static_cast<CBlockUserSignal *>(s);
-      MSNBlockUser(sig->Id());
+      Licq::ProtoBlockUserSignal* sig = static_cast<Licq::ProtoBlockUserSignal*>(s);
+      MSNBlockUser(sig->userId());
       break;
     }
-    
-    case PROTOxUNBLOCKxUSER:
+    case Licq::ProtocolSignal::SignalUnblockUser:
     {
-      CUnblockUserSignal *sig = static_cast<CUnblockUserSignal *>(s);
-      MSNUnblockUser(sig->Id());
+      Licq::ProtoUnblockUserSignal* sig = static_cast<Licq::ProtoUnblockUserSignal*>(s);
+      MSNUnblockUser(sig->userId());
       break;
     }
    
@@ -690,9 +673,9 @@ bool CMSN::RemoveDataEvent(CMSNDataEvent *pData)
       // Close the socket
       gSocketMan.CloseSocket(pData->getSocket());
 
-      CConversation *pConv = m_pDaemon->FindConversation(pData->getSocket());
-      if (pConv)
-        m_pDaemon->RemoveConversation(pConv->CID());
+      Licq::Conversation* convo = gConvoManager.getFromSocket(pData->getSocket());
+      if (convo != NULL)
+        gConvoManager.remove(convo->id());
 
       m_lMSNEvents.erase(it);
       delete pData;
@@ -746,7 +729,7 @@ CMSNDataEvent *CMSN::FetchStartDataEvent(const string &_strUser)
   return pReturn;  
 }
 
-void CMSN::pushPluginSignal(LicqSignal* p)
+void CMSN::pushPluginSignal(Licq::PluginSignal* p)
 {
-  m_pDaemon->pushPluginSignal(p);
+  Licq::gDaemon.pushPluginSignal(p);
 }

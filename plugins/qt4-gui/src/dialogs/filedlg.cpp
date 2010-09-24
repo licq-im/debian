@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,11 +41,8 @@
 #include <QSocketNotifier>
 #include <QTextCodec>
 
-#include <licq_filetransfer.h>
-#include <licq_icqd.h>
-#include <licq_log.h>
-#include <licq_packets.h>
-#include <licq_translate.h>
+#include <licq/icqfiletransfer.h>
+#include <licq/logging/log.h>
 
 #include "core/messagebox.h"
 
@@ -57,17 +54,12 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::FileDlg */
 
-FileDlg::FileDlg(const UserId& userId, QWidget* parent)
+FileDlg::FileDlg(const Licq::UserId& userId, QWidget* parent)
   : QWidget(parent),
     myUserId(userId)
 {
-  const LicqUser* user = gUserManager.fetchUser(userId);
-  if (user != NULL)
-  {
-    myId = user->accountId().c_str();
-    m_nPPID = user->ppid();
-    gUserManager.DropUser(user);
-  }
+  myId = userId.accountId().c_str();
+  m_nPPID = userId.protocolId();
 
   setObjectName("FileDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
@@ -144,7 +136,7 @@ FileDlg::FileDlg(const UserId& userId, QWidget* parent)
   hbox->addWidget(btnCancel);
 
   //TODO fix this
-  ftman = new CFileTransferManager(gLicqDaemon, myId.toLatin1().data());
+  ftman = new CFileTransferManager(myUserId);
   ftman->SetUpdatesEnabled(2);
   sn = new QSocketNotifier(ftman->Pipe(), QSocketNotifier::Read);
   connect(sn, SIGNAL(activated(int)), SLOT(slot_ft()));
@@ -269,7 +261,8 @@ bool FileDlg::ReceiveFiles()
   // Cut trailing slash
   if (d.right(1) == "/") d.truncate(d.length()-1);
 
-  if (!ftman->ReceiveFiles(QFile::encodeName(d))) return false;
+  if (!ftman->receiveFiles(QFile::encodeName(d).data()))
+    return false;
 
   mleStatus->append(tr("Waiting for connection..."));
   show();
@@ -293,7 +286,7 @@ void FileDlg::slot_ft()
     {
       case FT_STARTxBATCH:
       {
-        setWindowTitle(QString(tr("Licq - File Transfer (%1)")).arg(codec->toUnicode(ftman->RemoteName())));
+        setWindowTitle(QString(tr("Licq - File Transfer (%1)")).arg(codec->toUnicode(ftman->remoteName().c_str())));
         nfoTotalFiles->setText(QString("%1 / %2").arg(1).arg(ftman->BatchFiles()));
         nfoBatchSize->setText(encodeFSize(ftman->BatchSize()));
         barBatchTransfer->setMaximum(ftman->BatchSize() / 1024);
@@ -304,18 +297,18 @@ void FileDlg::slot_ft()
       case FT_CONFIRMxFILE:
       {
         // Use this opportunity to encode the filename
-        ftman->StartReceivingFile(QFile::encodeName(codec->toUnicode(ftman->FileName())).data());
+        ftman->startReceivingFile(QFile::encodeName(codec->toUnicode(ftman->fileName().c_str())).data());
         break;
       }
 
       case FT_STARTxFILE:
       {
         nfoTotalFiles->setText(QString("%1 / %2").arg(ftman->CurrentFile()).arg(ftman->BatchFiles()));
-        nfoTransferFileName->setText(QFile::decodeName(ftman->FileName()));
-        nfoLocalFileName->setText(QFile::decodeName(ftman->PathName()));
+        nfoTransferFileName->setText(QFile::decodeName(ftman->fileName().c_str()));
+        nfoLocalFileName->setText(QFile::decodeName(ftman->pathName().c_str()));
         nfoFileSize->setText(encodeFSize(ftman->FileSize()));
         barTransfer->setMaximum(ftman->FileSize() / 1024);
-        if (ftman->Direction() == D_RECEIVER)
+        if (ftman->isReceiver())
           mleStatus->append(tr("Receiving file..."));
         else
           mleStatus->append(tr("Sending file..."));
@@ -331,10 +324,10 @@ void FileDlg::slot_ft()
       case FT_DONExFILE:
       {
         slot_update();
-        if (ftman->Direction() == D_RECEIVER)
-          mleStatus->append(tr("Received %1 from %2 successfully.").arg(QFile::decodeName(e->Data())).arg(codec->toUnicode(ftman->RemoteName())));
+        if (ftman->isReceiver())
+          mleStatus->append(tr("Received %1 from %2 successfully.").arg(QFile::decodeName(e->fileName().c_str())).arg(codec->toUnicode(ftman->remoteName().c_str())));
         else
-          mleStatus->append(tr("Sent %1 to %2 successfully.").arg(QFile::decodeName(e->Data())).arg(codec->toUnicode(ftman->RemoteName())));
+          mleStatus->append(tr("Sent %1 to %2 successfully.").arg(QFile::decodeName(e->fileName().c_str())).arg(codec->toUnicode(ftman->remoteName().c_str())));
         break;
       }
 
@@ -342,7 +335,7 @@ void FileDlg::slot_ft()
       {
         mleStatus->append(tr("File transfer complete."));
         btnCancel->setText(tr("OK"));
-        if (btnOpen && btnOpenDir && ftman->Direction() == D_RECEIVER)
+        if (btnOpen && btnOpenDir && ftman->isReceiver())
         {
           btnOpen->show();
           btnOpenDir->show();
@@ -364,10 +357,10 @@ void FileDlg::slot_ft()
       case FT_ERRORxFILE:
       {
         btnCancel->setText(tr("Close"));
-        mleStatus->append(tr("File I/O error: %1.").arg(QFile::decodeName(ftman->PathName())));
+        mleStatus->append(tr("File I/O error: %1.").arg(QFile::decodeName(ftman->pathName().c_str())));
         ftman->CloseFileTransfer();
         WarnUser(this, tr("File I/O Error:\n%1\n\nSee Network Window for details.")
-           .arg(QFile::decodeName(ftman->PathName())));
+           .arg(QFile::decodeName(ftman->pathName().c_str())));
         break;
       }
 
@@ -418,9 +411,9 @@ void FileDlg::slot_ft()
 
 
 //-----FileDlg::SendFiles---------------------------------------------------
-bool FileDlg::SendFiles(ConstFileList fl, unsigned short nPort)
+bool FileDlg::SendFiles(const std::list<std::string>& fl, unsigned short nPort)
 {
-  ftman->SendFiles(fl, nPort);
+  ftman->sendFiles(fl, nPort);
 
   mleStatus->append(tr("Connecting to remote..."));
   show();

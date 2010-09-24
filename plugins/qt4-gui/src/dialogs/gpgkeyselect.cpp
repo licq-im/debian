@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2009 Licq developers
+ * Copyright (C) 2005-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,11 +33,11 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_gpg.h>
-#include <licq_user.h>
-#include <licq_events.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/gpghelper.h>
+#include <licq/pluginsignal.h>
 
-#include "core/mainwin.h"
 
 #include "helpers/support.h"
 
@@ -47,48 +47,48 @@ using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::GPGKeySelect */
 /* TRANSLATOR LicqQtGui::KeyView */
 
-GPGKeySelect::GPGKeySelect(const UserId& userId, QWidget* parent)
+GPGKeySelect::GPGKeySelect(const Licq::UserId& userId, QWidget* parent)
   : QDialog(parent),
     myUserId(userId)
 {
-  if (!USERID_ISVALID(userId))
+  if (!userId.isValid())
     return;
 
   setAttribute(Qt::WA_DeleteOnClose, true);
   Support::setWidgetProps(this, "GPGKeySelectDialog");
 
-  const LicqUser* u = gUserManager.fetchUser(myUserId);
-  if (u == NULL)
-    return;
-
-  setWindowTitle(tr("Select GPG Key for user %1")
-      .arg(QString::fromUtf8(u->GetAlias())));
-
   QVBoxLayout* top_lay = new QVBoxLayout(this);
 
-  top_lay->addWidget(new QLabel(tr("Select a GPG key for user %1.")
-        .arg(QString::fromUtf8(u->GetAlias()))));
-  if (strcmp(u->GPGKey(), "") == 0)
-    top_lay->addWidget(new QLabel(tr("Current key: No key selected")));
-  else
-    top_lay->addWidget(new QLabel(tr("Current key: %1")
-          .arg(QString::fromLocal8Bit(u->GPGKey()))));
+  {
+    Licq::UserReadGuard u(myUserId);
+    if (!u.isLocked())
+      return;
 
-  useGPG = new QCheckBox(tr("Use GPG Encryption"));
-  useGPG->setChecked(u->UseGPG() || strcmp(u->GPGKey(), "") == 0);
-  top_lay->addWidget(useGPG);
+    setWindowTitle(tr("Select GPG Key for user %1")
+        .arg(QString::fromUtf8(u->GetAlias())));
 
-  // Filter
-  QHBoxLayout* filterLayout = new QHBoxLayout();
-  top_lay->addLayout(filterLayout);
-  filterLayout->addWidget(new QLabel(tr("Filter:")));
-  QLineEdit* filterText = new QLineEdit();
-  filterText->setFocus();
-  connect(filterText, SIGNAL(textChanged(const QString&)),
-      SLOT(filterTextChanged(const QString&)));
-  filterLayout->addWidget(filterText);
+    top_lay->addWidget(new QLabel(tr("Select a GPG key for user %1.")
+          .arg(QString::fromUtf8(u->GetAlias()))));
+    if (u->gpgKey().empty())
+      top_lay->addWidget(new QLabel(tr("Current key: No key selected")));
+    else
+      top_lay->addWidget(new QLabel(tr("Current key: %1")
+            .arg(QString::fromLocal8Bit(u->gpgKey().c_str()))));
 
-  gUserManager.DropUser(u);
+    useGPG = new QCheckBox(tr("Use GPG Encryption"));
+    useGPG->setChecked(u->UseGPG() || u->gpgKey().empty());
+    top_lay->addWidget(useGPG);
+
+    // Filter
+    QHBoxLayout* filterLayout = new QHBoxLayout();
+    top_lay->addLayout(filterLayout);
+    filterLayout->addWidget(new QLabel(tr("Filter:")));
+    QLineEdit* filterText = new QLineEdit();
+    filterText->setFocus();
+    connect(filterText, SIGNAL(textChanged(const QString&)),
+        SLOT(filterTextChanged(const QString&)));
+    filterLayout->addWidget(filterText);
+  }
 
   // public keys
   keySelect = new KeyView(myUserId);
@@ -144,34 +144,32 @@ void GPGKeySelect::slot_ok()
     if (curItem->parent() != NULL)
       curItem = curItem->parent();
 
-    LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
-    if (u != NULL)
     {
-      u->SetGPGKey(curItem->text(2).toAscii());
-      u->SetUseGPG(useGPG->isChecked());
-      gUserManager.DropUser(u);
-      updateIcon();
+      Licq::UserWriteGuard u(myUserId);
+      if (u.isLocked())
+      {
+        u->setGpgKey(curItem->text(2).toAscii().data());
+        u->SetUseGPG(useGPG->isChecked());
+      }
     }
+
+    // Notify all plugins (including ourselves)
+    Licq::gUserManager.notifyUserUpdated(myUserId, Licq::PluginSignal::UserSecurity);
   }
 
   close();
 }
 
-void GPGKeySelect::updateIcon()
-{
-  gMainWindow->slot_updatedUser(myUserId, USER_GENERAL, 0);
-  return;
-}
-
 void GPGKeySelect::slotNoKey()
 {
-  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
-  if ( u )
   {
-    u->SetGPGKey( "" );
-    gUserManager.DropUser( u );
-    updateIcon();
+    Licq::UserWriteGuard u(myUserId);
+    if (u.isLocked())
+      u->setGpgKey("");
   }
+
+  // Notify all plugins (including ourselves)
+  Licq::gUserManager.notifyUserUpdated(myUserId, Licq::PluginSignal::UserSecurity);
 
   close();
 };
@@ -182,7 +180,7 @@ void GPGKeySelect::slotCancel()
 }
 
 
-KeyView::KeyView(const UserId& userId, QWidget* parent)
+KeyView::KeyView(const Licq::UserId& userId, QWidget* parent)
   : QTreeWidget(parent),
     myUserId(userId)
 {
@@ -202,7 +200,7 @@ void KeyView::resizeEvent(QResizeEvent* event)
 {
   QTreeWidget::resizeEvent(event);
 
-  unsigned short totalWidth = 0;
+  int totalWidth = 0;
   int nNumCols = columnCount();
   for (int i = 0; i < nNumCols - 1; i++)
     totalWidth += columnWidth(i);
@@ -220,7 +218,7 @@ void KeyView::resizeEvent(QResizeEvent* event)
   }
 }
 
-void KeyView::testViewItem(QTreeWidgetItem* item, const LicqUser* u)
+void KeyView::testViewItem(QTreeWidgetItem* item, const Licq::User* u)
 {
   int val = 0;
   for (int i = 0; i < 2; ++i)
@@ -235,7 +233,7 @@ void KeyView::testViewItem(QTreeWidgetItem* item, const LicqUser* u)
       val++;
   }
 
-  if (item->text(2).contains(u->GPGKey(), Qt::CaseInsensitive))
+  if (item->text(2).contains(u->gpgKey().c_str(), Qt::CaseInsensitive))
     val += 10;
 
   if (val > maxItemVal)
@@ -247,12 +245,12 @@ void KeyView::testViewItem(QTreeWidgetItem* item, const LicqUser* u)
 
 void KeyView::initKeyList()
 {
-  LicqUserReadGuard u(myUserId);
+  Licq::UserReadGuard u(myUserId);
   maxItemVal = -1;
   maxItem = NULL;
 
-  auto_ptr<list<GpgKey> > keyList(gGPGHelper.getKeyList());
-  list<GpgKey>::const_iterator i;
+  auto_ptr<list<Licq::GpgKey> > keyList(Licq::gGpgHelper.getKeyList());
+  list<Licq::GpgKey>::const_iterator i;
   for (i = keyList->begin(); i != keyList->end(); ++i)
   {
     // There shouldn't be any key without a user id in list, but make just in case
@@ -260,7 +258,7 @@ void KeyView::initKeyList()
       continue;
 
     // First user id is primary uid
-    list<GpgUid>::const_iterator uid = i->uids.begin();
+    list<Licq::GpgUid>::const_iterator uid = i->uids.begin();
 
     QStringList cols;
     cols << QString::fromUtf8(uid->name.c_str());

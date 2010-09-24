@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,8 @@
 #include <QMouseEvent>
 #include <QTimer>
 
+#include <licq/userid.h>
+
 #include "config/contactlist.h"
 #include "config/iconmanager.h"
 #include "config/skin.h"
@@ -32,6 +34,7 @@
 #include "contactlist/maincontactlistproxy.h"
 #include "contactlist/mode2contactlistproxy.h"
 
+using Licq::UserId;
 using namespace LicqQtGui;
 
 UserView::UserView(ContactListModel* contactList, QWidget* parent)
@@ -74,32 +77,30 @@ UserView::~UserView()
 UserId UserView::currentUserId() const
 {
   if (!currentIndex().isValid())
-    return USERID_NONE;
+    return UserId();
 
   if (static_cast<ContactListModel::ItemType>
       (currentIndex().data(ContactListModel::ItemTypeRole).toInt()) != ContactListModel::UserItem)
-    return USERID_NONE;
+    return UserId();
 
   return currentIndex().data(ContactListModel::UserIdRole).value<UserId>();
 }
 
 void UserView::updateRootIndex()
 {
-  bool threadView = Config::ContactList::instance()->threadView();
   bool mode2View = Config::ContactList::instance()->mode2View();
-  GroupType groupType = Config::ContactList::instance()->groupType();
   int groupId = Config::ContactList::instance()->groupId();
 
   QModelIndex newRoot = QModelIndex();
 
-  if (threadView && groupType == GROUPS_SYSTEM && groupId == GROUP_ALL_USERS)
+  if (groupId == ContactListModel::AllGroupsGroupId)
   {
     // Hide the system groups that exist in the model but should not be displayed in threaded view
     dynamic_cast<MainContactListProxy*>(myListProxy)->setThreadedView(true, mode2View);
   }
   else
   {
-    newRoot = myContactList->groupIndex(groupType, groupId);
+    newRoot = myContactList->groupIndex(groupId);
     if (newRoot.isValid())
     {
       // Turn off group filtering first, otherwise we cannot switch from threaded view to a system group
@@ -118,7 +119,7 @@ void UserView::updateRootIndex()
 void UserView::configUpdated()
 {
   // Set column widths
-  for (unsigned short i = 0; i < Config::ContactList::instance()->columnCount(); i++)
+  for (int i = 0; i < Config::ContactList::instance()->columnCount(); i++)
     setColumnWidth(i, Config::ContactList::instance()->columnWidth(i));
 
   setVerticalScrollBarPolicy(Config::ContactList::instance()->allowScrollBar() ?
@@ -185,7 +186,7 @@ void UserView::applySkin()
 
 void UserView::rowsAboutToBeRemoved(const QModelIndex& parent, int start, int end)
 {
-  if (currentIndex().isValid() && !USERID_ISVALID(myRemovedUser))
+  if (currentIndex().isValid() && !myRemovedUser.isValid())
   {
     // Check all the removed rows and see if anyone of them is the currently select user
     for (int i = start; i <= end; ++i)
@@ -218,7 +219,7 @@ void UserView::rowsInserted(const QModelIndex& parent, int start, int end)
   if (!parent.isValid())
     expandGroups();
 
-  if (USERID_ISVALID(myRemovedUser) && (!parent.isValid() || isExpanded(parent)))
+  if (myRemovedUser.isValid() && (!parent.isValid() || isExpanded(parent)))
   {
     // We have a user remembered that was just removed, check if he returned
     for (int i = start; i <= end; ++i)
@@ -254,7 +255,7 @@ void UserView::rowsInserted(const QModelIndex& parent, int start, int end)
 
 void UserView::forgetRemovedUser()
 {
-  myRemovedUser = USERID_NONE;
+  myRemovedUser = UserId();
 }
 
 void UserView::reset()
@@ -362,10 +363,10 @@ void UserView::mouseMoveEvent(QMouseEvent* event)
   if ((event->buttons() & Qt::LeftButton) && !myMousePressPos.isNull() &&
       (QPoint(event->pos() - myMousePressPos).manhattanLength() >= QApplication::startDragDistance()))
   {
-    char* p = PPIDSTRING(ppid);
+    char p[5];
+    Licq::protocolId_toStr(p, ppid);
     QString data(p);
     data += id;
-    delete [] p;
 
     QDrag* drag = new QDrag(this);
     QMimeData* mimeData = new QMimeData;

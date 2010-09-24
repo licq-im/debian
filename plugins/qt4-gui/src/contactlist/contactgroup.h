@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,10 @@
 #include "contactitem.h"
 #include "contactlist.h"
 
-class LicqGroup;
+namespace Licq
+{
+class Group;
+}
 
 namespace LicqQtGui
 {
@@ -50,15 +53,17 @@ public:
    *
    * @param id Group id
    * @param name Group name
+   * @param showMask Bits from user extended status required to be in group
+   * @param hideMask Bits from user extended status to reject
    */
-  ContactGroup(int id, const QString& name = QString());
+  ContactGroup(int id, const QString& name = QString(), unsigned showMask = 0, unsigned hideMask = 0);
 
   /**
    * Constructor, creates an empty group
    *
    * @param group Group object from daemon
    */
-  ContactGroup(const LicqGroup* group);
+  ContactGroup(const Licq::Group* group);
 
   /**
    * Destructor, will delete all user instances in the group
@@ -75,6 +80,12 @@ public:
    */
   int groupId() const
   { return myGroupId; }
+
+  /**
+   * Get name of the group
+   */
+  const QString& name() const
+  { return myName; }
 
   /**
    * Get number of items in this group (users and separator bars)
@@ -171,6 +182,14 @@ public:
    */
   void updateSortKey();
 
+  /**
+   * Check if a user can be accepted in this group
+   *
+   * @param extendedStatus Extended status bits for user
+   * @return True if user is allowed, false if user shouldn't be here
+   */
+  bool acceptUser(unsigned extendedStatus);
+
 signals:
   /**
    * Signal emitted when data for the group has changed
@@ -216,6 +235,8 @@ private:
   QList<ContactUser*> myUsers;
   ContactBar* myBars[3];
   int myVisibleContacts;
+  unsigned myShowMask;
+  unsigned myHideMask;
 };
 
 } // namespace LicqQtGui

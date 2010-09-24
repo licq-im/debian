@@ -1,28 +1,49 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1999-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 #ifndef LICQCON_H
 #define LICQCON_H
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
 
 #include <list>
 #include <string>
 #include <vector>
 
-#include <licq_icqd.h>
-#include <licq_log.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/icq.h>
+#include <licq/logging/pluginlogsink.h>
+#include <licq/userid.h>
 
 #include "window.h"
 
 class CFileTransferManager;
-class LicqSignal;
+
+namespace Licq
+{
+class Event;
+class PluginSignal;
+class UserEvent;
+}
 
 #define MAX_CON 8
 #define MAX_CMD_HISTORY 100
 #define SCROLLBACK_BUFFER 20
 const unsigned short USER_WIN_WIDTH = 30;
-const char L_CONSOLExSTR[] = "[CON] ";
 const char CANCEL_KEY = 'C';
 
 struct SColorMap
@@ -35,7 +56,7 @@ struct SColorMap
 struct SUser
 {
   char szKey[256];
-  UserId userId;
+  Licq::UserId userId;
   char *szLine;
   bool bOffline;
   const struct SColorMap *color;
@@ -47,14 +68,14 @@ struct SUser
 struct SScrollUser
 {
   int pos;
-  UserId userId;
+  Licq::UserId userId;
   const struct SColorMap *color;
 };
 
 struct SMacro
 {
-  char szMacro[32];
-  char szCommand[128];
+  std::string macro;
+  std::string command;
 };
 typedef std::list<SMacro*> MacroList;
 
@@ -64,8 +85,20 @@ class CLicqConsole
 public:
   CLicqConsole(int, char **);
   ~CLicqConsole();
-  int Run(CICQDaemon *);
+  int Run();
   void Shutdown();
+
+  static const int SystemGroupOffset = 10000;
+  static const int AllUsersGroupId = 0;
+  static const int OnlineNotifyGroupId = SystemGroupOffset + 1;
+  static const int VisibleListGroupId = SystemGroupOffset + 2;
+  static const int InvisibleListGroupId = SystemGroupOffset + 3;
+  static const int IgnoreListGroupId = SystemGroupOffset + 4;
+  static const int NewUsersGroupId = SystemGroupOffset + 5;
+  static const int NumSystemGroups = 5;
+  static const char* GroupsSystemNames[NumSystemGroups+1];
+
+  bool userIsInGroup(const Licq::User* user, int groupId);
 
 protected:
   int m_nPipe;
@@ -76,47 +109,45 @@ protected:
 
   // Set'able variables
   bool m_bShowOffline, m_bShowDividers;
-  unsigned short m_nColorOnline, m_nColorOffline, m_nColorAway, m_nColorNew,
+  unsigned m_nColorOnline, m_nColorOffline, m_nColorAway, m_nColorNew,
     m_nColorGroupList, m_nColorQuery, m_nColorInfo, m_nColorError;
   const struct SColorMap *m_cColorOnline, *m_cColorOffline,
                    *m_cColorAway, *m_cColorGroupList, *m_cColorNew,
                    *m_cColorQuery, *m_cColorInfo, *m_cColorError;
-  char m_szOnlineFormat[30];
-  char m_szOtherOnlineFormat[30];
-  char m_szAwayFormat[30];
-  char m_szOfflineFormat[30];
-  char m_szCommandChar[30];
-  short m_nBackspace;
+  std::string myOnlineFormat;
+  std::string myOtherOnlineFormat;
+  std::string myAwayFormat;
+  std::string myOfflineFormat;
+  std::string myCommandChar;
+  int m_nBackspace;
 
-  unsigned short m_nCurrentGroup, m_nCon;
-  GroupType m_nGroupType;
+  int myCurrentGroup;
+  unsigned short m_nCon;
   std::list<char*> m_lCmdHistory;
   std::list<char*>::iterator m_lCmdHistoryIter;
   std::list<CFileTransferManager*> m_lFileStat;
   MacroList listMacros;
 
-  CICQDaemon *licqDaemon;
   CWindow *winMain, *winStatus, *winPrompt, *winLog, *winCon[MAX_CON + 1],
           *winConStatus, *winUsers, *winBar;
   CDKSCROLL *cdkUserList;
   CDKSCROLL *cdkContactPopup;
-  CPluginLog *log;
+  Licq::PluginLogSink::Ptr myLogSink;
 
 	
 public:
   void DoneOptions();
   void ProcessPipe();
-  void ProcessSignal(LicqSignal* s);
-  void ProcessEvent(ICQEvent *);
-  void ProcessDoneEvent(ICQEvent *e);
-  void ProcessDoneSearch(ICQEvent *e);
+  void ProcessSignal(Licq::PluginSignal* s);
+  void ProcessEvent(Licq::Event*);
+  void ProcessDoneEvent(Licq::Event* e);
+  void ProcessDoneSearch(Licq::Event* e);
   void ProcessStdin();
   void ProcessLog();
   bool ProcessFile(CFileTransferManager *);
   char *CurrentGroupName();
   void SwitchToCon(unsigned short nCon);
   void CreateUserList();
-  void AddEventTag(const UserId& userId, unsigned long _nEventTag);
 
   void InputCommand(int cIn);
   void InputLogWindow(int cIn);
@@ -144,11 +175,11 @@ public:
   void PrintVariable(unsigned short);
   void PrintUsers();
   void PrintHelp();
-  void PrintHistory(HistoryList &, unsigned short, unsigned short, const char *);
-  void PrintInfo_General(const UserId& userId);
-  void PrintInfo_More(const UserId& userId);
-  void PrintInfo_Work(const UserId& userId);
-  void PrintInfo_About(const UserId& userId);
+  void PrintHistory(Licq::HistoryList&, unsigned short, unsigned short, const char *);
+  void PrintInfo_General(const Licq::UserId& userId);
+  void PrintInfo_More(const Licq::UserId& userId);
+  void PrintInfo_Work(const Licq::UserId& userId);
+  void PrintInfo_About(const Licq::UserId& userId);
   void PrintFileStat(CFileTransferManager *);
   void PrintMacros();
   void PrintContactPopup(const char* alias);
@@ -191,28 +222,28 @@ public:
   void TabStatus(char *, struct STabCompletion &);
   void TabSet(char *, struct STabCompletion &);
 
-  void UserCommand_Info(const UserId& userId, char *);
-  void UserCommand_Msg(const UserId& userId, char *);
-  void UserCommand_View(const UserId& userId, char *);
-  void UserCommand_SendFile(const UserId&  userId, char *);
-  void UserCommand_Url(const UserId& userId, char *);
-  void UserCommand_Sms(const UserId& userId, char *);
-  void UserCommand_History(const UserId&  userId, char *);
-  void UserCommand_Remove(const UserId& userId, char *);
-  void UserCommand_FetchAutoResponse(const UserId& userId, char *);
-  void UserCommand_SetAutoResponse(const UserId& userId, char *);
-  void UserCommand_Secure(const UserId& userId, char *);
+  void UserCommand_Info(const Licq::UserId& userId, char *);
+  void UserCommand_Msg(const Licq::UserId& userId, char *);
+  void UserCommand_View(const Licq::UserId& userId, char *);
+  void UserCommand_SendFile(const Licq::UserId&  userId, char *);
+  void UserCommand_Url(const Licq::UserId& userId, char *);
+  void UserCommand_Sms(const Licq::UserId& userId, char *);
+  void UserCommand_History(const Licq::UserId&  userId, char *);
+  void UserCommand_Remove(const Licq::UserId& userId, char *);
+  void UserCommand_FetchAutoResponse(const Licq::UserId& userId, char *);
+  void UserCommand_SetAutoResponse(const Licq::UserId& userId, char *);
+  void UserCommand_Secure(const Licq::UserId& userId, char *);
   void Command_Search();
 
   void Beep() { printf("\a"); fflush(stdout); }
-  void FileChatOffer(CUserEvent *, const UserId& userId);
+  void FileChatOffer(Licq::UserEvent*, const Licq::UserId& userId);
   void RegistrationWizard();
   void InputRegistrationWizard(int cIn);
   void UserSelect();
   void InputUserSelect(int cIn);
   bool ParseMacro(char *);
-  void SaveLastUser(const UserId& userId);
-  UserId GetContactFromArg(char **);
+  void SaveLastUser(const Licq::UserId& userId);
+  bool GetContactFromArg(char **, Licq::UserId& userId);
 };
 
 

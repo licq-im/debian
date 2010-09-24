@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2009 Licq developers
+ * Copyright (C) 2002-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -361,7 +361,7 @@ void MLView::setHandleLinks(bool enable)
 void MLView::setSource(const QUrl& url)
 {
   if (m_handleLinks && !url.scheme().isEmpty())
-    LicqGui::instance()->viewUrl(url.toString());
+    gLicqGui->viewUrl(url.toString());
 }
 
 bool MLView::hasMarkedText() const

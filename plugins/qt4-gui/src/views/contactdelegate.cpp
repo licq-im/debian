@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,12 +27,15 @@
 #include <QLineEdit>
 #include <QPainter>
 
+#include <licq/contactlist/user.h>
+
 #include "config/contactlist.h"
 #include "config/iconmanager.h"
 #include "config/skin.h"
 
 #include "userviewbase.h"
 
+using Licq::User;
 using namespace LicqQtGui;
 
 ContactDelegate::ContactDelegate(UserViewBase* userView, QObject* parent)
@@ -63,10 +66,14 @@ QSize ContactDelegate::sizeHint(const QStyleOptionViewItem& option, const QModel
   QVariant var;
   if ((var = index.data(Qt::DisplayRole)).isValid())
   {
-    QString text = var.toString();
-    size = QSize(
-        textStyle.fontMetrics.width(text),
-        textStyle.fontMetrics.height());
+    QStringList lines = var.toString().split('\n');
+    size.setHeight(textStyle.fontMetrics.height() * lines.count());
+    foreach (const QString& line, lines)
+    {
+      int w = textStyle.fontMetrics.width(line);
+      if (w > size.width())
+        size.setWidth(w);
+    }
   }
 
   // Make sure we have enough height for icons
@@ -106,8 +113,7 @@ void ContactDelegate::paint(QPainter* p, const QStyleOptionViewItem& option,
       (index.data(ContactListModel::ItemTypeRole).toInt()),
     Config::Skin::active(),
     option.state & QStyle::State_Enabled ? QPalette::Normal : QPalette::Disabled,
-    static_cast<ContactListModel::StatusType>
-      (index.data(ContactListModel::StatusRole).toUInt()),
+    index.data(ContactListModel::StatusRole).toUInt(),
     index.data(ContactListModel::ExtendedStatusRole).toUInt(),
     QString::null
   };
@@ -268,22 +274,14 @@ void ContactDelegate::prepareForeground(Parameters& arg, QVariant animate) const
         else if (arg.extStatus & ContactListModel::AwaitingAuthStatus)
           textColor = arg.skin->awaitingAuthColor;
         else
-          switch (arg.status)
-          {
-            case ContactListModel::AwayStatus:
-            case ContactListModel::OccupiedStatus:
-            case ContactListModel::DoNotDisturbStatus:
-            case ContactListModel::NotAvailableStatus:
-              textColor = arg.skin->awayColor;
-              break;
-            case ContactListModel::OfflineStatus:
-              textColor = arg.skin->offlineColor;
-              break;
-            case ContactListModel::OnlineStatus:
-            case ContactListModel::FreeForChatStatus:
-            default:
-              textColor = arg.skin->onlineColor;
-          }
+        {
+          if (arg.status == User::OfflineStatus)
+            textColor = arg.skin->offlineColor;
+          else if (arg.status & (User::AwayStatuses | User::IdleStatus))
+            textColor = arg.skin->awayColor;
+          else
+            textColor = arg.skin->onlineColor;
+        }
         break;
       }
 
@@ -360,8 +358,7 @@ void ContactDelegate::drawStatusIcon(Parameters& arg) const
     else
       icon = &iconman->iconForStatus(
           arg.index.data(ContactListModel::StatusRole).toUInt(),
-          arg.index.data(ContactListModel::AccountIdRole).toString(),
-          arg.index.data(ContactListModel::PpidRole).toUInt());
+          arg.index.data(ContactListModel::UserIdRole).value<Licq::UserId>());
   }
   else if (arg.itemType == ContactListModel::GroupItem)
   {
@@ -374,7 +371,7 @@ void ContactDelegate::drawStatusIcon(Parameters& arg) const
   if (icon != NULL)
   {
     // Draw the icon
-    unsigned short iconWidth = qMax(icon->width(), 18);
+    int iconWidth = qMax(icon->width(), 18);
     arg.p->drawPixmap(
         (iconWidth - icon->width()) / 2,
         (arg.height - icon->height()) / 2,
@@ -408,8 +405,14 @@ void ContactDelegate::drawText(Parameters& arg) const
   if (arg.text.isEmpty())
     return;
 
-  QString elidedText = arg.p->fontMetrics().elidedText(
-      arg.text, arg.option.textElideMode, arg.width - 6);
+  QStringList lines = arg.text.split('\n');
+  for (int i = 0; i < lines.count(); ++i)
+  {
+    lines[i] = arg.p->fontMetrics().elidedText(
+        lines[i], arg.option.textElideMode, arg.width - 6);
+  }
+  QString elidedText = lines.join("\n");
+
   arg.p->drawText(2, 0, arg.width - 4, arg.height, arg.align, elidedText);
 
   int textWidth = arg.p->fontMetrics().width(elidedText);
@@ -476,7 +479,7 @@ void ContactDelegate::drawExtIcons(Parameters& arg) const
           drawExtIcon(arg, IconManager::GpgKeyDisabledIcon);
       }
 
-      if (arg.status != ContactListModel::OfflineStatus)
+      if (arg.status != User::OfflineStatus)
       {
         if (Config::ContactList::instance()->showPhoneIcons())
         {

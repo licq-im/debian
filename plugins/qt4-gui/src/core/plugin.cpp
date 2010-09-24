@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +19,9 @@
  */
 
 #include "config.h"
+#include "pluginversion.h"
 
+#include <cstdio>
 #include <QApplication>
 #include <QString>
 
@@ -30,31 +32,32 @@
 # include <QStyleFactory>
 #endif
 
-#include <licq_log.h>
-#include <licq_plugin.h>
+#include <licq/daemon.h>
+#include <licq/pluginbase.h>
+#include <licq/logging/log.h>
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
 
 const char* LP_Name()
 {
-#ifdef USE_KDE
-  static const char name[] = "KDE4 GUI";
-#else
-  static const char name[] = "Qt4 GUI";
-#endif
+  static const char name[] = DISPLAY_PLUGIN_NAME;
   return name;
 }
 
 const char* LP_Description()
 {
+#ifdef USE_KDE
+  static const char desc[] = "KDE4 based GUI";
+#else
   static const char desc[] = "Qt4 based GUI";
+#endif
   return desc;
 }
 
 const char* LP_Version()
 {
-  static const char version[] = VERSION;
+  static const char version[] = PLUGIN_VERSION_STRING;
   return version;
 }
 
@@ -71,7 +74,7 @@ const char* LP_Usage()
     " -e : set the extended icons to use (must be in %2%3%6)"
     )
     .arg(PLUGIN_NAME)
-    .arg(BASE_DIR)
+      .arg(Licq::gDaemon.baseDir().c_str())
     .arg(QTGUI_DIR)
     .arg(SKINS_DIR)
     .arg(ICONS_DIR)
@@ -109,9 +112,8 @@ bool LP_Init(int argc, char** argv)
 
   if (qApp != NULL)
   {
-    gLog.Error("%sA Qt application is already loaded.\n"
-        "%sRemove the plugin from the command line.\n",
-        L_ERRORxSTR, L_BLANKxSTR);
+    Licq::gLog.error("A Qt application is already loaded.\n"
+        "Remove the plugin from the command line.");
     return false;
   }
 
@@ -121,30 +123,20 @@ bool LP_Init(int argc, char** argv)
   return true;
 }
 
-int LP_Main(CICQDaemon* daemon)
+int LP_Main()
 {
 #ifdef USE_KDE
-  // Since plugin is loaded in Licq daemon before thread is spawned, any code
-  // executed during library init is run as the daemon thread. KDE library
-  // init functions calls Qt functions causing theMainThread in
-  // QCoreApplication to be set to daemon thread. When we later get called here
-  // with our own thread Qt will complain that we're not running from the main
-  // thread.
-  // This is a hack using the undocumented call in QInternal to switch main
-  // thread in QCoreApplication.
-  QInternal::callFunction(QInternal::SetCurrentThreadToMainThread, NULL);
-
   // Don't use the KDE crash handler (drkonqi).
   setenv("KDE_DEBUG", "true", 0);
 
   KCmdLineArgs::init(myArgc, myArgv,
                      "licq", "qt4-gui",
-                     ki18n(LP_Name()), VERSION);
+                     ki18n(LP_Name()), PLUGIN_VERSION_STRING);
 #endif
 
   LicqQtGui::LicqGui* licqQtGui = new LicqQtGui::LicqGui(myArgc, myArgv);
 
-  int result = licqQtGui->Run(daemon);
+  int result = licqQtGui->Run();
 
   delete licqQtGui;
 

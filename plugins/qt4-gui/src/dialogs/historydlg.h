@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,8 +25,8 @@
 
 #include <QDialog>
 
-#include <licq_history.h>
-#include <licq_types.h>
+#include <licq/contactlist/user.h>
+#include <licq/userid.h>
 
 class QCalendarWidget;
 class QCheckBox;
@@ -36,7 +36,10 @@ class QPushButton;
 class QRegExp;
 class QTextCodec;
 
-class LicqEvent;
+namespace Licq
+{
+class Event;
+}
 
 namespace LicqQtGui
 {
@@ -57,7 +60,7 @@ public:
    * @param userId Contact id
    * @param parent Parent widget
    */
-  HistoryDlg(const UserId& userId, QWidget* parent = 0);
+  HistoryDlg(const Licq::UserId& userId, QWidget* parent = 0);
 
   /**
    * Desstructor
@@ -117,14 +120,14 @@ private slots:
    * @param subSignal Sub signal telling what the change was
    * @param argument Additional data, usage depend on sub signal type
    */
-  void updatedUser(const UserId& userId, unsigned long subSignal, int argument);
+  void updatedUser(const Licq::UserId& userId, unsigned long subSignal, int argument);
 
   /**
    * A message was sent. Add to history if it was for the current user
    *
    * @param event Event object for message
    */
-  void eventSent(const LicqEvent* event);
+  void eventSent(const Licq::Event* event);
 
 private:
   /**
@@ -132,7 +135,7 @@ private:
    *
    * @param event Event to add
    */
-  void addMsg(const CUserEvent* event);
+  void addMsg(const Licq::UserEvent* event);
 
   /**
    * Build a regular expression from the input fields
@@ -146,7 +149,7 @@ private:
    */
   void showHistory();
 
-  UserId myUserId;
+  Licq::UserId myUserId;
   bool myIsOwner;
   QString myContactName;
   QString myOwnerName;
@@ -154,8 +157,8 @@ private:
   bool myUseHtml;
   bool myPatternChanged;
 
-  HistoryList myHistoryList;
-  HistoryListIter mySearchPos;
+  Licq::HistoryList myHistoryList;
+  Licq::HistoryList::iterator mySearchPos;
 
   Calendar* myCalendar;
   HistoryView* myHistoryView;

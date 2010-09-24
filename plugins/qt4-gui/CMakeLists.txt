@@ -1,52 +1,26 @@
 project(Qt4-GUI)
 cmake_minimum_required(VERSION 2.4.2)
-cmake_policy(SET CMP0003 NEW)
-
 include(CheckIncludeFile)
 include(TestCXXAcceptsFlag)
 include(CheckLibraryExists)
 
-set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
-
-# Qt-GUI version
-set(VERSION_MAJOR 1)
-set(VERSION_MINOR 3)
-set(VERSION_RELEASE 9)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 # Use KDE support
 option(WITH_KDE "Compile with KDE support" OFF)
 
+# Licq
+find_package(Licq REQUIRED)
+include_directories(${Licq_INCLUDE_DIRS})
 
-# Install dirs
-set(INSTALL_LIB_DIR lib${LIB_SUFFIX} CACHE PATH
-  "Directory to install the plugin to. A relative path is relative to CMAKE_INSTALL_PREFIX.")
-mark_as_advanced(INSTALL_LIB_DIR)
+# Generate pluginversion.h
+include(version.cmake)
+licq_create_plugin_version_file(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-set(INSTALL_DATA_DIR share CACHE PATH
-  "Directory to install shared data to. A relative path is relative to CMAKE_INSTALL_PREFIX.")
-mark_as_advanced(INSTALL_DATA_DIR)
-
-set(INSTALL_QTGUI_DIR qt4-gui CACHE PATH
-  "Icons etc. will be installed to INSTALL_DATA_DIR/licq/INSTALL_QTGUI_DIR.")
+set(INSTALL_QTGUI_DIR qt4-gui CACHE STRING
+  "Icons etc. will be installed to ${Licq_SHARE_DIR}/INSTALL_QTGUI_DIR.")
 mark_as_advanced(INSTALL_QTGUI_DIR)
-
-
-# Configure compiler flags
-check_cxx_accepts_flag(-Wall CXX_ACCEPTS_WALL)
-if (CXX_ACCEPTS_WALL)
-  add_definitions(-Wall)
-endif (CXX_ACCEPTS_WALL)
-
-check_cxx_accepts_flag(-Wextra CXX_ACCEPTS_WEXTRA)
-if (CXX_ACCEPTS_WEXTRA)
-  add_definitions(-Wextra)
-endif (CXX_ACCEPTS_WEXTRA)
-
-check_cxx_accepts_flag(-fPIC CXX_ACCEPTS_FPIC)
-if (CXX_ACCEPTS_FPIC)
-  add_definitions(-fPIC)
-endif (CXX_ACCEPTS_FPIC)
-
 
 # Holds all libraries we should link to
 set(LIBRARIES)
@@ -86,8 +60,14 @@ if (NOT WITH_KDE)
   endif (HUNSPELL_FOUND)
 
 else (NOT WITH_KDE)
+  # Stop KDE4 from adding an uninstall target
+  set(_kde4_uninstall_rule_created TRUE)
+
   find_package(KDE4 REQUIRED)
   set(USE_KDE ${KDE4_FOUND})
+
+  # Unset variables set by FindKDE4Internal
+  set(LIBRARY_OUTPUT_PATH)
 
   # FindKDE4Internal adds "-Wl,--no-undefined" to the linker command
   # line. This doesn't work for use, since all symbols from the daemon
@@ -111,35 +91,9 @@ else (NOT WITH_KDE)
     ${KDE4_KIO_LIBS})
 endif (NOT WITH_KDE)
 
-include_directories(${QT_INCLUDE_DIR}
-  ${QT_QTCORE_INCLUDE_DIR}
-  ${QT_QTGUI_INCLUDE_DIR}
-  ${QT_QTXML_INCLUDE_DIR})
-set(LIBRARIES ${LIBRARIES}
-  ${QT_QTCORE_LIBRARY}
-  ${QT_QTGUI_LIBRARY}
-  ${QT_QTXML_LIBRARY})
-
-# Check for boost, used in Licq includes so we must have it
-find_package(Boost 1.31.1 COMPONENTS smart_ptr)
-link_directories ( ${Boost_LIBRARY_DIRS} )
-include_directories ( ${Boost_INCLUDE_DIRS} )
-set(LIBRARIES ${LIBRARIES} ${Boost_LIBRARIES})
-
-# Licq headers (see cmake --help-command find_path
-# for the reason we call find_path twice)
-find_path(LICQ_INCLUDE_DIR NAMES licq_icqd.h
-          PATHS ${CMAKE_SOURCE_DIR}/../../include
-                ${CMAKE_SOURCE_DIR}/../licq/include
-          NO_DEFAULT_PATHS)
-find_path(LICQ_INCLUDE_DIR NAMES licq_icqd.h)
-
-if (NOT LICQ_INCLUDE_DIR)
-  message(FATAL_ERROR "Licq header files not found. Please specify the location with -DLICQ_INCLUDE_DIR")
-endif (NOT LICQ_INCLUDE_DIR)
-
-message(STATUS "Found Licq include dir: ${LICQ_INCLUDE_DIR}")
-include_directories(${LICQ_INCLUDE_DIR})
+set(QT_USE_QTXML 1)
+include(${QT_USE_FILE})
+set(LIBRARIES ${LIBRARIES} ${QT_LIBRARIES})
 
 # Local includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -149,10 +103,12 @@ check_include_file(locale.h HAVE_LOCALE_H)
 
 
 # To find config.h
-include_directories(${CMAKE_BINARY_DIR})
+include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR})
 
 # Generate config.h
-configure_file(${CMAKE_SOURCE_DIR}/config.h.cmake ${CMAKE_BINARY_DIR}/config.h)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
 add_subdirectory(doc)
 add_subdirectory(po)

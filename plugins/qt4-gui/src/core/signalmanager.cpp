@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,17 +25,29 @@
 #include <QApplication>
 #include <QSocketNotifier>
 
-#include <licq_icqd.h>
-#include <licq_log.h>
-#include <licq_user.h>
+#include <licq/icqdefines.h>
+#include <licq/logging/log.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/plugin.h>
+#include <licq/pluginsignal.h>
+#include <licq/protocolmanager.h>
 
 #include "dialogs/ownereditdlg.h"
 
+using Licq::gLog;
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
+
+SignalManager* LicqQtGui::gGuiSignalManager = NULL;
 
 SignalManager::SignalManager(int pipe)
   : myPipe(pipe)
 {
+  assert(gGuiSignalManager == NULL);
+  gGuiSignalManager = this;
+
   sn = new QSocketNotifier(myPipe, QSocketNotifier::Read);
   connect(sn, SIGNAL(activated(int)), SLOT(process()));
   sn->setEnabled(true);
@@ -44,103 +56,101 @@ SignalManager::SignalManager(int pipe)
 SignalManager::~SignalManager()
 {
   delete sn;
+
+  gGuiSignalManager = NULL;
 }
 
-void SignalManager::ProcessSignal(LicqSignal* sig)
+void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
 {
-  UserId userId = sig->userId();
+  const Licq::UserId& userId = sig->userId();
+  unsigned long ppid = userId.protocolId();
 
-  // Temporary code to get account id and ppid until the rest of the gui is updated to use user id directly
-  QString accountId;
-  unsigned long ppid = 0;
-  if (USERID_ISVALID(userId))
+  switch (sig->signal())
   {
-    LicqUser* user = gUserManager.fetchUser(userId, LOCK_R);
-    if (user != NULL)
-    {
-      accountId = user->accountId().c_str();
-      ppid = user->ppid();
-      gUserManager.DropUser(user);
-    }
-  }
-
-  switch (sig->Signal())
-  {
-    case SIGNAL_UPDATExLIST:
-      emit updatedList(sig->SubSignal(), sig->Argument(), userId);
+    case Licq::PluginSignal::SignalList:
+      switch (sig->subSignal())
+      {
+        case Licq::PluginSignal::ListOwnerAdded:
+          emit ownerAdded(userId);
+          break;
+        case Licq::PluginSignal::ListOwnerRemoved:
+          emit ownerRemoved(userId);
+          break;
+        default:
+          emit updatedList(sig->subSignal(), sig->argument(), userId);
+      }
       break;
 
-    case SIGNAL_UPDATExUSER:
-      emit updatedUser(userId, sig->SubSignal(), sig->Argument(), sig->CID());
+    case Licq::PluginSignal::SignalUser:
+      emit updatedUser(userId, sig->subSignal(), sig->argument(), sig->cid());
 
-      if (gUserManager.isOwner(userId) && sig->SubSignal() == USER_STATUS)
+      if (Licq::gUserManager.isOwner(userId) && sig->subSignal() == Licq::PluginSignal::UserStatus)
         emit updatedStatus(ppid);
       break;
 
-    case SIGNAL_LOGON:
+    case Licq::PluginSignal::SignalLogon:
       emit logon();
       break;
 
-    case SIGNAL_LOGOFF:
-      if (sig->SubSignal() == LOGOFF_PASSWORD)
+    case Licq::PluginSignal::SignalLogoff:
+      if (sig->subSignal() == Licq::PluginSignal::LogoffPassword)
         new OwnerEditDlg(ppid);
 
       emit logoff();
       break;
 
-    case SIGNAL_UI_VIEWEVENT:
+    case Licq::PluginSignal::SignalUiViewEvent:
       emit ui_viewevent(userId);
       break;
 
-    case SIGNAL_UI_MESSAGE:
+    case Licq::PluginSignal::SignalUiMessage:
       //TODO
       emit ui_message(userId);
       break;
 
-    case SIGNAL_ADDxSERVERxLIST:
+    case Licq::PluginSignal::SignalAddedToServer:
       //TODO
-      gLicqDaemon->updateUserAlias(userId);
+      gProtocolManager.updateUserAlias(userId);
       break;
 
-    case SIGNAL_NEWxPROTO_PLUGIN:
-      emit protocolPlugin(sig->SubSignal());
+    case Licq::PluginSignal::SignalNewProtocol:
+      emit protocolPlugin(sig->subSignal());
       break;
 
-    case SIGNAL_EVENTxID:
-      emit eventTag(userId, sig->Argument());
+    case Licq::PluginSignal::SignalConversation:
+      switch (sig->subSignal())
+      {
+        case Licq::PluginSignal::ConvoCreate:
+          emit socket(userId, sig->cid());
+          break;
+        case Licq::PluginSignal::ConvoJoin:
+          emit convoJoin(userId, ppid, sig->cid());
+          break;
+        case Licq::PluginSignal::ConvoLeave:
+          emit convoLeave(userId, ppid, sig->cid());
+          break;
+      }
       break;
 
-    case SIGNAL_SOCKET:
-      emit socket(userId, sig->CID());
-      break;
-
-    case SIGNAL_CONVOxJOIN:
-      emit convoJoin(userId, ppid, sig->CID());
-      break;
-
-    case SIGNAL_CONVOxLEAVE:
-      emit convoLeave(userId, ppid, sig->CID());
-      break;
-
-    case SIGNAL_VERIFY_IMAGE:
+    case Licq::PluginSignal::SignalVerifyImage:
       emit verifyImage(ppid);
       break;
 
-    case SIGNAL_NEW_OWNER:
-      emit newOwner(accountId, ppid);
+    case Licq::PluginSignal::SignalNewOwner:
+      emit newOwner(userId);
       break;
 
     default:
-      gLog.Warn("%sInternal error: SignalManager::ProcessSignal(): "
-          "Unknown signal command received from daemon: %ld.\n",
-          L_WARNxSTR, sig->Signal());
+      gLog.warning("Internal error: SignalManager::ProcessSignal(): "
+          "Unknown signal command received from daemon: %d",
+          sig->signal());
       break;
   }
 
   delete sig;
 }
 
-void SignalManager::ProcessEvent(ICQEvent* ev)
+void SignalManager::ProcessEvent(Licq::Event* ev)
 {
   if (ev->Command() == ICQ_CMDxTCP_START) // direct connection check
   {
@@ -190,9 +200,9 @@ void SignalManager::ProcessEvent(ICQEvent* ev)
       break;
 
     default:
-      gLog.Warn("%sInternal error: SignalManager::ProcessEvent(): "
-          "Unknown event SNAC received from daemon: 0x%08lX.\n",
-          L_WARNxSTR, ev->SNAC());
+      gLog.warning("Internal error: SignalManager::ProcessEvent(): "
+          "Unknown event SNAC received from daemon: 0x%08lX",
+          ev->SNAC());
       break;
   }
 
@@ -207,32 +217,32 @@ void SignalManager::process()
 
   switch (buf[0])
   {
-    case 'S':  // A signal is pending
+    case Licq::GeneralPlugin::PipeSignal:
     {
-      LicqSignal* s = gLicqDaemon->popPluginSignal();
+      Licq::PluginSignal* s = Licq::gDaemon.popPluginSignal();
       ProcessSignal(s);
       break;
     }
 
-    case 'E':  // An event is pending
+    case Licq::GeneralPlugin::PipeEvent:
     {
-      ICQEvent* e = gLicqDaemon->PopPluginEvent();
+      Licq::Event* e = Licq::gDaemon.PopPluginEvent();
       ProcessEvent(e);
       break;
     }
 
-    case 'X':  // Shutdown
+    case Licq::GeneralPlugin::PipeShutdown:
     {
-      gLog.Info("%sExiting main window (qt gui).\n", L_ENDxSTR);
+      gLog.info("Exiting main window (qt gui)");
       qApp->quit();
       break;
     }
 
-    case '0':
-    case '1':
+    case Licq::GeneralPlugin::PipeDisable:
+    case Licq::GeneralPlugin::PipeEnable:
       break;
 
     default:
-      gLog.Warn("%sUnknown notification type from daemon: %c.\n", L_WARNxSTR, buf[0]);
+      gLog.warning("Unknown notification type from daemon: %c", buf[0]);
   }
 }

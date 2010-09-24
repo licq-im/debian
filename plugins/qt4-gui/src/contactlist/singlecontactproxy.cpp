@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 
 using namespace LicqQtGui;
 
-SingleContactProxy::SingleContactProxy(ContactListModel* contactList, const UserId& userId, QObject* parent)
+SingleContactProxy::SingleContactProxy(ContactListModel* contactList, const Licq::UserId& userId, QObject* parent)
   : QAbstractProxyModel(parent),
     myContactList(contactList),
     myUserId(userId)
@@ -54,7 +54,7 @@ void SingleContactProxy::slot_dataChanged(const QModelIndex& topLeft, const QMod
 {
   // Check if this affects us
   int groupId = topLeft.data(ContactListModel::GroupIdRole).toInt();
-  if (groupId == ContactListModel::SystemGroupOffset)
+  if (groupId == ContactListModel::AllUsersGroupId)
     if (topLeft.row() <= mySourceIndex[0].row() && bottomRight.row() >= mySourceIndex[0].row())
       emit dataChanged(createIndex(0, 0, 0), createIndex(0, myContactList->columnCount() - 1, 0));
 }

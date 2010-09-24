@@ -1,6 +1,7 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 2005 Kevin Krammer <kevin.krammer@gmx.at>
+ * Copyright (C) 2006-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +28,7 @@
 #include <QPair>
 #include <QPixmap>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 // KDE includes
 #include "kimiface.h"
@@ -273,7 +274,7 @@ signals:
      * Asks for adding a user to the contact list
    * @param userId User to add
    */
-  void addUser(const UserId& userId);
+  void addUser(const Licq::UserId& userId);
 
 private:
     /**

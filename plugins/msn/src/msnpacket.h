@@ -1,20 +1,21 @@
 /*
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
-// written by Jon Keating <jon@licq.org>
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2004-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #ifndef __MSNPACKET_H
 #define __MSNPACKET_H
@@ -23,7 +24,7 @@
 #include <pthread.h>
 #include <string>
 
-#include "licq_packets.h"
+#include <licq/packet.h>
 
 #include "msnbuffer.h"
 
@@ -32,7 +33,7 @@ static const std::string base64_chars =
              "abcdefghijklmnopqrstuvwxyz"
              "0123456789+/";
 
-class CMSNPacket : public CPacket
+class CMSNPacket : public Licq::Packet
 {
 public:
   CMSNPacket(bool = false);
@@ -144,7 +145,7 @@ public:
 class CPS_MSNAuthenticate : public CMSNPacket
 {
 public:
-  CPS_MSNAuthenticate(char *, char *, const char *);
+  CPS_MSNAuthenticate(char *, const std::string& password, const char *);
   virtual ~CPS_MSNAuthenticate() { if (m_szCookie) free(m_szCookie); }
   
 protected:
@@ -277,7 +278,7 @@ public:
 class CPS_MSNCall : public CMSNPacket
 {
 public:
-  CPS_MSNCall(char *);
+  CPS_MSNCall(const char*);
   virtual ~CPS_MSNCall() { if (m_szUser) free(m_szUser); }
   
 protected:

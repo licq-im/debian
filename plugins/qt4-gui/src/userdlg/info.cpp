@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,24 +53,18 @@
 #include <QFileDialog>
 #endif
 
-#include <licq_backgroundcodes.h>
-#include <licq_countrycodes.h>
-#include <licq_homepagecodes.h>
-#include <licq_interestcodes.h>
-#include <licq_icq.h>
-#include <licq_icqd.h>
-#include <licq_languagecodes.h>
-#include <licq_log.h>
-#include <licq_occupationcodes.h>
-#include <licq_organizationcodes.h>
-#include <licq_providers.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/icq.h>
+#include <licq/icqcodes.h>
+#include <licq/pluginsignal.h>
+#include <licq/protocolmanager.h>
+#include <licq/logging/log.h>
 
 #include "config/iconmanager.h"
 #include "core/messagebox.h"
 #include "dialogs/editcategorydlg.h"
 #include "dialogs/phonedlg.h"
-#include "helpers/licqstrings.h"
 #include "helpers/usercodec.h"
 #include "widgets/infofield.h"
 #include "widgets/mledit.h"
@@ -82,12 +76,14 @@
 #include "core/mainwin.h"
 #endif
 
-
+using Licq::OwnerWriteGuard;
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserPages::Info */
 
-UserPages::Info::Info(bool isOwner, UserDlg* parent)
+UserPages::Info::Info(bool isOwner, unsigned long protocolId, UserDlg* parent)
   : QObject(parent),
+    myPpid(protocolId),
     m_bOwner(isOwner),
     myAliasHasChanged(false)
 {
@@ -95,16 +91,19 @@ UserPages::Info::Info(bool isOwner, UserDlg* parent)
 
   parent->addPage(UserDlg::GeneralPage, createPageGeneral(parent),
       tr("Info"));
-  parent->addPage(UserDlg::MorePage, createPageMore(parent),
-      tr("More"), UserDlg::GeneralPage);
-  parent->addPage(UserDlg::More2Page, createPageMore2(parent),
-      tr("More II"), UserDlg::GeneralPage);
-  parent->addPage(UserDlg::WorkPage, createPageWork(parent),
-      tr("Work"), UserDlg::GeneralPage);
-  parent->addPage(UserDlg::AboutPage, createPageAbout(parent),
-      tr("About"), UserDlg::GeneralPage);
-  parent->addPage(UserDlg::PhonePage, createPagePhoneBook(parent),
-      tr("Phone Book"), UserDlg::GeneralPage);
+  if (myPpid == LICQ_PPID)
+  {
+    parent->addPage(UserDlg::MorePage, createPageMore(parent),
+        tr("More"), UserDlg::GeneralPage);
+    parent->addPage(UserDlg::More2Page, createPageMore2(parent),
+        tr("More II"), UserDlg::GeneralPage);
+    parent->addPage(UserDlg::WorkPage, createPageWork(parent),
+        tr("Work"), UserDlg::GeneralPage);
+    parent->addPage(UserDlg::AboutPage, createPageAbout(parent),
+        tr("About"), UserDlg::GeneralPage);
+    parent->addPage(UserDlg::PhonePage, createPagePhoneBook(parent),
+        tr("Phone Book"), UserDlg::GeneralPage);
+  }
   parent->addPage(UserDlg::PicturePage, createPagePicture(parent),
       tr("Picture"), UserDlg::GeneralPage);
   parent->addPage(UserDlg::CountersPage, createPageCounters(parent),
@@ -115,19 +114,21 @@ UserPages::Info::Info(bool isOwner, UserDlg* parent)
 #endif
 }
 
-void UserPages::Info::load(const LicqUser* user)
+void UserPages::Info::load(const Licq::User* user)
 {
   myUserId = user->id();
-  myId = user->IdString();
-  myPpid = user->PPID();
+  myId = user->accountId().c_str();
   codec = UserCodec::codecForUser(user);
 
   loadPageGeneral(user);
-  loadPageMore(user);
-  loadPageMore2(user);
-  loadPageWork(user);
-  loadPageAbout(user);
-  loadPagePhoneBook(user);
+  if (myPpid == LICQ_PPID)
+  {
+    loadPageMore(user);
+    loadPageMore2(user);
+    loadPageWork(user);
+    loadPageAbout(user);
+    loadPagePhoneBook(user);
+  }
   loadPagePicture(user);
   loadPageCounters(user);
 #ifdef USE_KABC
@@ -135,21 +136,24 @@ void UserPages::Info::load(const LicqUser* user)
 #endif
 }
 
-void UserPages::Info::apply(LicqUser* user)
+void UserPages::Info::apply(Licq::User* user)
 {
   savePageGeneral(user);
-  savePageMore(user);
-  savePageMore2(user);
-  savePageWork(user);
-  savePageAbout(user);
-  savePagePhoneBook(user);
+  if (myPpid == LICQ_PPID)
+  {
+    savePageMore(user);
+    savePageMore2(user);
+    savePageWork(user);
+    savePageAbout(user);
+    savePagePhoneBook(user);
+  }
   savePagePicture(user);
 }
 
-void UserPages::Info::apply2(const UserId& /* userId */)
+void UserPages::Info::apply2(const Licq::UserId& /* userId */)
 {
   if (myAliasHasChanged)
-    gLicqDaemon->updateUserAlias(myUserId);
+    gProtocolManager.updateUserAlias(myUserId);
   myAliasHasChanged = false;
 
 #ifdef USE_KABC
@@ -207,58 +211,61 @@ QWidget* UserPages::Info::createPageGeneral(QWidget* parent)
   nfoEmailPrimary = new InfoField(false);
   lay->addWidget(nfoEmailPrimary, CR, 1, 1, 4);
 
-  lay->addWidget(new QLabel(tr("EMail 2:")), ++CR, 0);
-  nfoEmailSecondary = new InfoField(false);
-  lay->addWidget(nfoEmailSecondary, CR, 1, 1, 4);
-
-  lay->addWidget(new QLabel(tr("Old Email:")), ++CR, 0);
-  nfoEmailOld = new InfoField(false);
-  lay->addWidget(nfoEmailOld, CR, 1, 1, 4);
-
-  lay->addWidget(new QLabel(tr("Address:")), ++CR, 0);
-  nfoAddress = new InfoField(!m_bOwner);
-  lay->addWidget(nfoAddress, CR, 1);
-  lay->addWidget(new QLabel(tr("Phone:")), CR, 3);
-  nfoPhone = new InfoField(false);//!m_bOwner);
-  lay->addWidget(nfoPhone, CR, 4);
-
-  lay->addWidget(new QLabel(tr("State:")), ++CR, 0);
-  nfoState = new InfoField(!m_bOwner);
-  nfoState->setMaxLength(3);
-  lay->addWidget(nfoState, CR, 1);
-  w->setTabOrder(nfoAddress, nfoState);
-  lay->addWidget(new QLabel(tr("Fax:")), CR, 3);
-  nfoFax = new InfoField(false);//!m_bOwner);
-  lay->addWidget(nfoFax, CR, 4);
-  w->setTabOrder(nfoPhone, nfoFax);
-
-  lay->addWidget(new QLabel(tr("City:")), ++CR, 0);
-  nfoCity = new InfoField(!m_bOwner);
-  lay->addWidget(nfoCity, CR, 1);
-  w->setTabOrder(nfoState, nfoCity);
-  lay->addWidget(new QLabel(tr("Cellular:")), CR, 3);
-  nfoCellular = new InfoField(false);//!m_bOwner);
-  lay->addWidget(nfoCellular, CR, 4);
-  w->setTabOrder(nfoFax, nfoCellular);
-
-  lay->addWidget(new QLabel(tr("Zip:")), ++CR, 0);
-  nfoZipCode = new InfoField(!m_bOwner);
-  lay->addWidget(nfoZipCode, CR, 1);
-  w->setTabOrder(nfoCity, nfoZipCode);
-  lay->addWidget(new QLabel(tr("Country:")), CR, 3);
-  if (m_bOwner)
+  if (myPpid == LICQ_PPID)
   {
-    cmbCountry = new QComboBox();
-    //cmbCountry->addItem(tr("Unspecified"));
-    cmbCountry->setMaximumWidth(cmbCountry->sizeHint().width()+20);
-    for (unsigned short i = 0; i < NUM_COUNTRIES; i++)
-      cmbCountry->addItem(GetCountryByIndex(i)->szName);
-    lay->addWidget(cmbCountry, CR, 4);
-  }
-  else
-  {
-    nfoCountry = new InfoField(!m_bOwner);
-    lay->addWidget(nfoCountry, CR, 4);
+    lay->addWidget(new QLabel(tr("EMail 2:")), ++CR, 0);
+    nfoEmailSecondary = new InfoField(false);
+    lay->addWidget(nfoEmailSecondary, CR, 1, 1, 4);
+
+    lay->addWidget(new QLabel(tr("Old Email:")), ++CR, 0);
+    nfoEmailOld = new InfoField(false);
+    lay->addWidget(nfoEmailOld, CR, 1, 1, 4);
+
+    lay->addWidget(new QLabel(tr("Address:")), ++CR, 0);
+    nfoAddress = new InfoField(!m_bOwner);
+    lay->addWidget(nfoAddress, CR, 1);
+    lay->addWidget(new QLabel(tr("Phone:")), CR, 3);
+    nfoPhone = new InfoField(false);//!m_bOwner);
+    lay->addWidget(nfoPhone, CR, 4);
+
+    lay->addWidget(new QLabel(tr("State:")), ++CR, 0);
+    nfoState = new InfoField(!m_bOwner);
+    nfoState->setMaxLength(3);
+    lay->addWidget(nfoState, CR, 1);
+    w->setTabOrder(nfoAddress, nfoState);
+    lay->addWidget(new QLabel(tr("Fax:")), CR, 3);
+    nfoFax = new InfoField(false);//!m_bOwner);
+    lay->addWidget(nfoFax, CR, 4);
+    w->setTabOrder(nfoPhone, nfoFax);
+
+    lay->addWidget(new QLabel(tr("City:")), ++CR, 0);
+    nfoCity = new InfoField(!m_bOwner);
+    lay->addWidget(nfoCity, CR, 1);
+    w->setTabOrder(nfoState, nfoCity);
+    lay->addWidget(new QLabel(tr("Cellular:")), CR, 3);
+    nfoCellular = new InfoField(false);//!m_bOwner);
+    lay->addWidget(nfoCellular, CR, 4);
+    w->setTabOrder(nfoFax, nfoCellular);
+
+    lay->addWidget(new QLabel(tr("Zip:")), ++CR, 0);
+    nfoZipCode = new InfoField(!m_bOwner);
+    lay->addWidget(nfoZipCode, CR, 1);
+    w->setTabOrder(nfoCity, nfoZipCode);
+    lay->addWidget(new QLabel(tr("Country:")), CR, 3);
+    if (m_bOwner)
+    {
+      cmbCountry = new QComboBox();
+      //cmbCountry->addItem(tr("Unspecified"));
+      cmbCountry->setMaximumWidth(cmbCountry->sizeHint().width()+20);
+      for (unsigned short i = 0; i < NUM_COUNTRIES; i++)
+        cmbCountry->addItem(GetCountryByIndex(i)->szName);
+      lay->addWidget(cmbCountry, CR, 4);
+    }
+    else
+    {
+      nfoCountry = new InfoField(!m_bOwner);
+      lay->addWidget(nfoCountry, CR, 4);
+    }
   }
 
   lay->setRowStretch(++CR, 5);
@@ -269,37 +276,39 @@ QWidget* UserPages::Info::createPageGeneral(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPageGeneral(const LicqUser* u)
+void UserPages::Info::loadPageGeneral(const Licq::User* u)
 {
-  char buf[32];
-
   if (!m_bOwner)
     chkKeepAliasOnUpdate->setChecked(u->KeepAliasOnUpdate());
+  nfoUin->setText(myId);
   nfoAlias->setText(QString::fromUtf8(u->getAlias().c_str()));
   nfoFirstName->setText(codec->toUnicode(u->getFirstName().c_str()));
   nfoLastName->setText(codec->toUnicode(u->getLastName().c_str()));
-  nfoEmailPrimary->setText(codec->toUnicode(u->getUserInfoString("Email1").c_str()));
-  nfoEmailSecondary->setText(codec->toUnicode(u->getUserInfoString("Email2").c_str()));
-  nfoEmailOld->setText(codec->toUnicode(u->getUserInfoString("Email0").c_str()));
-  nfoUin->setText(myId);
-  QString ip = QString(u->IpStr(buf));
+  QString ip(u->ipToString().c_str());
   if (u->Ip() != u->IntIp() && u->IntIp() != 0)
   {
-    ip.append(QString(" / %1").arg(u->IntIpStr(buf)));
+    ip.append(QString(" / %1").arg(u->internalIpToString().c_str()));
   }
   if (u->Port() != 0)
   {
-    ip.append(QString(":%1").arg(u->PortStr(buf)));
+    ip.append(QString(":%1").arg(u->portToString().c_str()));
   }
   nfoIp->setText(ip);
   tznZone->setData(u->GetTimezone());
-  nfoStatus->setText(LicqStrings::getStatus(u));
+  // Owner timezone is not editable, it is taken from system timezone instead
+  if (m_bOwner)
+    tznZone->setEnabled(false);
+  nfoStatus->setText(u->statusString().c_str());
+  nfoEmailPrimary->setText(codec->toUnicode(u->getUserInfoString("Email1").c_str()));
+
+  if (myPpid != LICQ_PPID)
+    return;
+
+  nfoEmailSecondary->setText(codec->toUnicode(u->getUserInfoString("Email2").c_str()));
+  nfoEmailOld->setText(codec->toUnicode(u->getUserInfoString("Email0").c_str()));
   unsigned int countryCode = u->getUserInfoUint("Country");
   if (m_bOwner)
   {
-    // Owner timezone is not editable, it is taken from system timezone instead
-    tznZone->setEnabled(false);
-
     const SCountry* c = GetCountryByCode(countryCode);
     if (c == NULL)
       cmbCountry->setCurrentIndex(0);
@@ -323,15 +332,20 @@ void UserPages::Info::loadPageGeneral(const LicqUser* u)
   nfoZipCode->setText(codec->toUnicode(u->getUserInfoString("Zipcode").c_str()));
 }
 
-void UserPages::Info::savePageGeneral(LicqUser* u)
+void UserPages::Info::savePageGeneral(Licq::User* u)
 {
   myAliasHasChanged = (u->getAlias() != nfoAlias->text().toUtf8().data());
   u->setAlias(nfoAlias->text().toUtf8().data());
   if (!m_bOwner)
     u->SetKeepAliasOnUpdate(chkKeepAliasOnUpdate->isChecked());
+  u->SetTimezone(tznZone->data());
   u->setUserInfoString("FirstName", codec->fromUnicode(nfoFirstName->text()).data());
   u->setUserInfoString("LastName", codec->fromUnicode(nfoLastName->text()).data());
   u->setUserInfoString("Email1", codec->fromUnicode(nfoEmailPrimary->text()).data());
+
+  if (myPpid != LICQ_PPID)
+    return;
+
   u->setUserInfoString("Email2", codec->fromUnicode(nfoEmailSecondary->text()).data());
   u->setUserInfoString("Email0", codec->fromUnicode(nfoEmailOld->text()).data());
   u->setUserInfoString("City", codec->fromUnicode(nfoCity->text()).data());
@@ -346,7 +360,6 @@ void UserPages::Info::savePageGeneral(LicqUser* u)
     unsigned short i = cmbCountry->currentIndex();
     u->setUserInfoUint("Country", GetCountryByIndex(i)->nCode);
   }
-  u->SetTimezone(tznZone->data());
 }
 
 QWidget* UserPages::Info::createPageMore(QWidget* parent)
@@ -367,9 +380,9 @@ QWidget* UserPages::Info::createPageMore(QWidget* parent)
   if (m_bOwner)
   {
     cmbGender = new QComboBox();
-    cmbGender->insertItem(GENDER_UNSPECIFIED, tr("Unspecified"));
-    cmbGender->insertItem(GENDER_FEMALE, tr("Female"));
-    cmbGender->insertItem(GENDER_MALE, tr("Male"));
+    cmbGender->insertItem(Licq::User::GenderUnspecified, tr("Unspecified"));
+    cmbGender->insertItem(Licq::User::GenderFemale, tr("Female"));
+    cmbGender->insertItem(Licq::User::GenderMale, tr("Male"));
     lay->addWidget(cmbGender, CR, 4);
   }
   else
@@ -468,7 +481,7 @@ QWidget* UserPages::Info::createPageMore(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPageMore(const LicqUser* u)
+void UserPages::Info::loadPageMore(const Licq::User* u)
 {
   // Gender
   unsigned int gender = u->getUserInfoUint("Gender");
@@ -478,9 +491,9 @@ void UserPages::Info::loadPageMore(const LicqUser* u)
   }
   else
   {
-    if (gender == GENDER_FEMALE)
+    if (gender == Licq::User::GenderFemale)
       nfoGender->setText(tr("Female"));
-    else if (gender == GENDER_MALE)
+    else if (gender == Licq::User::GenderMale)
       nfoGender->setText(tr("Male"));
     else
       nfoGender->setText(tr("Unspecified"));
@@ -488,7 +501,7 @@ void UserPages::Info::loadPageMore(const LicqUser* u)
 
   // Age
   unsigned int age = u->getUserInfoUint("Age");
-  if (age == AGE_UNSPECIFIED)
+  if (age == Licq::User::AgeUnspecified)
     nfoAge->setText(tr("Unspecified"));
   else
     nfoAge->setText(age);
@@ -599,7 +612,7 @@ void UserPages::Info::loadPageMore(const LicqUser* u)
     lblICQHomepage->setText(tr("User has no ICQ Homepage"));
 }
 
-void UserPages::Info::savePageMore(LicqUser* u)
+void UserPages::Info::savePageMore(Licq::User* u)
 {
   u->setUserInfoUint("Age", nfoAge->text().toULong());
   u->setUserInfoString("Homepage", nfoHomepage->text().toLocal8Bit().data());
@@ -633,17 +646,17 @@ QWidget* UserPages::Info::createPageMore2(QWidget* parent)
     lsvMore2->setSelectionMode(QTreeWidget::NoSelection);
   lay->addWidget(lsvMore2);
 
-  lviMore2Top[CAT_BACKGROUND] = new QTreeWidgetItem(lsvMore2);
-  lviMore2Top[CAT_BACKGROUND]->setText(0, "Past Background");
-  lviMore2Top[CAT_BACKGROUND]->setExpanded(true);
+  lviMore2Top[Licq::CAT_BACKGROUND] = new QTreeWidgetItem(lsvMore2);
+  lviMore2Top[Licq::CAT_BACKGROUND]->setText(0, "Past Background");
+  lviMore2Top[Licq::CAT_BACKGROUND]->setExpanded(true);
 
-  lviMore2Top[CAT_ORGANIZATION] = new QTreeWidgetItem(lsvMore2);
-  lviMore2Top[CAT_ORGANIZATION]->setText(0, "Organization, Affiliation, Group");
-  lviMore2Top[CAT_ORGANIZATION]->setExpanded(true);
+  lviMore2Top[Licq::CAT_ORGANIZATION] = new QTreeWidgetItem(lsvMore2);
+  lviMore2Top[Licq::CAT_ORGANIZATION]->setText(0, "Organization, Affiliation, Group");
+  lviMore2Top[Licq::CAT_ORGANIZATION]->setExpanded(true);
 
-  lviMore2Top[CAT_INTERESTS] = new QTreeWidgetItem(lsvMore2);
-  lviMore2Top[CAT_INTERESTS]->setText(0, "Personal Interests");
-  lviMore2Top[CAT_INTERESTS]->setExpanded(true);
+  lviMore2Top[Licq::CAT_INTERESTS] = new QTreeWidgetItem(lsvMore2);
+  lviMore2Top[Licq::CAT_INTERESTS]->setText(0, "Personal Interests");
+  lviMore2Top[Licq::CAT_INTERESTS]->setExpanded(true);
 
   if (m_bOwner)
     connect(lsvMore2, SIGNAL(itemDoubleClicked(QTreeWidgetItem*, int)),
@@ -713,19 +726,19 @@ int UserPages::Info::splitCategory(QTreeWidgetItem* parent, const char* descr)
   return 0;
 }
 
-void UserPages::Info::loadPageMore2(const LicqUser* u)
+void UserPages::Info::loadPageMore2(const Licq::User* u)
 {
   myInterests = u->getInterests();
-  updateMore2Info(CAT_INTERESTS, myInterests);
+  updateMore2Info(Licq::CAT_INTERESTS, myInterests);
 
   myOrganizations = u->getOrganizations();
-  updateMore2Info(CAT_ORGANIZATION, myOrganizations);
+  updateMore2Info(Licq::CAT_ORGANIZATION, myOrganizations);
 
   myBackgrounds = u->getBackgrounds();
-  updateMore2Info(CAT_BACKGROUND, myBackgrounds);
+  updateMore2Info(Licq::CAT_BACKGROUND, myBackgrounds);
 }
 
-void UserPages::Info::updateMore2Info(UserCat cat, const UserCategoryMap& category)
+void UserPages::Info::updateMore2Info(Licq::UserCat cat, const Licq::UserCategoryMap& category)
 {
   QTreeWidgetItem* lvi = NULL;
 
@@ -735,20 +748,20 @@ void UserPages::Info::updateMore2Info(UserCat cat, const UserCategoryMap& catego
   const struct SCategory* (*cat2str)(unsigned short);
   switch (cat)
   {
-  case CAT_INTERESTS:
+    case Licq::CAT_INTERESTS:
     cat2str = GetInterestByCode;
     break;
-  case CAT_ORGANIZATION:
+    case Licq::CAT_ORGANIZATION:
     cat2str = GetOrganizationByCode;
     break;
-  case CAT_BACKGROUND:
+    case Licq::CAT_BACKGROUND:
     cat2str = GetBackgroundByCode;
     break;
   default:
     return;
   }
 
-  UserCategoryMap::const_iterator i;
+  Licq::UserCategoryMap::const_iterator i;
   for (i = category.begin(); i != category.end(); ++i)
   {
     const struct SCategory* sCat = cat2str(i->first);
@@ -778,7 +791,7 @@ void UserPages::Info::updateMore2Info(UserCat cat, const UserCategoryMap& catego
   }
 }
 
-void UserPages::Info::savePageMore2(LicqUser* u)
+void UserPages::Info::savePageMore2(Licq::User* u)
 {
   u->getInterests() = myInterests;
   u->getOrganizations() = myOrganizations;
@@ -873,7 +886,7 @@ QWidget* UserPages::Info::createPageWork(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPageWork(const LicqUser* u)
+void UserPages::Info::loadPageWork(const Licq::User* u)
 {
   nfoCompanyName->setText(codec->toUnicode(u->getUserInfoString("CompanyName").c_str()));
   nfoCompanyDepartment->setText(codec->toUnicode(u->getUserInfoString("CompanyDepartment").c_str()));
@@ -917,7 +930,7 @@ void UserPages::Info::loadPageWork(const LicqUser* u)
   nfoCompanyHomepage->setText(codec->toUnicode(u->getUserInfoString("CompanyHomepage").c_str()));
 }
 
-void UserPages::Info::savePageWork(LicqUser* u)
+void UserPages::Info::savePageWork(Licq::User* u)
 {
   u->setUserInfoString("CompanyCity", codec->fromUnicode(nfoCompanyCity->text()).data());
   u->setUserInfoString("CompanyState", codec->fromUnicode(nfoCompanyState->text()).data());
@@ -958,7 +971,7 @@ QWidget* UserPages::Info::createPageAbout(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPageAbout(const LicqUser* u)
+void UserPages::Info::loadPageAbout(const Licq::User* u)
 {
   bool bUseHTML = myId[0].isLetter();
 
@@ -968,7 +981,7 @@ void UserPages::Info::loadPageAbout(const LicqUser* u)
   mlvAbout->append(MLView::toRichText(aboutstr, true, bUseHTML));
 }
 
-void UserPages::Info::savePageAbout(LicqUser* u)
+void UserPages::Info::savePageAbout(Licq::User* u)
 {
   QString str = mlvAbout->toPlainText();
 
@@ -1039,13 +1052,13 @@ QWidget* UserPages::Info::createPagePhoneBook(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPagePhoneBook(const LicqUser* u)
+void UserPages::Info::loadPagePhoneBook(const Licq::User* u)
 {
   if (m_PhoneBook != NULL)
     delete m_PhoneBook;
 
-  m_PhoneBook = new ICQUserPhoneBook();
-  const struct PhoneBookEntry* entry;
+  m_PhoneBook = new Licq::ICQUserPhoneBook();
+  const struct Licq::PhoneBookEntry* entry;
   for (unsigned long i = 0; u->GetPhoneBook()->Get(i, &entry); i++)
     m_PhoneBook->AddEntry(entry);
 
@@ -1065,26 +1078,26 @@ void UserPages::Info::updatePhoneBook()
     nfoActive->clear();
 
   QTreeWidgetItem* lsv = NULL;
-  const struct PhoneBookEntry* entry;
+  const struct Licq::PhoneBookEntry* entry;
   for (unsigned long i = 0; m_PhoneBook->Get(i, &entry); i++)
   {
-    QString description = codec->toUnicode(entry->szDescription);
+    QString description = codec->toUnicode(entry->description.c_str());
     QString number;
     QString country;
-    if (entry->nType == TYPE_PAGER)
+    if (entry->nType == Licq::TYPE_PAGER)
     {
       //Windows icq uses extension, try it first
-      if (entry->szExtension[0] != '\0')
-        number = codec->toUnicode(entry->szExtension);
+      if (!entry->extension.empty())
+        number = codec->toUnicode(entry->extension.c_str());
       else
-        number = codec->toUnicode(entry->szPhoneNumber);
+        number = codec->toUnicode(entry->phoneNumber.c_str());
 
       QString gateway;
-      if (entry->nGatewayType == GATEWAY_BUILTIN)
+      if (entry->nGatewayType == Licq::GATEWAY_BUILTIN)
       {
-        country = codec->toUnicode(entry->szGateway);
+        country = codec->toUnicode(entry->gateway.c_str());
 
-        const struct SProvider* sProvider = GetProviderByName(entry->szGateway);
+        const struct SProvider* sProvider = GetProviderByName(entry->gateway.c_str());
         if (sProvider != NULL)
           gateway = sProvider->szGateway;
         else
@@ -1093,29 +1106,28 @@ void UserPages::Info::updatePhoneBook()
       else
       {
         country = tr("Unknown");
-        gateway = codec->toUnicode(entry->szGateway);
+        gateway = codec->toUnicode(entry->gateway.c_str());
       }
 
       number += gateway;
     }
     else
     {
-      const struct SCountry* sCountry = GetCountryByName(entry->szCountry);
+      const struct SCountry* sCountry = GetCountryByName(entry->country.c_str());
       if (sCountry != NULL)
         number.sprintf("+%u ", sCountry->nPhone);
-      char* szAreaCode;
-      szAreaCode = entry->szAreaCode;
+      const char* szAreaCode = entry->areaCode.c_str();
       if (entry->nRemoveLeading0s)
         szAreaCode += strspn(szAreaCode, "0");
       if (szAreaCode[0] != '\0')
         number += tr("(") + codec->toUnicode(szAreaCode) + tr(") ");
-      else if (entry->szAreaCode[0] != '\0')
-        number += tr("(") + codec->toUnicode(entry->szAreaCode) + tr(") ");
-      number += codec->toUnicode(entry->szPhoneNumber);
-      if (entry->szExtension[0] != '\0')
-        number += tr("-") + codec->toUnicode(entry->szExtension);
+      else if (!entry->areaCode.empty())
+        number += tr("(") + codec->toUnicode(entry->areaCode.c_str()) + tr(") ");
+      number += codec->toUnicode(entry->phoneNumber.c_str());
+      if (!entry->extension.empty())
+        number += tr("-") + codec->toUnicode(entry->extension.c_str());
 
-      country = codec->toUnicode(entry->szCountry);
+      country = codec->toUnicode(entry->country.c_str());
     }
 
     if (m_bOwner)
@@ -1146,19 +1158,19 @@ void UserPages::Info::updatePhoneBook()
 
     switch (entry->nType)
     {
-    case TYPE_PHONE:
+      case Licq::TYPE_PHONE:
         lsv->setIcon(0, IconManager::instance()->getIcon(IconManager::PSTNIcon));
-      break;
-    case TYPE_CELLULAR:
+        break;
+      case Licq::TYPE_CELLULAR:
         lsv->setIcon(0, IconManager::instance()->getIcon(IconManager::MobileIcon));
-      break;
-    case TYPE_CELLULARxSMS:
+        break;
+      case Licq::TYPE_CELLULARxSMS:
         lsv->setIcon(0, IconManager::instance()->getIcon(IconManager::SMSIcon));
-      break;
-    case TYPE_FAX:
+        break;
+      case Licq::TYPE_FAX:
         lsv->setIcon(0, IconManager::instance()->getIcon(IconManager::FaxIcon));
-      break;
-    case TYPE_PAGER:
+        break;
+      case Licq::TYPE_PAGER:
         lsv->setIcon(0, IconManager::instance()->getIcon(IconManager::PagerIcon));
       break;
     default:
@@ -1170,10 +1182,10 @@ void UserPages::Info::updatePhoneBook()
     lsvPhoneBook->resizeColumnToContents(i);
 }
 
-void UserPages::Info::savePagePhoneBook(LicqUser* u)
+void UserPages::Info::savePagePhoneBook(Licq::User* u)
 {
   u->GetPhoneBook()->Clean();
-  const struct PhoneBookEntry* entry;
+  const struct Licq::PhoneBookEntry* entry;
   for (unsigned long i = 0; m_PhoneBook->Get(i, &entry); i++)
     u->GetPhoneBook()->AddEntry(entry);
 }
@@ -1221,12 +1233,11 @@ QWidget* UserPages::Info::createPagePicture(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPagePicture(const LicqUser* u)
+void UserPages::Info::loadPagePicture(const Licq::User* u)
 {
   //FIXME: other protocols
   if (u != NULL && u->GetPicturePresent())
-    m_sFilename = QString::fromLocal8Bit(BASE_DIR) +
-      (m_bOwner ? "owner" : USER_DIR + ("/" + myId)) + ".pic";
+    m_sFilename = QString::fromLocal8Bit(u->pictureFileName().c_str());
   else
     m_sFilename = QString::null;
 
@@ -1263,12 +1274,12 @@ void UserPages::Info::clearPicture()
   loadPagePicture(NULL);
 }
 
-void UserPages::Info::savePagePicture(LicqUser* u)
+void UserPages::Info::savePagePicture(Licq::User* u)
 {
   // Only owner can set his picture
   if (!m_bOwner) return;
 
-  ICQOwner* o = dynamic_cast<ICQOwner*>(u);
+  Licq::Owner* o = dynamic_cast<Licq::Owner*>(u);
   if (m_sFilename.isEmpty())
     o->SetPicture(NULL);
   else
@@ -1318,9 +1329,9 @@ QWidget* UserPages::Info::createPageCounters(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPageCounters(const LicqUser* u)
+void UserPages::Info::loadPageCounters(const Licq::User* u)
 {
-  if (!u->StatusOffline())
+  if (u->isOnline())
     nfoLastOnline->setText(tr("Now"));
   else
     nfoLastOnline->setDateTime(u->LastOnline());
@@ -1330,10 +1341,10 @@ void UserPages::Info::loadPageCounters(const LicqUser* u)
   nfoLastCheckedAR->setDateTime(u->LastCheckedAutoResponse());
   nfoRegDate->setDateTime(u->RegisteredTime());
 
-  if (u->StatusOffline())
-    nfoOnlineSince->setText(tr("Offline"));
-  else
+  if (u->isOnline())
     nfoOnlineSince->setDateTime(u->OnlineSince());
+  else
+    nfoOnlineSince->setText(tr("Offline"));
 }
 
 #ifdef USE_KABC
@@ -1364,7 +1375,7 @@ QWidget* UserPages::Info::createPageKabc(QWidget* parent)
   return w;
 }
 
-void UserPages::Info::loadPageKabc(const LicqUser* u)
+void UserPages::Info::loadPageKabc(const Licq::User* u)
 {
   if (m_kabcID.isEmpty())
     m_kabcID = mainwin->kdeIMInterface->kabcIDForUser(myId.toLatin1(), myPpid);
@@ -1373,10 +1384,7 @@ void UserPages::Info::loadPageKabc(const LicqUser* u)
   {
     KABC::AddressBook* adrBook = KABC::StdAddressBook::self();
     if (adrBook == 0)
-    {
-      if (bDropUser) gUserManager.DropUser(u);
       return;
-    }
 
     KABC::Addressee contact = adrBook->findByUid(m_kabcID);
     if (!contact.isEmpty())
@@ -1416,29 +1424,30 @@ void UserPages::Info::editCategory(QTreeWidgetItem* selected)
 
   EditCategoryDlg* ecd;
 
-  if (selected == lviMore2Top[CAT_INTERESTS])
-    ecd = new EditCategoryDlg(CAT_INTERESTS, myInterests, dynamic_cast<UserDlg*>(parent()));
-  else if (selected == lviMore2Top[CAT_ORGANIZATION])
-    ecd = new EditCategoryDlg(CAT_ORGANIZATION, myOrganizations, dynamic_cast<UserDlg*>(parent()));
-  else if (selected == lviMore2Top[CAT_BACKGROUND])
-    ecd = new EditCategoryDlg(CAT_BACKGROUND, myBackgrounds, dynamic_cast<UserDlg*>(parent()));
+  if (selected == lviMore2Top[Licq::CAT_INTERESTS])
+    ecd = new EditCategoryDlg(Licq::CAT_INTERESTS, myInterests, dynamic_cast<UserDlg*>(parent()));
+  else if (selected == lviMore2Top[Licq::CAT_ORGANIZATION])
+    ecd = new EditCategoryDlg(Licq::CAT_ORGANIZATION, myOrganizations, dynamic_cast<UserDlg*>(parent()));
+  else if (selected == lviMore2Top[Licq::CAT_BACKGROUND])
+    ecd = new EditCategoryDlg(Licq::CAT_BACKGROUND, myBackgrounds, dynamic_cast<UserDlg*>(parent()));
   else
     return;
 
-  connect(ecd, SIGNAL(updated(UserCat, const UserCategoryMap&)), SLOT(setCategory(UserCat, const UserCategoryMap&)));
+  connect(ecd, SIGNAL(updated(Licq::UserCat, const Licq::UserCategoryMap&)),
+      SLOT(setCategory(Licq::UserCat, const Licq::UserCategoryMap&)));
 }
 
-void UserPages::Info::setCategory(UserCat cat, const UserCategoryMap& category)
+void UserPages::Info::setCategory(Licq::UserCat cat, const Licq::UserCategoryMap& category)
 {
   switch (cat)
   {
-  case CAT_INTERESTS:
+    case Licq::CAT_INTERESTS:
       myInterests = category;
-    break;
-  case CAT_ORGANIZATION:
+      break;
+    case Licq::CAT_ORGANIZATION:
       myOrganizations = category;
-    break;
-  case CAT_BACKGROUND:
+      break;
+    case Licq::CAT_BACKGROUND:
       myBackgrounds = category;
     break;
   default:
@@ -1448,23 +1457,16 @@ void UserPages::Info::setCategory(UserCat cat, const UserCategoryMap& category)
   updateMore2Info(cat, category);
 }
 
-void UserPages::Info::phoneBookUpdated(struct PhoneBookEntry pbe, int entryNum)
+void UserPages::Info::phoneBookUpdated(struct Licq::PhoneBookEntry pbe, int entryNum)
 {
   // FIXME implement this
   pbe.nActive = 0;
-  pbe.nPublish = PUBLISH_DISABLE;
+  pbe.nPublish = Licq::PUBLISH_DISABLE;
 
   if (entryNum == -1)
     m_PhoneBook->AddEntry(&pbe);
   else
     m_PhoneBook->SetEntry(&pbe, entryNum);
-
-  delete [] pbe.szDescription;
-  delete [] pbe.szAreaCode;
-  delete [] pbe.szPhoneNumber;
-  delete [] pbe.szExtension;
-  delete [] pbe.szCountry;
-  delete [] pbe.szGateway;
 
   updatePhoneBook();
 }
@@ -1473,12 +1475,12 @@ void UserPages::Info::editPhoneEntry(QTreeWidgetItem* selected)
 {
   unsigned long nSelection = lsvPhoneBook->indexOfTopLevelItem(selected);
 
-  const struct PhoneBookEntry* entry;
+  const struct Licq::PhoneBookEntry* entry;
   m_PhoneBook->Get(nSelection, &entry);
 
   EditPhoneDlg* epd = new EditPhoneDlg(dynamic_cast<UserDlg*>(parent()), entry, nSelection);
-  connect(epd, SIGNAL(updated(struct PhoneBookEntry, int)),
-          SLOT(phoneBookUpdated(struct PhoneBookEntry, int)));
+  connect(epd, SIGNAL(updated(struct Licq::PhoneBookEntry, int)),
+      SLOT(phoneBookUpdated(struct Licq::PhoneBookEntry, int)));
   epd->show();
 }
 
@@ -1494,13 +1496,15 @@ unsigned long UserPages::Info::retrieve(UserDlg::UserPage page)
   if (page == UserDlg::CountersPage || page == UserDlg::KabcPage)
     return 0;
 
-  const ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_R);
-  if (o == NULL)
-    return 0;
-  unsigned short status = o->Status();
-  gUserManager.DropOwner(o);
+  unsigned status;
+  {
+    Licq::OwnerReadGuard o(myPpid);
+    if (!o.isLocked())
+      return 0;
+    status = o->status();
+  }
 
-  if(status == ICQ_STATUS_OFFLINE)
+  if(status == Licq::User::OfflineStatus)
   {
     InformUser(dynamic_cast<UserDlg*>(parent()),
         tr("You need to be connected to the\nICQ Network to retrieve your settings."));
@@ -1513,35 +1517,36 @@ unsigned long UserPages::Info::retrieve(UserDlg::UserPage page)
       // Before retrieving the meta data we have to
       // save current status of "chkKeepAliasOnUpdate"
       // and the alias
-    LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
-    if (u == NULL)
+    Licq::UserWriteGuard u(myUserId);
+    if (!u.isLocked())
       return 0;
-      u->SetEnableSave(false);
-      u->setAlias(nfoAlias->text().toUtf8().data());
-      if (!m_bOwner)
-        u->SetKeepAliasOnUpdate(chkKeepAliasOnUpdate->isChecked());
-      u->SetEnableSave(true);
-      u->saveUserInfo();
-      gUserManager.DropUser(u);
+    u->SetEnableSave(false);
+    u->setAlias(nfoAlias->text().toUtf8().data());
+    if (!m_bOwner)
+      u->SetKeepAliasOnUpdate(chkKeepAliasOnUpdate->isChecked());
+    u->SetEnableSave(true);
+    u->saveUserInfo();
   }
 
   unsigned long icqEventTag;
   if (page == UserDlg::PhonePage)
   {
-    const LicqUser* u = gUserManager.fetchUser(myUserId);
-    if (u == NULL)
-      return 0;
-      bool bSendServer = (u->SocketDesc(ICQ_CHNxINFO) < 0);
-      gUserManager.DropUser(u);
-      icqEventTag = gLicqDaemon->icqRequestPhoneBook(myId.toLatin1(), bSendServer);
+    bool bSendServer;
+    {
+      Licq::UserReadGuard u(myUserId);
+      if (!u.isLocked())
+        return 0;
+      bSendServer = (u->infoSocketDesc() < 0);
+    }
+    icqEventTag = gLicqDaemon->icqRequestPhoneBook(myUserId, bSendServer);
   }
   else if (page == UserDlg::PicturePage)
   {
-    icqEventTag = gLicqDaemon->requestUserPicture(myUserId);
+    icqEventTag = gProtocolManager.requestUserPicture(myUserId);
   }
   else
   {
-    icqEventTag = gLicqDaemon->requestUserInfo(myUserId);
+    icqEventTag = gProtocolManager.requestUserInfo(myUserId);
   }
 
   return icqEventTag;
@@ -1549,51 +1554,47 @@ unsigned long UserPages::Info::retrieve(UserDlg::UserPage page)
 
 unsigned long UserPages::Info::send(UserDlg::UserPage page)
 {
-  const ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_R);
-  if (o == NULL)
-    return 0;
-    unsigned short status = o->Status();
-    gUserManager.DropOwner(o);
+  unsigned status;
+  Licq::UserId ownerId;
 
-    if(status == ICQ_STATUS_OFFLINE) {
+  {
+    OwnerWriteGuard owner(myPpid);
+    if (!owner.isLocked())
+      return 0;
+    status = owner->status();
+    ownerId = owner->id();
+
+    // Owner info is read from owner so make sure it's updated
+    if (page == UserDlg::GeneralPage)
+      savePageGeneral(*owner);
+  }
+
+    if (status == Licq::User::OfflineStatus)
+    {
     InformUser(dynamic_cast<UserDlg*>(parent()),
         tr("You need to be connected to the\nICQ Network to change your settings."));
     return 0;
   }
 
-  unsigned short i, cc, occupation;
-  unsigned long icqEventTag;
+  unsigned short cc, i, occupation;
+  unsigned long icqEventTag = 0;
 
   switch (page)
   {
     case UserDlg::GeneralPage:
-    i = cmbCountry->currentIndex();
-    cc = GetCountryByIndex(i)->nCode;
-    gLicqDaemon->icqSetEmailInfo(
-        codec->fromUnicode(nfoEmailSecondary->text()),
-        codec->fromUnicode(nfoEmailOld->text()));
-    icqEventTag = gLicqDaemon->ProtoSetGeneralInfo(
-          myPpid,
-        nfoAlias->text().toLocal8Bit(),
-        codec->fromUnicode(nfoFirstName->text()),
-        codec->fromUnicode(nfoLastName->text()),
-        codec->fromUnicode(nfoEmailPrimary->text()),
-        codec->fromUnicode(nfoCity->text()),
-        codec->fromUnicode(nfoState->text()),
-        codec->fromUnicode(nfoPhone->text()),
-        codec->fromUnicode(nfoFax->text()),
-        codec->fromUnicode(nfoAddress->text()),
-        codec->fromUnicode(nfoCellular->text()),
-        codec->fromUnicode(nfoZipCode->text()),
-        cc,
-        false);
-  break;
+      if (myPpid == LICQ_PPID)
+        gLicqDaemon->icqSetEmailInfo(
+            codec->fromUnicode(nfoEmailSecondary->text()).data(),
+            codec->fromUnicode(nfoEmailOld->text()).data());
+
+      icqEventTag = gProtocolManager.updateOwnerInfo(ownerId);
+      break;
 
     case UserDlg::MorePage:
     icqEventTag = gLicqDaemon->icqSetMoreInfo(
         nfoAge->text().toUShort(),
         cmbGender->currentIndex(),
-        nfoHomepage->text().toLocal8Bit(),
+          nfoHomepage->text().toLocal8Bit().data(),
         spnBirthYear->value(),
         spnBirthMonth->value(),
         spnBirthDay->value(),
@@ -1613,39 +1614,41 @@ unsigned long UserPages::Info::send(UserDlg::UserPage page)
     i = cmbCompanyOccupation->currentIndex();
     occupation = GetOccupationByIndex(i)->nCode;
     icqEventTag = gLicqDaemon->icqSetWorkInfo(
-        codec->fromUnicode(nfoCompanyCity->text()),
-        codec->fromUnicode(nfoCompanyState->text()),
-        codec->fromUnicode(nfoCompanyPhone->text()),
-        codec->fromUnicode(nfoCompanyFax->text()),
-        codec->fromUnicode(nfoCompanyAddress->text()),
-        codec->fromUnicode(nfoCompanyZip->text()),
+          codec->fromUnicode(nfoCompanyCity->text()).data(),
+          codec->fromUnicode(nfoCompanyState->text()).data(),
+          codec->fromUnicode(nfoCompanyPhone->text()).data(),
+          codec->fromUnicode(nfoCompanyFax->text()).data(),
+          codec->fromUnicode(nfoCompanyAddress->text()).data(),
+          codec->fromUnicode(nfoCompanyZip->text()).data(),
         cc,
-        codec->fromUnicode(nfoCompanyName->text()),
-        codec->fromUnicode(nfoCompanyDepartment->text()),
-        codec->fromUnicode(nfoCompanyPosition->text()),
+          codec->fromUnicode(nfoCompanyName->text()).data(),
+          codec->fromUnicode(nfoCompanyDepartment->text()).data(),
+          codec->fromUnicode(nfoCompanyPosition->text()).data(),
         occupation,
-        nfoCompanyHomepage->text().toLocal8Bit());
+          nfoCompanyHomepage->text().toLocal8Bit().data());
   break;
 
     case UserDlg::AboutPage:
     icqEventTag = gLicqDaemon->icqSetAbout(
-        codec->fromUnicode(mlvAbout->toPlainText()));
+          codec->fromUnicode(mlvAbout->toPlainText()).data());
     break;
 
     case UserDlg::PhonePage:
     {
-      ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_W);
-      savePagePhoneBook(o);
-      gUserManager.DropOwner(o);
+      {
+        Licq::OwnerWriteGuard o(myPpid);
+        savePagePhoneBook(*o);
+      }
       gLicqDaemon->icqUpdatePhoneBookTimestamp();
       icqEventTag = 0;
       break;
     }
     case UserDlg::PicturePage:
     {
-      ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_W);
-      savePagePicture(o);
-      gUserManager.DropOwner(o);
+      {
+        Licq::OwnerWriteGuard o(myPpid);
+        savePagePicture(*o);
+      }
       gLicqDaemon->icqUpdatePictureTimestamp();
       icqEventTag = 0;
       break;
@@ -1660,8 +1663,8 @@ unsigned long UserPages::Info::send(UserDlg::UserPage page)
 void UserPages::Info::addPhone()
 {
     EditPhoneDlg* epd = new EditPhoneDlg(dynamic_cast<UserDlg*>(parent()));
-    connect(epd, SIGNAL(updated(struct PhoneBookEntry, int)),
-            SLOT(phoneBookUpdated(struct PhoneBookEntry, int)));
+  connect(epd, SIGNAL(updated(struct Licq::PhoneBookEntry, int)),
+      SLOT(phoneBookUpdated(struct Licq::PhoneBookEntry, int)));
     epd->show();
 }
 
@@ -1687,11 +1690,11 @@ void UserPages::Info::browsePicture()
         break;
 
       QFile file(Filename);
-      if (file.size() <= MAX_PICTURE_SIZE)
+      if (file.size() <= Licq::MAX_PICTURE_SIZE)
         break;
 
       QString msg = Filename + tr(" is over %1 bytes.\nSelect another picture?")
-                                 .arg(MAX_PICTURE_SIZE);
+        .arg(Licq::MAX_PICTURE_SIZE);
     if (!QueryYesNo(dynamic_cast<UserDlg*>(parent()), msg))
     {
         Filename = QString::null;
@@ -1708,8 +1711,8 @@ void UserPages::Info::browsePicture()
     QString s = tr("Not Available");
     if (!p.load(Filename))
     {
-      gLog.Warn("%sFailed to load user picture, did you forget to compile GIF"
-                " support?\n", L_WARNxSTR);
+      Licq::gLog.warning("Failed to load user picture, did you forget to compile GIF"
+                      " support?");
       s = tr("Failed to Load");
     }
 
@@ -1719,32 +1722,24 @@ void UserPages::Info::browsePicture()
       lblPicture->setPixmap(p);
 }
 
-void UserPages::Info::userUpdated(const LicqUser* user, unsigned long subSignal)
+void UserPages::Info::userUpdated(const Licq::User* user, unsigned long subSignal)
 {
   switch (subSignal)
   {
-  case USER_GENERAL:
-  case USER_BASIC:
-  case USER_EXT:
+    case Licq::PluginSignal::UserInfo:
+      if (myPpid == LICQ_PPID)
+      {
+        loadPageMore(user);
+        loadPageMore2(user);
+        loadPageWork(user);
+        loadPageAbout(user);
+        loadPagePhoneBook(user);
+      }
+      // fall through
+    case Licq::PluginSignal::UserBasic:
       loadPageGeneral(user);
-    break;
-  case USER_MORE:
-  case USER_HP:
-      loadPageMore(user);
-    break;
-  case USER_MORE2:
-      loadPageMore2(user);
-    break;
-  case USER_WORK:
-      loadPageWork(user);
-    break;
-  case USER_ABOUT:
-      loadPageAbout(user);
-    break;
-  case USER_PHONExBOOK:
-      loadPagePhoneBook(user);
-    break;
-  case USER_PICTURE:
+      break;
+    case Licq::PluginSignal::UserPicture:
       loadPagePicture(user);
     break;
   }

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 
 #include "userviewbase.h"
 
-class LicqUser;
+#include <licq/userid.h>
 
 namespace LicqQtGui
 {
@@ -46,7 +46,7 @@ public:
    * @param userId The daemon contact to create floaty for
    * @param parent Parent object
    */
-  FloatyView(ContactListModel* contactList, const UserId& userId, QWidget* parent = 0);
+  FloatyView(ContactListModel* contactList, const Licq::UserId& userId, QWidget* parent = 0);
 
   /**
    * Destructor
@@ -56,7 +56,7 @@ public:
   /**
    * Return the user id
    */
-  const UserId& userId() const { return myUserId; }
+  const Licq::UserId& userId() const { return myUserId; }
 
   /**
    * Find the floaty for a user
@@ -64,7 +64,7 @@ public:
    * @param userId User id
    * @return The floaty for the user or null if no floaty exists for the user
    */
-  static FloatyView* findFloaty(const UserId& userId);
+  static FloatyView* findFloaty(const Licq::UserId& userId);
 
   // List of existing floaties
   static UserFloatyList floaties;
@@ -77,7 +77,7 @@ private:
    */
   virtual void mouseMoveEvent(QMouseEvent* event);
 
-  const UserId& myUserId;
+  Licq::UserId myUserId;
 
 private slots:
   /**

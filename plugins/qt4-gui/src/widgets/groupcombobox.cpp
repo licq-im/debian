@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,36 +20,39 @@
 
 #include "groupcombobox.h"
 
-#include <licq_user.h>
+#include <boost/foreach.hpp>
 
-#include "helpers/licqstrings.h"
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/usermanager.h>
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::GroupComboBox */
 
-GroupComboBox::GroupComboBox(bool withAllUsers, QWidget* parent)
+GroupComboBox::GroupComboBox(bool groupPos, QWidget* parent)
   : QComboBox(parent)
 {
-  // Assumes that GROUP_ALL_USERS always equals 0
-  if (withAllUsers)
-    addItem(LicqStrings::getSystemGroupName(GROUP_ALL_USERS),
-        QString::number(GROUP_ALL_USERS));
+  if (groupPos)
+    addItem(tr("First"), -1);
 
-  FOR_EACH_GROUP_START_SORTED(LOCK_R)
+  Licq::GroupListGuard groupList(true);
+  BOOST_FOREACH(const Licq::Group* group, **groupList)
   {
-    addItem(pGroup->name().c_str(), QString::number(pGroup->id()));
+    Licq::GroupReadGuard pGroup(group);
+    QString text(pGroup->name().c_str());
+    if (groupPos)
+      text.prepend(tr("After "));
+    addItem(text, pGroup->id());
   }
-  FOR_EACH_GROUP_END
 }
 
 int GroupComboBox::currentGroupId() const
 {
-  return itemData(currentIndex()).toString().toUShort();
+  return itemData(currentIndex()).toInt();
 }
 
 bool GroupComboBox::setCurrentGroupId(int groupId)
 {
-  int index = findData(QString::number(groupId));
+  int index = findData(groupId);
 
   if (index == -1)
     return false;

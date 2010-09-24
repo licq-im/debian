@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,14 +26,11 @@
 #include <QTimer>
 #include <QVariant>
 
-#include <licq_types.h>
-
 #include "contactitem.h"
 #include "contactlist.h"
 
 class QImage;
 
-class LicqUser;
 
 namespace LicqQtGui
 {
@@ -55,7 +52,7 @@ public:
    * @param licqUser Licq user that this object will represent
    * @param parent Object to use as parent for those objects that needs it
    */
-  ContactUserData(const LicqUser* licqUser, QObject* parent);
+  ContactUserData(const Licq::User* licqUser, QObject* parent);
 
   /**
    * Destructor, will remove the user from all groups
@@ -71,13 +68,6 @@ public:
   void update(unsigned long subSignal, int argument);
 
   /**
-   * Update all user information from daemon
-   *
-   * @param licqUser Licq user to read information from
-   */
-  void updateAll(const LicqUser* licqUser);
-
-  /**
    * Update all data related to the gui configuration
    */
   void configUpdated();
@@ -85,14 +75,20 @@ public:
   /**
    * Get licq user id
    */
-  const UserId& userId() const
+  const Licq::UserId& userId() const
   { return myUserId; }
 
   /**
    * Get user status
    */
-  unsigned short status() const
+  unsigned status() const
   { return myStatus; }
+
+  /**
+   * Get extended status bits
+   */
+  unsigned extendedStatus() const
+  { return myExtendedStatus; }
 
   /**
    * Get current sub group
@@ -164,9 +160,31 @@ signals:
   /**
    * Signal emitted when the user group memberships (may) have changed
    */
-  void updateUserGroups(ContactUserData* user, const LicqUser* licqUser);
+  void updateUserGroups(ContactUserData* user, const Licq::User* licqUser);
 
 private:
+  /**
+   * Update user information from daemon
+   *
+   * @param licqUser Licq user to read information from
+   * @param subSignal Information to update or 0 to update everything
+   */
+  void update(const Licq::User* licqUser, unsigned long subSignal);
+
+  /**
+   * Update user picture
+   *
+   * @param u User to get picture from
+   */
+  void updatePicture(const Licq::User* u);
+
+  /**
+   * Update user events
+   *
+   * @param u User to get events from
+   */
+  void updateEvents(const Licq::User* u);
+
   /**
    * Update extended status bits
    */
@@ -188,7 +206,7 @@ private:
    * @param licqUser Licq user to read information from
    * @return True if any data was actually changed
    */
-  bool updateText(const LicqUser* licqUser);
+  bool updateText(const Licq::User* licqUser);
 
   /**
    * Update visibility status
@@ -222,11 +240,10 @@ private slots:
   void animate();
 
 private:
-  UserId myUserId;
+  Licq::UserId myUserId;
   QString myAccountId;
   unsigned long myPpid;
-  unsigned short myStatus;
-  unsigned long myStatusFull;
+  unsigned myStatus;
   int myEvents;
   bool myStatusInvisible, myStatusTyping, myCustomAR, mySecure, myFlash;
   bool myBirthday, myPhone, myCellular, myGPGKey, myGPGKeyEnabled;

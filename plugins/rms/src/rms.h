@@ -1,21 +1,38 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2000-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 #ifndef LICQRMS_H
 #define LICQRMS_H
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #include <list>
 
-#include <licq_socket.h>
-#include <licq_types.h>
+#include <licq/logging/pluginlogsink.h>
+#include <licq/socket.h>
+#include <licq/socketmanager.h>
+#include <licq/userid.h>
 
-class CICQDaemon;
-class TCPSocket;
-class CUserEvent;
-class LicqSignal;
-class LicqEvent;
-class CLogService_Plugin;
+namespace Licq
+{
+class Event;
+class PluginSignal;
+class UserEvent;
+}
 
 const unsigned short MAX_LINE_LENGTH = 1024 * 1;
 const unsigned short MAX_TEXT_LENGTH = 1024 * 8;
@@ -28,7 +45,7 @@ class CLicqRMS
 public:
   CLicqRMS(bool, unsigned short);
   ~CLicqRMS();
-  int Run(CICQDaemon *);
+  int Run();
   void Shutdown();
   bool Enabled() { return m_bEnabled; }
 
@@ -38,17 +55,16 @@ protected:
 
   unsigned short m_nPort;
 
-  TCPSocket *server;
+  Licq::TCPSocket* server;
   ClientList clients;
-  CLogService_Plugin *log;
+  Licq::PluginLogSink::Ptr myLogSink;
 
 public:
   void ProcessPipe();
-  void ProcessSignal(LicqSignal* s);
-  void ProcessEvent(LicqEvent* e);
+  void ProcessSignal(Licq::PluginSignal* s);
+  void ProcessEvent(Licq::Event* e);
   void ProcessServer();
   void ProcessLog();
-  void AddEventTag(const UserId& userId, unsigned long eventTag);
 
 friend class CRMSClient;
 
@@ -58,12 +74,12 @@ friend class CRMSClient;
 class CRMSClient
 {
 public:
-  CRMSClient(TCPSocket *);
+  CRMSClient(Licq::TCPSocket*);
   ~CRMSClient();
 
   int Activity();
 
-  static CSocketManager sockman;
+  static Licq::SocketManager sockman;
 
   int Process_QUIT();
   int Process_TERM();
@@ -85,7 +101,7 @@ public:
   int Process_NOTIFY();
 
 protected:
-  TCPSocket sock;
+  Licq::TCPSocket sock;
   FILE *fs;
   TagList tags;
   unsigned short m_nState;
@@ -94,24 +110,22 @@ protected:
   unsigned short data_line_pos;
   unsigned long m_nCheckUin;
   char *m_szCheckId;
-  unsigned long m_nLogTypes;
+  unsigned int myLogLevelsBitmask;
   bool m_bNotify;
 
   unsigned long m_nUin;
-  UserId myUserId;
+  Licq::UserId myUserId;
   char m_szText[MAX_TEXT_LENGTH + 1];
   char m_szLine[MAX_LINE_LENGTH + 1];
   unsigned short m_nTextPos;
-  UserId myEventUserId;
 
   int StateMachine();
   int ProcessCommand();
-  bool ProcessEvent(LicqEvent* e);
+  bool ProcessEvent(Licq::Event* e);
   bool AddLineToText();
   unsigned long GetProtocol(const char *);
   void ParseUser(const char *);
-  int ChangeStatus(unsigned long, unsigned long, const char *);
-  void AddEventTag(const UserId& userId, unsigned long);
+  int changeStatus(unsigned long, const char *);
 
   int Process_MESSAGE_text();
   int Process_URL_url();
@@ -126,7 +140,7 @@ protected:
    * @param e User event
    * @param alias Alias of sender
    */
-  void printUserEvent(const CUserEvent* e, const std::string& alias);
+  void printUserEvent(const Licq::UserEvent* e, const std::string& alias);
 
 friend class CLicqRMS;
 };

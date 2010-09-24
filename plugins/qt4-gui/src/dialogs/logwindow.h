@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 
 #include <QDialog>
 
-#include <licq_log.h>
+#include <licq/logging/pluginlogsink.h>
 
 class QShowEvent;
 class QSocketNotifier;
@@ -31,16 +31,20 @@ namespace LicqQtGui
 {
 class MLEdit;
 
-class LogWindow : public QDialog, public CPluginLog
+class LogWindow : public QDialog
 {
   Q_OBJECT
 
 public:
   LogWindow(QWidget* parent = 0);
+  ~LogWindow();
+
+  Licq::PluginLogSink::Ptr pluginLogSink() { return myLogSink; }
 
 private:
   MLEdit* outputBox;
   QSocketNotifier* sn;
+  Licq::PluginLogSink::Ptr myLogSink;
 
 private slots:
   void log(int fd);

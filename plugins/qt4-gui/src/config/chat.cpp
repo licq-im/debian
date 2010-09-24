@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #include <QApplication>
 #include <QDesktopWidget>
 
-#include <licq_file.h>
+#include <licq/inifile.h>
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Config::Chat */
@@ -45,148 +45,139 @@ Config::Chat::Chat(QObject* parent)
   // Empty
 }
 
-void Config::Chat::loadConfiguration(CIniFile& iniFile)
+void Config::Chat::loadConfiguration(Licq::IniFile& iniFile)
 {
-  char szTemp[255];
+  std::string s;
+#define GET_QSTRING(param, var, def) \
+    iniFile.get(param, s, def); \
+    var = QString::fromLatin1(s.c_str());
 
-  iniFile.SetSection("appearance");
-  iniFile.ReadBool("ManualNewUser", myManualNewUser, false);
-  iniFile.ReadBool("SendFromClipboard", mySendFromClipboard, true);
-  iniFile.ReadBool("MsgChatView", myMsgChatView, true );
-  iniFile.ReadBool("TabbedChatting", myTabbedChatting, true);
-  iniFile.ReadBool("ShowHistory", myShowHistory, true);
-  iniFile.ReadBool("ShowNotices", myShowNotices, true);
-  iniFile.ReadBool("AutoPosReplyWin", myAutoPosReplyWin, true);
-  iniFile.ReadBool("AutoSendThroughServer", myAutoSendThroughServer, false);
-  iniFile.ReadBool("ShowChatDlgButtons", myShowDlgButtons, true);
-  iniFile.ReadNum("ChatMessageStyle", myChatMsgStyle, 0);
-  iniFile.ReadBool("ChatVerticalSpacing", myChatVertSpacing, true);
-  iniFile.ReadBool("ChatAppendLinebreak", myChatAppendLineBreak, false);
-  iniFile.ReadBool("FlashTaskbar", myFlashTaskbar, true);
-  iniFile.ReadBool("MsgWinSticky", myMsgWinSticky, false);
-  iniFile.ReadBool("SingleLineChatMode", mySingleLineChatMode, false);
-  iniFile.ReadBool("CheckSpellingEnabled", myCheckSpelling, false);
+  iniFile.setSection("appearance");
+  iniFile.get("ManualNewUser", myManualNewUser, false);
+  iniFile.get("SendFromClipboard", mySendFromClipboard, true);
+  iniFile.get("MsgChatView", myMsgChatView, true );
+  iniFile.get("TabbedChatting", myTabbedChatting, true);
+  iniFile.get("ShowHistory", myShowHistory, true);
+  iniFile.get("ShowNotices", myShowNotices, true);
+  iniFile.get("AutoPosReplyWin", myAutoPosReplyWin, true);
+  iniFile.get("AutoSendThroughServer", myAutoSendThroughServer, false);
+  iniFile.get("ShowChatDlgButtons", myShowDlgButtons, true);
+  iniFile.get("ChatMessageStyle", myChatMsgStyle, 0);
+  iniFile.get("ChatVerticalSpacing", myChatVertSpacing, true);
+  iniFile.get("ChatAppendLinebreak", myChatAppendLineBreak, false);
+  iniFile.get("FlashTaskbar", myFlashTaskbar, true);
+  iniFile.get("MsgWinSticky", myMsgWinSticky, false);
+  iniFile.get("SingleLineChatMode", mySingleLineChatMode, false);
+  iniFile.get("CheckSpellingEnabled", myCheckSpelling, false);
 #ifdef HAVE_HUNSPELL
-  iniFile.ReadStr("SpellingDictionary", szTemp, "");
-  mySpellingDictionary = QString::fromLatin1(szTemp);
+  GET_QSTRING("SpellingDictionary", mySpellingDictionary, "");
 #endif
-  iniFile.ReadBool("ShowUserPic", myShowUserPic, false);
-  iniFile.ReadBool("ShowUserPicHidden", myShowUserPicHidden, false);
-  iniFile.ReadBool("NoSoundInActiveChat", myNoSoundInActiveChat, false);
-  iniFile.ReadStr("DateFormat", szTemp, "hh:mm:ss");
-  myChatDateFormat = QString::fromLatin1(szTemp);
-  iniFile.ReadNum("HistoryMessageStyle", myHistMsgStyle, 0);
-  iniFile.ReadBool("HistoryVerticalSpacing", myHistVertSpacing, true);
-  iniFile.ReadBool("HistoryReverse", myReverseHistory, false);
-  iniFile.ReadStr("HistoryDateFormat", szTemp, "hh:mm:ss");
-  myHistDateFormat = QString::fromLatin1(szTemp);
+  iniFile.get("ShowUserPic", myShowUserPic, false);
+  iniFile.get("ShowUserPicHidden", myShowUserPicHidden, false);
+  iniFile.get("NoSoundInActiveChat", myNoSoundInActiveChat, false);
+  GET_QSTRING("DateFormat", myChatDateFormat, "hh:mm:ss");
+  iniFile.get("HistoryMessageStyle", myHistMsgStyle, 0);
+  iniFile.get("HistoryVerticalSpacing", myHistVertSpacing, true);
+  iniFile.get("HistoryReverse", myReverseHistory, false);
+  GET_QSTRING("HistoryDateFormat", myHistDateFormat, "hh:mm:ss");
 
-  iniFile.ReadStr("ReceiveMessageColor", szTemp, "red");
-  myRecvColor = QString::fromLatin1(szTemp);
-  iniFile.ReadStr("ReceiveHistoryColor", szTemp, "lightpink");
-  myRecvHistoryColor = QString::fromLatin1(szTemp);
-  iniFile.ReadStr("SentMessageColor", szTemp, "blue");
-  mySentColor = QString::fromLatin1(szTemp);
-  iniFile.ReadStr("SentHistoryColor", szTemp, "lightblue");
-  mySentHistoryColor = QString::fromLatin1(szTemp);
-  iniFile.ReadStr("NoticeColor", szTemp, "darkgreen");
-  myNoticeColor = QString::fromLatin1(szTemp);
-  iniFile.ReadStr("TabOnTypingColor", szTemp, "yellow");
-  myTabTypingColor = QString::fromLatin1(szTemp);
-  iniFile.ReadStr("ChatBackground", szTemp, "white");
-  myChatBackColor = QString::fromLatin1(szTemp);
+  GET_QSTRING("ReceiveMessageColor", myRecvColor, "red");
+  GET_QSTRING("ReceiveHistoryColor", myRecvHistoryColor, "lightpink");
+  GET_QSTRING("SentMessageColor", mySentColor, "blue");
+  GET_QSTRING("SentHistoryColor", mySentHistoryColor, "lightblue");
+  GET_QSTRING("NoticeColor", myNoticeColor, "darkgreen");
+  GET_QSTRING("TabOnTypingColor", myTabTypingColor, "yellow");
+  GET_QSTRING("ChatBackground", myChatBackColor, "white");
 
-  iniFile.SetSection("functions");
-  iniFile.ReadBool("AutoClose", myAutoClose, true);
-  iniFile.ReadNum("AutoPopup", myAutoPopup, 0);
-  iniFile.ReadBool("AutoFocus", myAutoFocus, true);
-  iniFile.ReadBool("PopupAutoResponse", myPopupAutoResponse, true);
+  iniFile.setSection("functions");
+  iniFile.get("AutoClose", myAutoClose, true);
+  iniFile.get("AutoPopup", myAutoPopup, 0);
+  iniFile.get("AutoPopupUrgentOnly", myAutoPopupUrgentOnly, false);
+  iniFile.get("AutoFocus", myAutoFocus, true);
+  iniFile.get("PopupAutoResponse", myPopupAutoResponse, true);
 
-  iniFile.SetSection("locale");
-  iniFile.ReadBool("ShowAllEncodings", myShowAllEncodings, false);
+  iniFile.setSection("locale");
+  iniFile.get("ShowAllEncodings", myShowAllEncodings, false);
 
-  iniFile.SetSection("extensions");
-  iniFile.ReadBool("UseCustomUrlBrowser", myUseCustomUrlBrowser, false);
-
-  iniFile.SetSection("geometry");
-  short xPos, yPos, wVal, hVal;
-  iniFile.ReadNum("EventDialog.X", xPos, 0);
-  iniFile.ReadNum("EventDialog.Y", yPos, 0);
-  iniFile.ReadNum("EventDialog.W", wVal, 0);
-  iniFile.ReadNum("EventDialog.H", hVal, 0);
+  iniFile.setSection("geometry");
+  int xPos, yPos, wVal, hVal;
+  iniFile.get("EventDialog.X", xPos, 0);
+  iniFile.get("EventDialog.Y", yPos, 0);
+  iniFile.get("EventDialog.W", wVal, 0);
+  iniFile.get("EventDialog.H", hVal, 0);
   if (xPos > QApplication::desktop()->width() - 16)
     xPos = 0;
   if (yPos > QApplication::desktop()->height() - 16)
     yPos = 0;
   myTabDialogRect.setRect(xPos, yPos, wVal, hVal);
-  iniFile.ReadNum("ViewEventDialog.W", wVal, -1);
-  iniFile.ReadNum("ViewEventDialog.H", hVal, -1);
+  iniFile.get("ViewEventDialog.W", wVal, -1);
+  iniFile.get("ViewEventDialog.H", hVal, -1);
   myViewDialogSize = QSize(wVal, hVal);
-  iniFile.ReadNum("SendEventDialog.W", wVal, -1);
-  iniFile.ReadNum("SendEventDialog.H", hVal, -1);
+  iniFile.get("SendEventDialog.W", wVal, -1);
+  iniFile.get("SendEventDialog.H", hVal, -1);
   mySendDialogSize = QSize(wVal, hVal);
+
+#undef GET_QSTRING
 }
 
-void Config::Chat::saveConfiguration(CIniFile& iniFile) const
+void Config::Chat::saveConfiguration(Licq::IniFile& iniFile) const
 {
-  iniFile.SetSection("appearance");
-  iniFile.WriteBool("ManualNewUser", myManualNewUser);
-  iniFile.WriteBool("SendFromClipboard", mySendFromClipboard);
-  iniFile.WriteBool("MsgChatView", myMsgChatView);
-  iniFile.WriteBool("TabbedChatting", myTabbedChatting);
-  iniFile.WriteBool("ShowHistory", myShowHistory);
-  iniFile.WriteBool("ShowNotices", myShowNotices);
-  iniFile.WriteBool("AutoPosReplyWin", myAutoPosReplyWin);
-  iniFile.WriteBool("AutoSendThroughServer", myAutoSendThroughServer);
-  iniFile.WriteBool("ShowChatDlgButtons", myShowDlgButtons);
-  iniFile.WriteBool("FlashTaskbar", myFlashTaskbar);
-  iniFile.WriteBool("MsgWinSticky", myMsgWinSticky);
-  iniFile.WriteBool("SingleLineChatMode", mySingleLineChatMode);
-  iniFile.WriteBool("CheckSpellingEnabled", myCheckSpelling);
+  iniFile.setSection("appearance");
+  iniFile.set("ManualNewUser", myManualNewUser);
+  iniFile.set("SendFromClipboard", mySendFromClipboard);
+  iniFile.set("MsgChatView", myMsgChatView);
+  iniFile.set("TabbedChatting", myTabbedChatting);
+  iniFile.set("ShowHistory", myShowHistory);
+  iniFile.set("ShowNotices", myShowNotices);
+  iniFile.set("AutoPosReplyWin", myAutoPosReplyWin);
+  iniFile.set("AutoSendThroughServer", myAutoSendThroughServer);
+  iniFile.set("ShowChatDlgButtons", myShowDlgButtons);
+  iniFile.set("FlashTaskbar", myFlashTaskbar);
+  iniFile.set("MsgWinSticky", myMsgWinSticky);
+  iniFile.set("SingleLineChatMode", mySingleLineChatMode);
+  iniFile.set("CheckSpellingEnabled", myCheckSpelling);
 #ifdef HAVE_HUNSPELL
-  iniFile.WriteStr("SpellingDictionary", mySpellingDictionary.toLatin1());
+  iniFile.set("SpellingDictionary", mySpellingDictionary.toLatin1());
 #endif
-  iniFile.WriteBool("ShowUserPic", myShowUserPic);
-  iniFile.WriteBool("ShowUserPicHidden", myShowUserPicHidden);
-  iniFile.WriteBool("NoSoundInActiveChat", myNoSoundInActiveChat);
+  iniFile.set("ShowUserPic", myShowUserPic);
+  iniFile.set("ShowUserPicHidden", myShowUserPicHidden);
+  iniFile.set("NoSoundInActiveChat", myNoSoundInActiveChat);
 
-  iniFile.WriteNum("ChatMessageStyle", myChatMsgStyle);
-  iniFile.WriteBool("ChatVerticalSpacing", myChatVertSpacing);
-  iniFile.WriteBool("ChatAppendLinebreak", myChatAppendLineBreak);
-  iniFile.WriteStr("ReceiveMessageColor", myRecvColor.toLatin1());
-  iniFile.WriteStr("ReceiveHistoryColor", myRecvHistoryColor.toLatin1());
-  iniFile.WriteStr("SentMessageColor", mySentColor.toLatin1());
-  iniFile.WriteStr("SentHistoryColor", mySentHistoryColor.toLatin1());
-  iniFile.WriteStr("NoticeColor", myNoticeColor.toLatin1());
-  iniFile.WriteStr("TabOnTypingColor", myTabTypingColor.toLatin1());
-  iniFile.WriteStr("ChatBackground", myChatBackColor.toLatin1());
-  iniFile.WriteStr("DateFormat", myChatDateFormat.toLatin1());
-  iniFile.WriteNum("HistoryMessageStyle", myHistMsgStyle);
-  iniFile.WriteBool("HistoryVerticalSpacing", myHistVertSpacing);
-  iniFile.WriteBool("HistoryReverse", myReverseHistory);
-  iniFile.WriteStr("HistoryDateFormat", myHistDateFormat.toLatin1());
+  iniFile.set("ChatMessageStyle", myChatMsgStyle);
+  iniFile.set("ChatVerticalSpacing", myChatVertSpacing);
+  iniFile.set("ChatAppendLinebreak", myChatAppendLineBreak);
+  iniFile.set("ReceiveMessageColor", myRecvColor.toLatin1());
+  iniFile.set("ReceiveHistoryColor", myRecvHistoryColor.toLatin1());
+  iniFile.set("SentMessageColor", mySentColor.toLatin1());
+  iniFile.set("SentHistoryColor", mySentHistoryColor.toLatin1());
+  iniFile.set("NoticeColor", myNoticeColor.toLatin1());
+  iniFile.set("TabOnTypingColor", myTabTypingColor.toLatin1());
+  iniFile.set("ChatBackground", myChatBackColor.toLatin1());
+  iniFile.set("DateFormat", myChatDateFormat.toLatin1());
+  iniFile.set("HistoryMessageStyle", myHistMsgStyle);
+  iniFile.set("HistoryVerticalSpacing", myHistVertSpacing);
+  iniFile.set("HistoryReverse", myReverseHistory);
+  iniFile.set("HistoryDateFormat", myHistDateFormat.toLatin1());
 
-  iniFile.SetSection("functions");
-  iniFile.WriteBool("AutoClose", myAutoClose);
-  iniFile.WriteNum("AutoPopup", myAutoPopup);
-  iniFile.WriteBool("AutoFocus", myAutoFocus);
-  iniFile.WriteBool("PopupAutoResponse", myPopupAutoResponse);
+  iniFile.setSection("functions");
+  iniFile.set("AutoClose", myAutoClose);
+  iniFile.set("AutoPopup", myAutoPopup);
+  iniFile.set("AutoPopupUrgentOnly", myAutoPopupUrgentOnly);
+  iniFile.set("AutoFocus", myAutoFocus);
+  iniFile.set("PopupAutoResponse", myPopupAutoResponse);
 
-  iniFile.SetSection("extensions");
-  iniFile.WriteBool("UseCustomUrlBrowser", myUseCustomUrlBrowser);
+  iniFile.setSection("locale");
+  iniFile.set("ShowAllEncodings", myShowAllEncodings);
 
-  iniFile.SetSection("locale");
-  iniFile.WriteBool("ShowAllEncodings", myShowAllEncodings);
-
-  iniFile.SetSection("geometry");
-  iniFile.WriteNum("EventDialog.X", static_cast<short>(myTabDialogRect.x()));
-  iniFile.WriteNum("EventDialog.Y", static_cast<short>(myTabDialogRect.y()));
-  iniFile.WriteNum("EventDialog.W", static_cast<short>(myTabDialogRect.width()));
-  iniFile.WriteNum("EventDialog.H", static_cast<short>(myTabDialogRect.height()));
-  iniFile.WriteNum("ViewEventDialog.W", static_cast<short>(myViewDialogSize.width()));
-  iniFile.WriteNum("ViewEventDialog.H", static_cast<short>(myViewDialogSize.height()));
-  iniFile.WriteNum("SendEventDialog.W", static_cast<short>(mySendDialogSize.width()));
-  iniFile.WriteNum("SendEventDialog.H", static_cast<short>(mySendDialogSize.height()));
+  iniFile.setSection("geometry");
+  iniFile.set("EventDialog.X", myTabDialogRect.x());
+  iniFile.set("EventDialog.Y", myTabDialogRect.y());
+  iniFile.set("EventDialog.W", myTabDialogRect.width());
+  iniFile.set("EventDialog.H", myTabDialogRect.height());
+  iniFile.set("ViewEventDialog.W", myViewDialogSize.width());
+  iniFile.set("ViewEventDialog.H", myViewDialogSize.height());
+  iniFile.set("SendEventDialog.W", mySendDialogSize.width());
+  iniFile.set("SendEventDialog.H", mySendDialogSize.height());
 }
 
 void Config::Chat::blockUpdates(bool block)
@@ -211,12 +202,20 @@ void Config::Chat::setAutoClose(bool autoClose)
   myAutoClose = autoClose;
 }
 
-void Config::Chat::setAutoPopup(unsigned short autoPopup)
+void Config::Chat::setAutoPopup(int autoPopup)
 {
   if (autoPopup == myAutoPopup)
     return;
 
   myAutoPopup = autoPopup;
+}
+
+void Config::Chat::setAutoPopupUrgentOnly(bool autoPopupUrgentOnly)
+{
+  if (autoPopupUrgentOnly == myAutoPopupUrgentOnly)
+    return;
+
+  myAutoPopupUrgentOnly = autoPopupUrgentOnly;
 }
 
 void Config::Chat::setAutoFocus(bool autoFocus)
@@ -405,14 +404,6 @@ void Config::Chat::setReverseHistory(bool reverseHistory)
   myReverseHistory = reverseHistory;
 }
 
-void Config::Chat::setUseCustomUrlBrowser(bool customUrlBrowser)
-{
-  if (customUrlBrowser == myUseCustomUrlBrowser)
-    return;
-
-  myUseCustomUrlBrowser = customUrlBrowser;
-}
-
 void Config::Chat::setNoSoundInActiveChat(bool noSoundInActiveChat)
 {
   if (noSoundInActiveChat == myNoSoundInActiveChat)
@@ -421,7 +412,7 @@ void Config::Chat::setNoSoundInActiveChat(bool noSoundInActiveChat)
   myNoSoundInActiveChat = noSoundInActiveChat;
 }
 
-void Config::Chat::setChatMsgStyle(unsigned short chatMsgStyle)
+void Config::Chat::setChatMsgStyle(int chatMsgStyle)
 {
   if (chatMsgStyle == myChatMsgStyle)
     return;
@@ -429,7 +420,7 @@ void Config::Chat::setChatMsgStyle(unsigned short chatMsgStyle)
   myChatMsgStyle = chatMsgStyle;
 }
 
-void Config::Chat::setHistMsgStyle(unsigned short histMsgStyle)
+void Config::Chat::setHistMsgStyle(int histMsgStyle)
 {
   if (histMsgStyle == myHistMsgStyle)
     return;

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,14 +25,19 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
+
 #include <QGridLayout>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QLabel>
 #include <QPushButton>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/icqdefines.h>
+#include <licq/userevents.h>
 
 #include "core/gui-defines.h"
 #include "core/messagebox.h"
@@ -47,7 +52,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ForwardDlg */
 
-ForwardDlg::ForwardDlg(CUserEvent* e, QWidget* p)
+ForwardDlg::ForwardDlg(Licq::UserEvent* e, QWidget* p)
   : QDialog(p, Qt::Window)
 {
   Support::setWidgetProps(this, "UserForwardDialog");
@@ -60,12 +65,12 @@ ForwardDlg::ForwardDlg(CUserEvent* e, QWidget* p)
   {
     case ICQ_CMDxSUB_MSG:
       t = tr("Message");
-      s1 = QString::fromLocal8Bit(dynamic_cast<CEventMsg*>(e)->Message());
+      s1 = QString::fromLocal8Bit(dynamic_cast<Licq::EventMsg*>(e)->message().c_str());
       break;
     case ICQ_CMDxSUB_URL:
       t = tr("URL");
-      s1 = QString::fromLocal8Bit(dynamic_cast<CEventUrl*>(e)->Url());
-      s2 = QString::fromLocal8Bit(dynamic_cast<CEventUrl*>(e)->Description());
+      s1 = QString::fromLocal8Bit(dynamic_cast<Licq::EventUrl*>(e)->url().c_str());
+      s2 = QString::fromLocal8Bit(dynamic_cast<Licq::EventUrl*>(e)->description().c_str());
       break;
     default:
       WarnUser(this, tr("Unable to forward this message type (%d).")
@@ -104,7 +109,7 @@ ForwardDlg::~ForwardDlg()
 
 void ForwardDlg::slot_ok()
 {
-  if (!USERID_ISVALID(myUserId))
+  if (!myUserId.isValid())
     return;
 
   switch(m_nEventType)
@@ -146,25 +151,30 @@ void ForwardDlg::dropEvent(QDropEvent* de)
     return;
 
   unsigned long nPPID = 0;
-  FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
+
   {
-    if (text.startsWith(PPIDSTRING((*_ppit)->PPID())))
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
     {
-      nPPID = (*_ppit)->PPID();
-      break;
+      unsigned long ppid = owner->ppid();
+      char ppidStr[5];
+      Licq::protocolId_toStr(ppidStr, ppid);
+      if (text.startsWith(ppidStr))
+      {
+        nPPID = ppid;
+        break;
+      }
     }
   }
-  FOR_EACH_PROTO_PLUGIN_END;
 
   if (nPPID == 0 || text.length() <= 4)
     return;
 
-  myUserId = LicqUser::makeUserId(text.toLatin1().data(), nPPID);
+  myUserId = Licq::UserId(text.toLatin1().data(), nPPID);
 
-  const LicqUser* u = gUserManager.fetchUser(myUserId);
-  if (u == NULL)
+  Licq::UserReadGuard u(myUserId);
+  if (!u.isLocked())
     return;
 
   edtUser->setText(QString::fromUtf8(u->GetAlias()) + " (" + u->accountId().c_str() + ")");
-  gUserManager.DropUser(u);
 }

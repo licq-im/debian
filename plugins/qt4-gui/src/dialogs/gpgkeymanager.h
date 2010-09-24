@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2009 Licq developers
+ * Copyright (C) 2005-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,9 +23,12 @@
 #include <QDialog>
 #include <QTreeWidget>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
-class LicqUser;
+namespace Licq
+{
+class User;
+}
 
 namespace LicqQtGui
 {
@@ -57,7 +60,7 @@ class KeyList : public QTreeWidget
 public:
   KeyList(QWidget* parent = 0);
 
-  void editUser(const UserId& userId);
+  void editUser(const Licq::UserId& userId);
   void resizeColumnsToContents();
 
 private:
@@ -72,17 +75,17 @@ class KeyListItem : public QObject, public QTreeWidgetItem
   Q_OBJECT
 
 public:
-  KeyListItem(QTreeWidget* parent, const LicqUser* u);
+  KeyListItem(QTreeWidget* parent, const Licq::User* u);
 
   void edit();
   void unsetKey();
 
-  const UserId& getUserId() const { return myUserId; }
+  const Licq::UserId& getUserId() const { return myUserId; }
 
 private:
-  UserId myUserId;
+  Licq::UserId myUserId;
   GPGKeySelect* keySelect;
-  void updateText(const LicqUser* u);
+  void updateText(const Licq::User* u);
 
 private slots:
   void slot_done();

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@
 #include <list>
 #include <string>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 class QActionGroup;
 class QHBoxLayout;
@@ -34,8 +34,10 @@ class QMenu;
 class QToolBar;
 class QVBoxLayout;
 
-class LicqUser;
-
+namespace Licq
+{
+class User;
+}
 
 namespace LicqQtGui
 {
@@ -53,7 +55,7 @@ public:
    * @param parent Parent widget
    * @param name Object name to set for widget
    */
-  UserEventCommon(const UserId& userId, QWidget* parent = 0, const char* name = 0);
+  UserEventCommon(const Licq::UserId& userId, QWidget* parent = 0, const char* name = 0);
   virtual ~UserEventCommon();
 
   /**
@@ -61,11 +63,11 @@ public:
    *
    * @return (First) user associated with with dialog
    */
-  const UserId& userId() const { return myUsers.front(); }
+  const Licq::UserId& userId() const { return myUsers.front(); }
   const QString& id() const { return myId; }
   unsigned long ppid() const { return myPpid; }
   unsigned long convoId() { return myConvoId; }
-  const std::list<UserId>& convoUsers() const { return myUsers; }
+  const std::list<Licq::UserId>& convoUsers() const { return myUsers; }
   void setConvoId(unsigned long n) { myConvoId = n; }
 
   /**
@@ -74,8 +76,8 @@ public:
    * @param userId Id of user to check
    * @return True if user is in conversation
    */
-  bool isUserInConvo(const UserId& userId) const;
-  void setTyping(unsigned short type);
+  bool isUserInConvo(const Licq::UserId& userId) const;
+  void setTyping(bool isTyping);
 
 public slots:
   /**
@@ -92,7 +94,7 @@ protected:
   unsigned long myPpid;
   unsigned long myConvoId;
   time_t myRemoteTimeOffset;
-  std::list<UserId> myUsers;
+  std::list<Licq::UserId> myUsers;
   unsigned long mySendFuncs;
 
   // ID of the higest event we've processed. Helps determine
@@ -124,7 +126,7 @@ protected:
   QTimer* myTypingTimer;
 
   void flashTaskbar();
-  void updateWidgetInfo(const LicqUser* u);
+  void updateWidgetInfo(const Licq::User* u);
   void pushToolTip(QAction* action, const QString& tooltip);
 
   /**
@@ -136,7 +138,7 @@ protected:
    * @param argument Signal specific argument
    * @param cid Conversation id
    */
-  virtual void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid) = 0;
+  virtual void userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid) = 0;
 
   /**
    * Overloaded to get events when this window/tab looses and gains focus
@@ -164,7 +166,7 @@ protected slots:
   void updateTyping();
   void showUserMenu();
   void showEncodingsMenu();
-  void updatedUser(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  void updatedUser(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
 signals:
   /**
@@ -172,7 +174,7 @@ signals:
    *
    * @param userId User for this dialog
    */
-  void finished(const UserId& userId);
+  void finished(const Licq::UserId& userId);
   void encodingChanged();
 };
 

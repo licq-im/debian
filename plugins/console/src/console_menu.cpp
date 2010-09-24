@@ -1,12 +1,42 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1999-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 #include "console.h"
 
+#include <boost/foreach.hpp>
 #include <cctype>
 #include <cstring>
 #include <string>
 
 #include "event_data.h"
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/icq.h>
+#include <licq/pluginmanager.h>
+#include <licq/protocolmanager.h>
 
 using namespace std;
+using Licq::gPluginManager;
+using Licq::gProtocolManager;
 
 const unsigned short NUM_COMMANDS = 24;
 const struct SCommand aCommands[NUM_COMMANDS] =
@@ -132,11 +162,13 @@ void CLicqConsole::MenuPopup(int userSelected) {
     if ((*it)->pos == userSelected)
     {
       int choice;
-      const LicqUser* u = gUserManager.fetchUser((*it)->userId);
-      if (u == NULL) return;
+      {
+        Licq::UserReadGuard u((*it)->userId);
+        if (!u.isLocked())
+          return;
 
-      PrintContactPopup(u->GetAlias());
-      gUserManager.DropUser(u);
+        PrintContactPopup(u->GetAlias());
+      }
       nl();
       choice = activateCDKScroll(cdkContactPopup, NULL);
       eraseCDKScroll(cdkContactPopup);
@@ -198,18 +230,17 @@ void CLicqConsole::MenuList(char* /* _szArg */)
     {
       if ((*it)->pos == userSelected)
       {
-        const LicqUser* u = gUserManager.fetchUser((*it)->userId);
-        if (u == NULL) return;
-        if (u->NewMessages() > 0)
+        bool newMessages;
         {
-          gUserManager.DropUser(u);
+          Licq::UserReadGuard u((*it)->userId);
+          if (!u.isLocked())
+            return;
+          newMessages = (u->NewMessages() > 0);
+        }
+        if (newMessages)
           UserCommand_View((*it)->userId, NULL);
-        }
         else
-        {
-          gUserManager.DropUser(u);
           UserCommand_Msg((*it)->userId, NULL);
-        }
         SaveLastUser((*it)->userId);
         break;
       }
@@ -252,7 +283,7 @@ void CLicqConsole::MenuHelp(char *_szArg)
  *-------------------------------------------------------------------------*/
 void CLicqConsole::MenuQuit(char *)
 {
-  licqDaemon->Shutdown();
+  Licq::gDaemon.Shutdown();
 }
 
 
@@ -261,26 +292,28 @@ void CLicqConsole::MenuQuit(char *)
  *-------------------------------------------------------------------------*/
 void CLicqConsole::MenuPlugins(char* /* _szArg */)
 {
-  PluginsList l;
-  PluginsListIter it;
-  licqDaemon->PluginList(l);
-  ProtoPluginsList p1;
-  ProtoPluginsListIter pit;
-  licqDaemon->ProtoPluginList(p1);
+  Licq::GeneralPluginsList plugins;
+  gPluginManager.getGeneralPluginsList(plugins);
+  Licq::ProtocolPluginsList protocols;
+  gPluginManager.getProtocolPluginsList(protocols);
+
   PrintBoxTop("Plugins", COLOR_BLUE, 70);
-  for (it = l.begin(); it != l.end(); it++)
+  BOOST_FOREACH(Licq::GeneralPlugin::Ptr plugin, plugins)
   {
     PrintBoxLeft();
-    winMain->wprintf("[%3d] %s v%s (%s %s) - %s", (*it)->Id(), (*it)->Name(),
-                     (*it)->Version(), (*it)->BuildDate(),
-                     (*it)->BuildTime(), (*it)->Status());
+    winMain->wprintf("[%3d] %s v%s (%s %s) - %s",
+                     plugin->getId(), plugin->getName(),
+                     plugin->getVersion(), plugin->getBuildDate(),
+                     plugin->getBuildTime(), plugin->getStatus());
     PrintBoxRight(70);
   }
-  for (pit = p1.begin(); pit != p1.end(); pit++)
+
+  BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
   {
     PrintBoxLeft();
-    winMain->wprintf("[%3d] %s v%s", (*pit)->Id(), (*pit)->Name(),
-             (*pit)->Version());
+    winMain->wprintf("[%3d] %s v%s",
+                     protocol->getId(), protocol->getName(),
+                     protocol->getVersion());
     PrintBoxRight(70);
   }
   PrintBoxBottom(70);
@@ -308,11 +341,11 @@ void CLicqConsole::MenuDefine(char *szArg)
   {
     for (iter = listMacros.begin(); iter != listMacros.end(); iter++)
     {
-      if (strcmp((*iter)->szMacro, szArg) == 0)
+      if ((*iter)->macro == szArg)
       {
         winMain->wprintf("%C%AErased macro \"%s -> %s\"\n",
          m_cColorInfo->nColor, m_cColorInfo->nAttr,
-         (*iter)->szMacro, (*iter)->szCommand);
+         (*iter)->macro.c_str(), (*iter)->command.c_str());
         delete *iter;
 #undef erase
         listMacros.erase(iter);
@@ -331,7 +364,7 @@ void CLicqConsole::MenuDefine(char *szArg)
   // See if this is a double macro definition
   for (iter = listMacros.begin(); iter != listMacros.end(); iter++)
   {
-    if (strcmp((*iter)->szMacro, szArg) == 0)
+    if ((*iter)->macro == szArg)
     {
       delete *iter;
 #undef erase
@@ -342,13 +375,13 @@ void CLicqConsole::MenuDefine(char *szArg)
 
   // Set the macro
   SMacro *macro = new SMacro;
-  strcpy(macro->szMacro, szArg);
-  strcpy(macro->szCommand, szCmd);
+  macro->macro = szArg;
+  macro->command = szCmd;
   listMacros.push_back(macro);
 
   winMain->wprintf("%A%CAdded macro \"%s -> %s\"\n",
    m_cColorInfo->nAttr, m_cColorInfo->nColor,
-   macro->szMacro, macro->szCommand);
+      macro->macro.c_str(), macro->command.c_str());
 
   DoneOptions();
 }
@@ -366,47 +399,41 @@ void CLicqConsole::MenuGroup(char *_szArg)
     return;
   }
 
-  GroupType nGroupType;
   unsigned short nCurrentGroup;
 
   // Try to change groups
   if (_szArg[0] == '*')
   {
     _szArg++;
-    nGroupType = GROUPS_SYSTEM;
     nCurrentGroup = atol(_szArg);
 
-    if (nCurrentGroup > NUM_GROUPS_SYSTEM || nCurrentGroup == 0)
+    if (nCurrentGroup > NumSystemGroups || nCurrentGroup == 0)
     {
-      winMain->wprintf("%CInvalid group number (0 - %d)\n", COLOR_RED,
-                       NUM_GROUPS_SYSTEM);
+      winMain->wprintf("%CInvalid group number (1 - %d)\n", COLOR_RED,
+                       NumSystemGroups);
       return;
     }
-    m_nCurrentGroup = nCurrentGroup;
-    m_nGroupType = nGroupType;
+    myCurrentGroup = nCurrentGroup + SystemGroupOffset;
     winMain->wprintf("%C%ASwitching to group *%d (%s).\n",
                      m_cColorInfo->nColor, m_cColorInfo->nAttr,
-                     m_nCurrentGroup,
-                     GroupsSystemNames[m_nCurrentGroup]);
+                     myCurrentGroup,
+                     GroupsSystemNames[myCurrentGroup - SystemGroupOffset]);
   }
   else
   {
-    nGroupType = GROUPS_USER;
     nCurrentGroup = atol(_szArg);
-    LicqGroup* group = gUserManager.FetchGroup(nCurrentGroup, LOCK_R);
+    Licq::GroupReadGuard group(nCurrentGroup);
 
-    if (nCurrentGroup != 0 && group == NULL)
+    if (nCurrentGroup != 0 && !group.isLocked())
     {
       winMain->wprintf("%CInvalid group number\n", COLOR_RED);
       return;
     }
-    m_nCurrentGroup = nCurrentGroup;
-    m_nGroupType = nGroupType;
+    myCurrentGroup = nCurrentGroup;
     winMain->wprintf("%C%ASwitching to group %d (%s).\n",
                      m_cColorInfo->nColor, m_cColorInfo->nAttr,
-                     m_nCurrentGroup,
-                     m_nCurrentGroup == 0 ? "All Users" : group->name().c_str());
-    gUserManager.DropGroup(group);
+                     myCurrentGroup,
+                     myCurrentGroup == 0 ? "All Users" : group->name().c_str());
   }
 
   PrintStatus();
@@ -429,7 +456,7 @@ void CLicqConsole::MenuAdd(char *szArg)
     char* tokptr;
     accountId = strtok_r(szArg, " ", &tokptr);
     param = strtok_r(NULL, " ", &tokptr);
- }
+  }
 
   if (accountId == NULL)
   {
@@ -442,23 +469,23 @@ void CLicqConsole::MenuAdd(char *szArg)
   if (param != NULL && strcasecmp(param, "alert") == 0)
     bAlert = true;
 
-  UserId userId = LicqUser::makeUserId(szArg, LICQ_PPID);
+  Licq::UserId userId(accountId, LICQ_PPID);
 
-  if (!gUserManager.addUser(userId))
+  if (!Licq::gUserManager.addUser(userId))
   {
     winMain->wprintf("%CAdding user %s failed (duplicate user or invalid uin).\n",
-        COLOR_RED, USERID_TOSTR(userId));
+        COLOR_RED, userId.toString().c_str());
     return;
   }
 
   winMain->wprintf("%C%AAdded user %s.\n",
-      m_cColorInfo->nColor, m_cColorInfo->nAttr, USERID_TOSTR(userId));
+      m_cColorInfo->nColor, m_cColorInfo->nAttr, userId.toString().c_str());
 
   if (bAlert)
   {
-    licqDaemon->icqAlertUser(userId);
+    gLicqDaemon->icqAlertUser(userId);
     winMain->wprintf("%C%AAlerted user %s they were added.\n",
-        m_cColorInfo->nColor, m_cColorInfo->nAttr, USERID_TOSTR(userId));
+        m_cColorInfo->nColor, m_cColorInfo->nAttr, userId.toString().c_str());
   }
 
 }
@@ -487,7 +514,7 @@ void CLicqConsole::MenuAuthorize(char *szArg)
     bGrant = false;
     szArg += 6;
   }
-  UserId userId = LicqUser::makeUserId(szArg, LICQ_PPID);
+  Licq::UserId userId(szArg, LICQ_PPID);
 
   // Get the input now
   winMain->fProcessInput = &CLicqConsole::InputAuthorize;
@@ -508,8 +535,8 @@ void CLicqConsole::MenuAuthorize(char *szArg)
  *-------------------------------------------------------------------------*/
 void CLicqConsole::MenuStatus(char *_szArg)
 {
-  unsigned short nStatus = ICQ_STATUS_ONLINE, i;
-  bool bInvisible = false;
+  unsigned status = Licq::User::OnlineStatus;
+  unsigned long i;
 
   if (_szArg == NULL)
   {
@@ -517,18 +544,12 @@ void CLicqConsole::MenuStatus(char *_szArg)
     return;
   }
 
-  // Check if we are going invisible or not
-  if (_szArg[0] == '*')
-  {
-    bInvisible = true;
-    //_szArg++;
-  }
   // Find the status
   for (i = 0; i < NUM_STATUS; i++)
   {
     if (strcasecmp(_szArg, aStatus[i].szName) == 0)
     {
-      nStatus = aStatus[i].nId;
+      status = aStatus[i].nId;
       break;
     }
   }
@@ -540,16 +561,12 @@ void CLicqConsole::MenuStatus(char *_szArg)
   }
 
   //set same status for all protocols for now
-  ProtoPluginsList p1;
-  ProtoPluginsListIter it;
-  licqDaemon->ProtoPluginList(p1);
-  for (it = p1.begin(); it != p1.end(); it++)
+  Licq::ProtocolPluginsList protocols;
+  gPluginManager.getProtocolPluginsList(protocols);
+  BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
   {
-    unsigned long nPPID = (*it)->PPID();
-    UserId ownerId = gUserManager.ownerUserId(nPPID);
-    if (bInvisible && nStatus != ICQ_STATUS_OFFLINE)
-      nStatus |= ICQ_STATUS_FxPRIVATE;
-    licqDaemon->protoSetStatus(ownerId, nStatus);
+    unsigned long nPPID = protocol->getProtocolId();
+    gProtocolManager.setStatus(Licq::gUserManager.ownerUserId(nPPID), status);
   }
 }
 
@@ -573,25 +590,23 @@ void CLicqConsole::MenuUins(char *)
 
   for (it = m_lUsers.begin(); it != m_lUsers.end(); it++)
   {
-    const LicqUser* u = gUserManager.fetchUser((*it)->userId);
-    winMain->wprintf("%s %A-%Z %s\n", u->GetAlias(), A_BOLD, A_BOLD, u->IdString());
-    gUserManager.DropUser(u);
+    Licq::UserReadGuard u((*it)->userId);
+    winMain->wprintf("%s %A-%Z %s\n", u->getAlias().c_str(), A_BOLD, A_BOLD, u->accountId().c_str());
   }
-
 }
 
 /*---------------------------------------------------------------------------
  * CLicqConsole::GetContactFromArg
  *-------------------------------------------------------------------------*/
-UserId CLicqConsole::GetContactFromArg(char **p_szArg)
+bool CLicqConsole::GetContactFromArg(char **p_szArg, Licq::UserId& userId)
 {
   char *szAlias, *szCmd;
   char *szArg = *p_szArg;
   unsigned long nPPID = 0;
-  UserId userId = USERID_NONE;
+  userId = Licq::UserId();
 
   if (szArg == NULL) {
-    return USERID_NONE;
+    return true;
   }
   string strArg(szArg);
   string::size_type nPos = strArg.find_last_of(".");
@@ -599,14 +614,14 @@ UserId CLicqConsole::GetContactFromArg(char **p_szArg)
   {
     string::size_type s = strArg.find_last_of(" ");
     string strProtocol(strArg, nPos + 1, (s == string::npos) ? strArg.size() : s - nPos - 1);
-    ProtoPluginsList pl;
-    ProtoPluginsListIter it;
-    licqDaemon->ProtoPluginList(pl);
-    for (it = pl.begin(); it != pl.end(); it++)
+
+    Licq::ProtocolPluginsList protocols;
+    gPluginManager.getProtocolPluginsList(protocols);
+    BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
     {
-      if (strcasecmp((*it)->Name(), strProtocol.c_str()) == 0)
+      if (strcasecmp(protocol->getName(), strProtocol.c_str()) == 0)
       {
-        nPPID = (*it)->PPID();
+        nPPID = protocol->getProtocolId();
         szArg[strArg.find_last_of(".")] = '\0';
         string tmp(strArg, 0, nPos);
         tmp.append(strArg, s, strArg.size());
@@ -624,7 +639,7 @@ UserId CLicqConsole::GetContactFromArg(char **p_szArg)
     if (szCmd == NULL)
     {
       winMain->wprintf("%CUnbalanced quotes.\n", COLOR_RED);
-      return USERID_NONE;
+      return false;
     }
     *szCmd++ = '\0';
     szCmd = strchr(szCmd, ' ');
@@ -632,15 +647,14 @@ UserId CLicqConsole::GetContactFromArg(char **p_szArg)
   else if (szArg[0] == '#')
   {
     *p_szArg = NULL;
-    ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-    userId = o->id();
-    gUserManager.DropOwner(o);
-    return userId;
+    userId = Licq::gUserManager.ownerUserId(LICQ_PPID);
+    return true;
   }
   else if (szArg[0] == '$')
   {
     *p_szArg = NULL;
-    return winMain->sLastContact;
+    userId = winMain->sLastContact;
+    return true;
   }
   else
   {
@@ -655,29 +669,34 @@ UserId CLicqConsole::GetContactFromArg(char **p_szArg)
   }
   *p_szArg = szCmd;
 
-  FOR_EACH_USER_START(LOCK_R)
   {
-    if ((nPPID && pUser->PPID() == nPPID && strcasecmp(szAlias, pUser->GetAlias()) == 0) ||
-        (!nPPID && strcasecmp(szAlias, pUser->GetAlias()) == 0))
+    Licq::UserListGuard userList;
+    BOOST_FOREACH(const Licq::User* user, **userList)
     {
-      userId = pUser->id();
-      FOR_EACH_PROTO_USER_BREAK;
-    }
-    else if ((nPPID && pUser->PPID() == nPPID && strcasecmp(szAlias, pUser->IdString()) == 0) ||
-             (!nPPID && strcasecmp(szAlias, pUser->IdString()) == 0))
-    {
-      userId = pUser->id();
-      FOR_EACH_PROTO_USER_BREAK;
+      Licq::UserReadGuard u(user);
+      if ((nPPID && u->protocolId() == nPPID && strcasecmp(szAlias, u->getAlias().c_str()) == 0) ||
+          (!nPPID && strcasecmp(szAlias, u->GetAlias()) == 0))
+      {
+        userId = u->id();
+        break;
+      }
+      else if ((nPPID && u->protocolId() == nPPID && strcasecmp(szAlias, u->accountId().c_str()) == 0) ||
+          (!nPPID && strcasecmp(szAlias, u->accountId().c_str()) == 0))
+      {
+        userId = u->id();
+        break;
+      }
     }
   }
-  FOR_EACH_USER_END
-  if (!USERID_ISVALID(userId))
+
+  if (!userId.isValid())
   {
     winMain->wprintf("%CInvalid user: %A%s\n", COLOR_RED, A_BOLD, szAlias);
-    return "-";
+    userId = Licq::UserId();
+    return false;
   }
   SaveLastUser(userId);
-  return userId;
+  return true;
 }
 
 
@@ -688,11 +707,11 @@ UserId CLicqConsole::GetContactFromArg(char **p_szArg)
 void CLicqConsole::MenuMessage(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (!USERID_ISVALID(userId))
+
+  if (!userId.isValid())
     winMain->wprintf("%CYou must specify a user to send a message to.\n", COLOR_RED);
   else
     UserCommand_Msg(userId, sz);
@@ -706,14 +725,12 @@ void CLicqConsole::MenuMessage(char *szArg)
 void CLicqConsole::MenuInfo(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (gUserManager.isOwner(userId))
-    winMain->wprintf("%CSetting personal info not implemented yet.\n", COLOR_RED);
-  else if (!USERID_ISVALID(userId))
-    UserCommand_Info(gUserManager.ownerUserId(LICQ_PPID), sz);
+
+  if (Licq::gUserManager.isOwner(userId))
+    UserCommand_Info(Licq::gUserManager.ownerUserId(LICQ_PPID), sz);
   else
     UserCommand_Info(userId, sz);
 }
@@ -726,13 +743,13 @@ void CLicqConsole::MenuInfo(char *szArg)
 void CLicqConsole::MenuUrl(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (gUserManager.isOwner(userId))
+
+  if (Licq::gUserManager.isOwner(userId))
     winMain->wprintf("%CYou can't send URLs to yourself!\n", COLOR_RED);
-  else if (!USERID_ISVALID(userId))
+  else if (!userId.isValid())
     winMain->wprintf("%CYou must specify a user to send a URL to.\n", COLOR_RED);
   else
     UserCommand_Url(userId, sz);
@@ -746,11 +763,11 @@ void CLicqConsole::MenuUrl(char *szArg)
 void CLicqConsole::MenuSms(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (!USERID_ISVALID(userId))
+
+  if (!userId.isValid())
     winMain->wprintf("%CInvalid user\n", COLOR_RED);
   else
     UserCommand_Sms(userId, sz);
@@ -763,41 +780,47 @@ void CLicqConsole::MenuSms(char *szArg)
 void CLicqConsole::MenuView(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
+    return;
 
-  if (USERID_ISVALID(userId))
+  if (userId.isValid())
   {
     UserCommand_View(userId, sz);
     return;
   }
 
     // Do nothing if there are no events pending
-  if (LicqUser::getNumUserEvents() == 0)
+  if (Licq::User::getNumUserEvents() == 0)
     return;
 
     // Do icq system messages first
-    ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-    unsigned short nNumMsg = o->NewMessages();
-    gUserManager.DropOwner(o);
+  unsigned short nNumMsg;
+  {
+    Licq::OwnerReadGuard o(LICQ_PPID);
+    nNumMsg = o->NewMessages();
+  }
     if (nNumMsg > 0)
     {
       //TODO which owner?
-    UserCommand_View(gUserManager.ownerUserId(LICQ_PPID), NULL);
+    UserCommand_View(Licq::gUserManager.ownerUserId(LICQ_PPID), NULL);
       return;
     }
 
+  {
     time_t t = time(NULL);
-    FOR_EACH_USER_START(LOCK_R)
+    Licq::UserListGuard users;
+    BOOST_FOREACH(const Licq::User* pUser, **users)
     {
       if (pUser->NewMessages() > 0 && pUser->Touched() <= t)
       {
-      userId = pUser->id();
+        userId = pUser->id();
         t = pUser->Touched();
       }
     }
-    FOR_EACH_USER_END
+  }
 
-  if (USERID_ISVALID(userId))
+  if (userId.isValid())
     UserCommand_View(userId, NULL);
 }
 
@@ -808,13 +831,13 @@ void CLicqConsole::MenuView(char *szArg)
 void CLicqConsole::MenuSecure(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (gUserManager.isOwner(userId))
+
+  if (Licq::gUserManager.isOwner(userId))
     winMain->wprintf("%CYou can't establish a secure connection to yourself!\n", COLOR_RED);
-  else if (!USERID_ISVALID(userId))
+  else if (!userId.isValid())
     winMain->wprintf("%CYou must specify a user to talk to.\n", COLOR_RED);
   else
     UserCommand_Secure(userId, sz);
@@ -827,13 +850,13 @@ void CLicqConsole::MenuSecure(char *szArg)
 void CLicqConsole::MenuFile(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (gUserManager.isOwner(userId))
+
+  if (Licq::gUserManager.isOwner(userId))
     winMain->wprintf("%CYou can't send files to yourself!\n", COLOR_RED);
-  else if (!USERID_ISVALID(userId))
+  else if (!userId.isValid())
   {
     bool bNum = false;
 
@@ -863,20 +886,21 @@ void CLicqConsole::MenuFile(char *szArg)
 void CLicqConsole::MenuAutoResponse(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (gUserManager.isOwner(userId))
+
+  if (Licq::gUserManager.isOwner(userId))
   {
     wattron(winMain->Win(), A_BOLD);
     for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
       waddch(winMain->Win(), ACS_HLINE);
     waddch(winMain->Win(), '\n');
-    ICQOwner *o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-    winMain->wprintf("%B%CAuto response:\n%b%s\n",
-                     COLOR_WHITE, o->AutoResponse());
-    gUserManager.DropOwner(o);
+    {
+      Licq::OwnerReadGuard o(LICQ_PPID);
+      winMain->wprintf("%B%CAuto response:\n%b%s\n",
+          COLOR_WHITE, o->autoResponse().c_str());
+    }
     wattron(winMain->Win(), A_BOLD);
     for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
       waddch(winMain->Win(), ACS_HLINE);
@@ -884,10 +908,10 @@ void CLicqConsole::MenuAutoResponse(char *szArg)
     winMain->RefreshWin();
     wattroff(winMain->Win(), A_BOLD);
   }
-  else if (!USERID_ISVALID(userId ))
-    UserCommand_SetAutoResponse(0, sz);
+  else if (!userId.isValid())
+    UserCommand_SetAutoResponse(Licq::UserId(), sz);
   else
-    UserCommand_FetchAutoResponse(0, sz);
+    UserCommand_FetchAutoResponse(Licq::UserId(), sz);
 }
 
 
@@ -897,13 +921,13 @@ void CLicqConsole::MenuAutoResponse(char *szArg)
 void CLicqConsole::MenuRemove(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (gUserManager.isOwner(userId))
+
+  if (Licq::gUserManager.isOwner(userId))
     winMain->wprintf("%CYou can't remove yourself!\n", COLOR_RED);
-  else if (!USERID_ISVALID(userId))
+  else if (!userId.isValid())
     winMain->wprintf("%CYou must specify a user to remove.\n", COLOR_RED);
   else
     UserCommand_Remove(userId, sz);
@@ -916,11 +940,11 @@ void CLicqConsole::MenuRemove(char *szArg)
 void CLicqConsole::MenuHistory(char *szArg)
 {
   char *sz = szArg;
-  UserId userId = GetContactFromArg(&sz);
-
-  if (userId == "-")
+  Licq::UserId userId;
+  if (!GetContactFromArg(&sz, userId))
     return;
-  if (!USERID_ISVALID(userId))
+
+  if (!userId.isValid())
     winMain->wprintf("%CYou must specify a user to view history.\n", COLOR_RED);
   else
     UserCommand_History(userId, sz);
@@ -1020,7 +1044,7 @@ void CLicqConsole::MenuSet(char *_szArg)
       return;
     }
     szValue[strlen(szValue) - 1] = '\0';
-    strncpy((char *)aVariables[nVariable].pData, &szValue[1], 30);
+    *((string*)aVariables[nVariable].pData) = &szValue[1];
     break;
 
   case INT:

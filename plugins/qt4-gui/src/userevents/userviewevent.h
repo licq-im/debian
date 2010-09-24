@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,9 +29,11 @@ class QPushButton;
 class QSplitter;
 class QTreeWidgetItem;
 
-class CUserEvent;
-class LicqEvent;
-
+namespace Licq
+{
+class Event;
+class UserEvent;
+}
 
 namespace LicqQtGui
 {
@@ -51,7 +53,7 @@ public:
    * @param userId User to open dialog for
    * @param parent Parent widget
    */
-  UserViewEvent(const UserId& userId, QWidget* parent = 0);
+  UserViewEvent(const Licq::UserId& userId, QWidget* parent = 0);
   virtual ~UserViewEvent();
 
 protected:
@@ -66,7 +68,7 @@ private:
   QSplitter* myReadSplitter;
   MLView* myMessageView;
   MessageList* myMessageList;
-  CUserEvent* myCurrentEvent;
+  Licq::UserEvent* myCurrentEvent;
   QCheckBox* myAutoCloseCheck;
   QGroupBox* myActionsBox;
   QPushButton* myRead1Button;
@@ -92,7 +94,7 @@ private:
    * @param argument Signal specific argument
    * @param cid Conversation id
    */
-  virtual void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  virtual void userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
 private slots:
   void autoClose();
@@ -105,7 +107,7 @@ private slots:
   void closeDialog();
   void msgTypeChanged(UserSendCommon* from, UserSendCommon* to);
   void printMessage(QTreeWidgetItem* item);
-  void sentEvent(const LicqEvent* e);
+  void sentEvent(const Licq::Event* e);
   void setEncoding();
 };
 

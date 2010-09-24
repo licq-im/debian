@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,13 +34,14 @@
 #include <QTextCodec>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/icq.h>
+#include <licq/icqdefines.h>
 
-#include "core/licqgui.h"
 #include "core/signalmanager.h"
 
-#include "helpers/licqstrings.h"
 #include "helpers/support.h"
 #include "helpers/usercodec.h"
 
@@ -49,7 +50,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ShowAwayMsgDlg */
 
-ShowAwayMsgDlg::ShowAwayMsgDlg(const UserId& userId, bool fetch, QWidget* parent)
+ShowAwayMsgDlg::ShowAwayMsgDlg(const Licq::UserId& userId, bool fetch, QWidget* parent)
   : QDialog(parent),
     myUserId(userId),
     icqEventTag(0)
@@ -78,32 +79,28 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(const UserId& userId, bool fetch, QWidget* parent
   connect(buttons, SIGNAL(rejected()), SLOT(close()));
   lay->addWidget(buttons);
 
-  const LicqUser* u = gUserManager.fetchUser(myUserId);
-  const QTextCodec* codec = UserCodec::codecForUser(u);
-  chkShowAgain->setChecked(u->ShowAwayMsg());
+  bool bSendServer = true;
+  {
+    Licq::UserReadGuard u(myUserId);
+    const QTextCodec* codec = UserCodec::codecForUser(*u);
+    chkShowAgain->setChecked(u->ShowAwayMsg());
 
-  setWindowTitle(QString(tr("%1 Response for %2"))
-      .arg(LicqStrings::getStatus(u, false))
-      .arg(QString::fromUtf8(u->GetAlias())));
+    setWindowTitle(QString(tr("%1 Response for %2"))
+        .arg(u->statusString(true, false).c_str())
+        .arg(QString::fromUtf8(u->GetAlias())));
+
+    if (fetch)
+      bSendServer = (u->normalSocketDesc() <= 0 && u->Version() > 6);
+    else
+      mleAwayMsg->setText(codec->toUnicode(u->autoResponse().c_str()));
+  }
 
   if (fetch)
   {
-    bool bSendServer =
-      (u->SocketDesc(ICQ_CHNxNONE) <= 0 &&
-       u->Version() > 6);
-    unsigned long myPpid = u->ppid();
-    QString myId = u->accountId().c_str();
-    gUserManager.DropUser(u);
     mleAwayMsg->setEnabled(false);
-    connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneEvent(const LicqEvent*)));
-    icqEventTag = gLicqDaemon->icqFetchAutoResponse(
-        myId.toLatin1(), myPpid, bSendServer);
-  }
-  else
-  {
-    mleAwayMsg->setText(codec->toUnicode(u->AutoResponse()));
-    gUserManager.DropUser(u);
+    connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+        SLOT(doneEvent(const Licq::Event*)));
+    icqEventTag = gLicqDaemon->icqFetchAutoResponse(myUserId, bSendServer);
   }
 
   show();
@@ -111,39 +108,38 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(const UserId& userId, bool fetch, QWidget* parent
 
 ShowAwayMsgDlg::~ShowAwayMsgDlg()
 {
-  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
-  u->SetShowAwayMsg(chkShowAgain->isChecked());
-  gUserManager.DropUser(u);
+  {
+    Licq::UserWriteGuard u(myUserId);
+    u->SetShowAwayMsg(chkShowAgain->isChecked());
+  }
 
   if (icqEventTag != 0)
-    gLicqDaemon->CancelEvent(icqEventTag);
+    Licq::gDaemon.cancelEvent(icqEventTag);
 }
 
-void ShowAwayMsgDlg::doneEvent(const LicqEvent* e)
+void ShowAwayMsgDlg::doneEvent(const Licq::Event* e)
 {
   if (!e->Equals(icqEventTag))
     return;
 
-  bool isOk =
-    (e->Result() == EVENT_ACKED ||
-     e->Result() == EVENT_SUCCESS);
+  bool isOk = (e->Result() == Licq::Event::ResultAcked ||
+      e->Result() == Licq::Event::ResultSuccess);
 
   QString title, result;
 
-  if (e->ExtendedAck() &&
-      !e->ExtendedAck()->Accepted())
+  if (e->ExtendedAck() && !e->ExtendedAck()->accepted())
     result = tr("refused");
   else
   {
     switch (e->Result())
     {
-    case EVENT_FAILED:
+      case Licq::Event::ResultFailed:
       result = tr("failed");
-      break;
-    case EVENT_TIMEDOUT:
+        break;
+      case Licq::Event::ResultTimedout:
       result = tr("timed out");
-      break;
-    case EVENT_ERROR:
+        break;
+      case Licq::Event::ResultError:
       result = tr("error");
       break;
     default:
@@ -164,12 +160,12 @@ void ShowAwayMsgDlg::doneEvent(const LicqEvent* e)
        e->SNAC() == MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SENDxSERVER) ||
        e->SNAC() == MAKESNAC(ICQ_SNACxFAM_LOCATION, ICQ_SNACxLOC_INFOxREQ)))
   {
-    const LicqUser* u = gUserManager.fetchUser(myUserId);
-    const QTextCodec* codec = UserCodec::codecForUser(u);
+    Licq::UserReadGuard u(myUserId);
+    const QTextCodec* codec = UserCodec::codecForUser(*u);
     const char* szAutoResp =
-      (e->ExtendedAck() && !e->ExtendedAck()->Accepted()) ?
-       e->ExtendedAck()->Response() :
-       u->AutoResponse();
+      (e->ExtendedAck() && !e->ExtendedAck()->accepted()) ?
+       e->ExtendedAck()->response().c_str() :
+       u->autoResponse().c_str();
 
     if (u->ppid() == LICQ_PPID && QString(u->accountId().c_str())[0].isLetter())
     {
@@ -183,7 +179,6 @@ void ShowAwayMsgDlg::doneEvent(const LicqEvent* e)
     else
       mleAwayMsg->setText(codec->toUnicode(szAutoResp));
 
-    gUserManager.DropUser(u);
     mleAwayMsg->setEnabled(true);
   }
 }

@@ -1,13 +1,31 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2000-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
-#include "licq_plugin.h"
+
+#include <licq/pluginbase.h>
+
 #include "autoreply.h"
+#include "pluginversion.h"
 
 CLicqAutoReply *licqAutoReply;
 
@@ -43,7 +61,7 @@ const char *LP_Description()
 
 const char *LP_Version()
 {
-  static const char version[] = VERSION;
+  static const char version[] = PLUGIN_VERSION_STRING;
   return version;
 }
 
@@ -90,9 +108,9 @@ bool LP_Init(int argc, char **argv)
 }
 
 
-int LP_Main(CICQDaemon *_licqDaemon)
+int LP_Main()
 {
-  int nResult = licqAutoReply->Run(_licqDaemon);
+  int nResult = licqAutoReply->Run();
   licqAutoReply->Shutdown();
   delete licqAutoReply;
   return nResult;

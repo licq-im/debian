@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,8 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
+
 #include <QDialogButtonBox>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -30,14 +32,13 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_events.h>
-#include <licq_user.h>
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/pluginsignal.h>
 
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 #include "core/signalmanager.h"
 
-#include "helpers/licqstrings.h"
 #include "helpers/support.h"
 
 using namespace LicqQtGui;
@@ -93,8 +94,8 @@ EditGrpDlg::EditGrpDlg(QWidget* parent)
   lay->addWidget(buttons);
 
   RefreshList();
-  connect(LicqGui::instance()->signalManager(),
-      SIGNAL(updatedList(unsigned long, int, const UserId&)),
+  connect(gGuiSignalManager,
+      SIGNAL(updatedList(unsigned long, int, const Licq::UserId&)),
       SLOT(listUpdated(unsigned long)));
 
   show();
@@ -123,13 +124,15 @@ void EditGrpDlg::RefreshList()
   int groupId = currentGroupId();
   lstGroups->clear();
 
-  FOR_EACH_GROUP_START_SORTED(LOCK_R)
+  Licq::GroupListGuard groupList;
+  BOOST_FOREACH(const Licq::Group* group, **groupList)
   {
+    Licq::GroupReadGuard pGroup(group);
+
     QString name = QString::fromLocal8Bit(pGroup->name().c_str());
     QListWidgetItem* item = new QListWidgetItem(name, lstGroups);
     item->setData(Qt::UserRole, pGroup->id());
   }
-  FOR_EACH_GROUP_END
 
   setCurrentGroupId(groupId);
 }
@@ -138,12 +141,12 @@ void EditGrpDlg::listUpdated(unsigned long subSignal)
 {
   switch (subSignal)
   {
-    case LIST_GROUP_ADDED:
-    case LIST_GROUP_REMOVED:
-    case LIST_GROUP_CHANGED:
-    case LIST_GROUP_REORDERED:
+    case Licq::PluginSignal::ListGroupAdded:
+    case Licq::PluginSignal::ListGroupRemoved:
+    case Licq::PluginSignal::ListGroupChanged:
+    case Licq::PluginSignal::ListGroupsReordered:
 
-    case LIST_INVALIDATE:
+    case Licq::PluginSignal::ListInvalidate:
       if (btnSave->isEnabled()) // we are editing the group name
         slot_editcancel();
       RefreshList();
@@ -182,7 +185,7 @@ void EditGrpDlg::slot_remove()
 
   if (QueryYesNo(this, warning))
   {
-    gUserManager.RemoveGroup(groupId);
+    Licq::gUserManager.RemoveGroup(groupId);
     RefreshList();
   }
 }
@@ -193,16 +196,19 @@ void EditGrpDlg::moveGroup(int delta)
   if (groupId == 0)
     return;
 
-  LicqGroup* group = gUserManager.FetchGroup(groupId, LOCK_R);
-  if (group == NULL)
-    return;
-  int oldSortIndex = group->sortIndex();
-  gUserManager.DropGroup(group);
+  int oldSortIndex;
+
+  {
+    Licq::GroupReadGuard group(groupId);
+    if (!group.isLocked())
+      return;
+    oldSortIndex = group->sortIndex();
+  }
 
   if (delta + oldSortIndex < 0)
     return;
 
-  gUserManager.ModifyGroupSorting(groupId, oldSortIndex + delta);
+  Licq::gUserManager.ModifyGroupSorting(groupId, oldSortIndex + delta);
   RefreshList();
 }
 
@@ -238,9 +244,9 @@ void EditGrpDlg::slot_edit()
 void EditGrpDlg::slot_editok()
 {
   if (myEditGroupId == 0)
-    myEditGroupId = gUserManager.AddGroup(edtName->text().toLocal8Bit().data());
+    myEditGroupId = Licq::gUserManager.AddGroup(edtName->text().toLocal8Bit().data());
   else
-    gUserManager.RenameGroup(myEditGroupId, edtName->text().toLocal8Bit().data());
+    Licq::gUserManager.RenameGroup(myEditGroupId, edtName->text().toLocal8Bit().data());
   RefreshList();
   setCurrentGroupId(myEditGroupId);
 

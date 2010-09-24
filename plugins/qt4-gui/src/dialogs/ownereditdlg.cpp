@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,8 +29,9 @@
 #include <QLineEdit>
 #include <QPushButton>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
 
 #include "core/messagebox.h"
 
@@ -62,7 +63,7 @@ OwnerEditDlg::OwnerEditDlg(unsigned long ppid, QWidget* parent)
   edtPassword->setEchoMode(QLineEdit::Password);
   connect(edtPassword, SIGNAL(returnPressed()), SLOT(slot_ok()));
 
-  unsigned short i = 0;
+  int i = 0;
   QLabel* lbl;
 
 #define ADDWIDGET(name, widget) \
@@ -90,14 +91,13 @@ OwnerEditDlg::OwnerEditDlg(unsigned long ppid, QWidget* parent)
   // Set the fields
   if (ppid != 0)
   {
-    const ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_R);
-    if (o != NULL)
+    Licq::OwnerReadGuard o(ppid);
+    if (o.isLocked())
     {
-      edtId->setText(o->IdString());
+      edtId->setText(o->accountId().c_str());
       edtId->setEnabled(false);
-      edtPassword->setText(o->Password());
+      edtPassword->setText(o->password().c_str());
       chkSave->setChecked(o->SavePassword());
-      gUserManager.DropOwner(o);
     }
 
     cmbProtocol->setCurrentPpid(ppid);
@@ -128,18 +128,21 @@ void OwnerEditDlg::slot_ok()
     return;
   }
 
+  Licq::UserId ownerId(id.toLocal8Bit().data(), ppid);
+
   if (myPpid == 0)
-    gUserManager.AddOwner(id.toLocal8Bit(), ppid);
+    Licq::gUserManager.addOwner(ownerId);
 
-  ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_W);
-  if (o == NULL)
-    return;
+  {
+    Licq::OwnerWriteGuard o(ppid);
+    if (!o.isLocked())
+      return;
 
-  o->SetPassword(pwd.toLocal8Bit());
-  o->SetSavePassword(chkSave->isChecked());
+    o->setPassword(pwd.toLocal8Bit().data());
+    o->SetSavePassword(chkSave->isChecked());
+  }
 
-  gUserManager.DropOwner(o);
-  gLicqDaemon->SaveConf();
+  Licq::gDaemon.SaveConf();
 
   close();
 }

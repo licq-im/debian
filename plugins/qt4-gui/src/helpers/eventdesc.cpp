@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,8 @@
 #include <QApplication>
 #include <QString>
 
-#include <licq_icq.h>
-#include <licq_message.h>
+#include <licq/icqdefines.h>
+#include <licq/userevents.h>
 
 using namespace LicqQtGui;
 
@@ -60,7 +60,7 @@ static const char* szEventTypes[27] =
   QT_TRANSLATE_NOOP("LicqQtGui::EventDescription", "SMS")
 };
 
-QString LicqQtGui::EventDescription(const CUserEvent* e)
+QString LicqQtGui::EventDescription(const Licq::UserEvent* e)
 {
   QString desc;
 

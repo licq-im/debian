@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,9 +21,9 @@
 #ifndef MULTICONTACTPROXY_H
 #define MULTICONTACTPROXY_H
 
-#include <licq_types.h>
-
 #include <set>
+
+#include <licq/userid.h>
 
 #include "contactlist.h"
 #include "sortedcontactlistproxy.h"
@@ -68,14 +68,14 @@ public:
    *
    * @param userId User id
    */
-  void add(const UserId& userId);
+  void add(const Licq::UserId& userId);
 
   /**
    * Remove a contact from the list
    *
    * @param userId User id
    */
-  void remove(const UserId& userId);
+  void remove(const Licq::UserId& userId);
 
   /**
    * Remove a list of contacts from the list
@@ -94,17 +94,16 @@ public:
   /**
    * Add all contacts from a group
    *
-   * @param groupType System or user group
    * @param groupId Group id
    */
-  void addGroup(GroupType groupType, unsigned long groupId);
+  void addGroup(int groupId);
 
   /**
    * Return the current list of contacts
    *
    * @return A set containing the contacts
    */
-  const std::set<UserId>& contacts() const
+  const std::set<Licq::UserId>& contacts() const
   { return myContacts; }
 
   /**
@@ -125,7 +124,7 @@ private:
    */
   bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const;
 
-  std::set<UserId> myContacts;
+  std::set<Licq::UserId> myContacts;
 };
 
 } // namespace LicqQtGui

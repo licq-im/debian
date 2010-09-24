@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,8 +40,6 @@
 #include <QResizeEvent>
 #include <QWidget>
 
-#include <licq_types.h>
-
 class QAction;
 class QMenu;
 class QPixmap;
@@ -49,7 +47,11 @@ class QPushButton;
 class QStyle;
 class QTextEdit;
 
-class LicqEvent;
+namespace Licq
+{
+class Event;
+class UserId;
+}
 
 namespace LicqQtGui
 {
@@ -103,7 +105,6 @@ public slots:
    */
   void slot_updatedList(unsigned long subSignal);
 
-  void slot_updatedUser(const UserId& userId, unsigned long subSignal, int argument);
   void slot_pluginUnloaded(unsigned long ppid);
   void updateGroups(bool initial = false);
 
@@ -153,10 +154,8 @@ private slots:
 
   /**
    * Our status has changed
-   *
-   * @param ppid Protocl intstance id of owner that got status change
    */
-  void updateStatus(unsigned long ppid = 0);
+  void updateStatus();
 
   /**
    * Update shortcuts
@@ -182,15 +181,16 @@ private slots:
 
   void slot_logon();
   void slot_protocolPlugin(unsigned long);
-  void slot_doneOwnerFcn(const LicqEvent* event);
+  void slot_doneOwnerFcn(const Licq::Event* event);
   void slot_updateContactList();
+  void slot_updatedUser(const Licq::UserId& userId, unsigned long subSignal, int argument);
 
   /**
    * Open add user dialog
    *
    * @param userId User to add
    */
-  void addUser(const UserId& userId);
+  void addUser(const Licq::UserId& userId);
 
   void setMiniMode(bool miniMode);
   void setMainwinSticky(bool sticky = true);

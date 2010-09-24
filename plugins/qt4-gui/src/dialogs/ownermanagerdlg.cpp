@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2009 Licq developers
+ * Copyright (C) 2004-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,20 +21,25 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
+
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/pluginmanager.h>
 
 #include "config/iconmanager.h"
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
 #include "core/messagebox.h"
+#include "core/signalmanager.h"
 
 #include "helpers/support.h"
 
@@ -101,17 +106,17 @@ OwnerManagerDlg::OwnerManagerDlg(QWidget* parent)
   connect(modifyButton, SIGNAL(clicked()), SLOT(modifyOwner()));
   connect(removeButton, SIGNAL(clicked()), SLOT(removeOwner()));
   connect(closeButton, SIGNAL(clicked()), SLOT(close()));
+  connect(gGuiSignalManager, SIGNAL(ownerAdded(const Licq::UserId&)), SLOT(updateOwners()));
+  connect(gGuiSignalManager, SIGNAL(ownerRemoved(const Licq::UserId&)), SLOT(updateOwners()));
 
   // Add the owners to the list now
   updateOwners();
 
   // Show information to the user
-  if (gUserManager.NumOwners() == 0)
+  if (Licq::gUserManager.NumOwners() == 0)
   {
-    InformUser(this, tr("From the Account Manager dialog you are able to add"
-        " and register your accounts.\n"
-        "Currently, only one account per protocol is supported, but this will"
-        " be changed in future versions."));
+    InformUser(this, tr("From the Account Manager dialog you can add your accounts or register a new account.\n"
+        "Note that only one account per protocol is supported in Licq."));
   }
 
   show();
@@ -126,24 +131,26 @@ void OwnerManagerDlg::updateOwners()
 {
   ownerView->clear();
 
-  if (gUserManager.NumOwners() != 0)
+  if (Licq::gUserManager.NumOwners() != 0)
   {
-    QString id, proto;
-    unsigned long ppid = 0;
-
     IconManager* iconman = IconManager::instance();
 
-    FOR_EACH_OWNER_START(LOCK_R)
-      id = pOwner->IdString();
-      ppid = pOwner->PPID();
-      proto = gLicqDaemon->ProtoPluginName(ppid);
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+    {
+      QString id = owner->accountId().c_str();
+      unsigned long ppid = owner->protocolId();
+      QString proto;
+      Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(ppid);
+      if (protocol.get() != NULL)
+        proto = protocol->getName();
 
       QTreeWidgetItem* item = new QTreeWidgetItem(ownerView);
-      item->setIcon(0, iconman->iconForStatus(ICQ_STATUS_ONLINE, id.toLatin1(), ppid));
+      item->setIcon(0, iconman->iconForStatus(Licq::User::OnlineStatus, owner->id()));
       item->setText(0, proto.isNull() ? tr("(Invalid Protocol)") : proto);
       item->setData(0, Qt::UserRole, QString::number(ppid));
       item->setText(1, id.isNull() ? tr("(Invalid ID)") : id);
-    FOR_EACH_OWNER_END
+    }
   }
 
   ownerView->resizeColumnToContents(0);
@@ -162,20 +169,20 @@ void OwnerManagerDlg::listClicked(QTreeWidgetItem* item)
 
 void OwnerManagerDlg::addOwner()
 {
-  OwnerEditDlg* d = new OwnerEditDlg(0, this);
-  connect(d, SIGNAL(destroyed()), SLOT(updateOwners()));
+  new OwnerEditDlg(0, this);
 }
 
 void OwnerManagerDlg::registerOwner()
 {
-  if (!gUserManager.OwnerId(LICQ_PPID).empty())
+  Licq::UserId oldOwnerId = Licq::gUserManager.ownerUserId(LICQ_PPID);
+  if (oldOwnerId.isValid())
   {
     QString buf = tr("You are currently registered as\n"
         "UIN (User ID): %1\n"
         "Base Directory: %2\n"
         "Rerun licq with the -b option to select a new\n"
         "base directory and then register a new user.")
-        .arg(gUserManager.OwnerId(LICQ_PPID).c_str()).arg(BASE_DIR);
+        .arg(oldOwnerId.accountId().c_str()).arg(Licq::gDaemon.baseDir().c_str());
     InformUser(this, buf);
     return;
   }
@@ -185,19 +192,18 @@ void OwnerManagerDlg::registerOwner()
   else
   {
     registerUserDlg = new RegisterUserDlg(this);
-    connect(registerUserDlg, SIGNAL(signal_done(bool, const QString&, unsigned long)),
-        SLOT(registerDone(bool, const QString&, unsigned long)));
+    connect(registerUserDlg, SIGNAL(signal_done(bool, const Licq::UserId&)),
+        SLOT(registerDone(bool, const Licq::UserId&)));
   }
 }
 
-void OwnerManagerDlg::registerDone(bool success, const QString& /* newId */, unsigned long newPpid)
+void OwnerManagerDlg::registerDone(bool success, const Licq::UserId& userId)
 {
   registerUserDlg = 0;
 
   if (success)
   {
-    updateOwners();
-    LicqGui::instance()->showInfoDialog(mnuUserGeneral, gUserManager.ownerUserId(newPpid));
+    gLicqGui->showInfoDialog(mnuUserGeneral, userId);
   }
 }
 
@@ -225,7 +231,6 @@ void OwnerManagerDlg::removeOwner()
   if (!QueryYesNo(this, tr("Do you really want to remove account %1?").arg(item->text(1))))
     return;
 
-  gUserManager.RemoveOwner(item->data(0, Qt::UserRole).toString().toULong());
-  gLicqDaemon->SaveConf();
-  updateOwners();
+  Licq::gUserManager.RemoveOwner(item->data(0, Qt::UserRole).toString().toULong());
+  Licq::gDaemon.SaveConf();
 }

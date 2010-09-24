@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,11 +22,14 @@
 
 #include <QDialog>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 class QPushButton;
 
-class CUserEvent;
+namespace Licq
+{
+class UserEvent;
+}
 
 namespace LicqQtGui
 {
@@ -37,7 +40,7 @@ class ForwardDlg : public QDialog
   Q_OBJECT
 
 public:
-  ForwardDlg(CUserEvent* e, QWidget* p = NULL);
+  ForwardDlg(Licq::UserEvent* e, QWidget* p = NULL);
   ~ForwardDlg();
 
 private:
@@ -48,7 +51,7 @@ private:
   InfoField* edtUser;
   QPushButton* btnOk;
   QPushButton* btnCancel;
-  UserId myUserId;
+  Licq::UserId myUserId;
 
 private slots:
   void slot_ok();

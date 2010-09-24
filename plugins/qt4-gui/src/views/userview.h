@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 
 #ifndef USERVIEW_H
 #define USERVIEW_H
+
+#include <licq/userid.h>
 
 #include "contactlist/contactlist.h"
 
@@ -56,7 +58,7 @@ public:
    *
    * @return id of current user
    */
-  UserId currentUserId() const;
+  Licq::UserId currentUserId() const;
 
   /**
    * Set skin colors
@@ -139,7 +141,7 @@ private:
    */
   void spanRowRange(const QModelIndex& parent, int start, int end);
 
-  UserId myRemovedUser;
+  Licq::UserId myRemovedUser;
   QTimer* myRemovedUserTimer;
 
 private slots:

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008-2009 Licq developers
+ * Copyright (C) 2008-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,13 +23,16 @@
 
 #include <config.h>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 #include <QDialog>
 #include <QMap>
 #include <QPushButton>
 
-class LicqEvent;
+namespace Licq
+{
+class Event;
+}
 
 namespace LicqQtGui
 {
@@ -63,6 +66,7 @@ public:
     KabcPage,
     SettingsPage,
     StatusPage,
+    OnEventPage,
     GroupsPage,
   };
 
@@ -72,7 +76,7 @@ public:
    * @param userId User id
    * @param parent Parent widget
    */
-  UserDlg(const UserId& userId, QWidget* parent = 0);
+  UserDlg(const Licq::UserId& userId, QWidget* parent = 0);
 
   /**
    * Destructor
@@ -113,7 +117,7 @@ public:
    *
    * @ return User id
    */
-  const UserId& userId() const { return myUserId; }
+  const Licq::UserId& userId() const { return myUserId; }
 
 signals:
   void finished(UserDlg* userDlg);
@@ -153,14 +157,14 @@ private slots:
    * @param userId Id for affected user
    * @param subSignal Sub signal telling what the change was
    */
-  void userUpdated(const UserId& userId, unsigned long subSignal);
+  void userUpdated(const Licq::UserId& userId, unsigned long subSignal);
 
   /**
    * Server request has finished
    *
    * @param event Event from server with result
    */
-  void doneFunction(const LicqEvent* event);
+  void doneFunction(const Licq::Event* event);
 
   /**
    * Show user menu
@@ -173,7 +177,7 @@ private slots:
   void resetCaption();
 
 private:
-  UserId myUserId;
+  Licq::UserId myUserId;
   bool myIsOwner;
   unsigned long myIcqEventTag;
   QString myBasicTitle;

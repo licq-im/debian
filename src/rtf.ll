@@ -16,15 +16,15 @@
      *                                                                         *
      ***************************************************************************/
 
-#include <stdio.h>
-
-#include "licq_icqd.h"
-#include "licq_translate.h"
+#include <licq/icq.h>
+#include <licq/translator.h>
 
 #include <vector>
 #include <stack>
 #include <string>
 #include <cstdarg>
+#include <cstdio>
+#include <cstring>
 
 #define UP			1	
 #define DOWN			2
@@ -574,11 +574,8 @@ void Level::flush()
     }
     if (encoding == NULL) encoding = p->encoding;
     p->icq->client->toUTF(text, encoding);*/
-    /*char *szText = gTranslator.ToUnicode(text);
-    text = szText;*/
-    char *szText = const_cast<char *>(text.c_str());
-    gTranslator.ServerToClient(szText);
-    text = szText;
+/*text = Licq::gTranslator.toUnicode(text);*/
+  text = Licq::gTranslator.serverToClient(text);
     p->PrintQuoted(text.c_str());
     text = "";
 }
@@ -754,7 +751,7 @@ std::string RTF2HTML::Parse(const char *rtf)
         case UNICODE_CHAR:{
                 cur_level.flush();
                 std::string s;
-                gTranslator.utf16to8(atol(yytext + 2), s);
+        Licq::gTranslator.utf16to8(atol(yytext + 2), s);
                 PrintQuoted(s.c_str());
                 break;
             }
@@ -844,21 +841,18 @@ std::string RTF2HTML::Parse(const char *rtf)
     return s;
 }
 
-char *CICQDaemon::parseRTF(const char *rtf)
+std::string CICQDaemon::parseRtf(const std::string& rtf)
 {
     std::string str;
     char _RTF[] = "{\\rtf";
-    if ((strlen(rtf) > strlen(_RTF)) && !memcmp(rtf, _RTF, strlen(_RTF)))
+  if ((rtf.size() > strlen(_RTF)) && !memcmp(rtf.c_str(), _RTF, strlen(_RTF)))
     {
       RTF2HTML p(this);
-      str = p.Parse(rtf);
+    str = p.Parse(rtf.c_str());
     }
     else
       str = rtf;
 
-    char *szReturn = new char[str.length() + 1];
-    strcpy(szReturn, str.c_str());
-    szReturn[str.length()] = '\0';
-    return szReturn;
+  return str;
 }
 

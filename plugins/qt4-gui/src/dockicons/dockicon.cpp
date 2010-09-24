@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,15 +22,17 @@
 
 #include "config.h"
 
-#include <licq_user.h>
+#include <boost/foreach.hpp>
+
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/usermanager.h>
 
 #include "config/general.h"
 #include "config/iconmanager.h"
 
-#include "helpers/licqstrings.h"
-
 #include "dockiconwidget.h"
 
+using Licq::User;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::DockIcon */
 
@@ -39,8 +41,7 @@ DockIcon::DockIcon()
     myIcon(NULL),
     myNewMsg(0),
     mySysMsg(0),
-    myStatus(0),
-    myInvisible(false)
+    myStatus(User::OfflineStatus)
 {
   // Get icon set updates
   connect(IconManager::instance(), SIGNAL(statusIconsChanged()), SLOT(updateStatusIcon()));
@@ -51,13 +52,16 @@ DockIcon::DockIcon()
 
   unsigned short sysMsg = 0;
 
-  FOR_EACH_OWNER_START(LOCK_R)
   {
-    sysMsg += pOwner->NewMessages();
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+    {
+      Licq::OwnerReadGuard pOwner(owner);
+      sysMsg += pOwner->NewMessages();
+    }
   }
-  FOR_EACH_OWNER_END
 
-  unsigned short newMsg = LicqUser::getNumUserEvents() - sysMsg;
+  unsigned short newMsg = Licq::User::getNumUserEvents() - sysMsg;
 
   updateIconMessages(newMsg, sysMsg);
   updateIconStatus();
@@ -71,27 +75,25 @@ DockIcon::~DockIcon()
 void DockIcon::updateIconStatus()
 {
   // Default if there is no owner, just show status as offline
-  myId = "0";
-  myPpid = LICQ_PPID;
-  myFullStatus = ICQ_STATUS_OFFLINE;
-  myStatus = ICQ_STATUS_OFFLINE;
-  myInvisible = false;
+  myUserId = Licq::UserId();;
+  myStatus = User::OfflineStatus;
 
-  FOR_EACH_OWNER_START(LOCK_R)
   {
-    // Any account is better than no account
-    //   and try and get account with "best" status
-    // TODO: This numerical comparison is not perfect, for example Do Not Disturb will be prefered over Free For Chat
-    if (myId == "0" || pOwner->Status() < myStatus)
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
     {
-      myId = pOwner->IdString();
-      myPpid = pOwner->PPID();
-      myFullStatus = pOwner->StatusFull();
-      myStatus = pOwner->Status();
-      myInvisible = pOwner->StatusInvisible();
+      Licq::OwnerReadGuard pOwner(owner);
+
+      // Any account is better than no account
+      //   and try and get account with "best" status
+      unsigned status = pOwner->status();
+      if (!myUserId.isValid() || (status != User::OfflineStatus && status < myStatus))
+      {
+        myUserId = pOwner->id();
+        myStatus = status;
+      }
     }
   }
-  FOR_EACH_OWNER_END
 
   updateToolTip();
   updateStatusIcon();
@@ -100,7 +102,7 @@ void DockIcon::updateIconStatus()
 void DockIcon::updateStatusIcon()
 {
   myStatusIcon = const_cast<QPixmap*>
-    (&IconManager::instance()->iconForStatus(myFullStatus, myId, myPpid));
+    (&IconManager::instance()->iconForStatus(myStatus, myUserId));
 }
 
 void DockIcon::updateIconMessages(int newMsg, int sysMsg)
@@ -127,7 +129,7 @@ void DockIcon::updateEventIcon()
 void DockIcon::updateToolTip()
 {
   QString s = QString("<nobr>%1</nobr>")
-      .arg(LicqStrings::getStatus(myStatus, myInvisible));
+      .arg(User::statusToString(myStatus).c_str());
 
   if (mySysMsg)
     s += "<br><b>" + tr("%1 system messages").arg(mySysMsg) + "</b>";

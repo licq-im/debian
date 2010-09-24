@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2009 Licq developers
+ * Copyright (C) 2005-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,16 +21,20 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
+
 #include <QDialogButtonBox>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QMenu>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_events.h>
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/pluginsignal.h>
 
-#include "core/mainwin.h"
 #include "core/messagebox.h"
 
 #include "helpers/support.h"
@@ -43,7 +47,7 @@ using namespace LicqQtGui;
 
 struct luser
 {
-  UserId userId;
+  Licq::UserId userId;
   QString alias;
 };
 
@@ -107,17 +111,21 @@ void GPGKeyManager::slot_add()
   QMenu popupMenu;
   QList<luser> list;
 
-  FOR_EACH_USER_START(LOCK_R)
   {
-    if (strcmp(pUser->GPGKey(), "") == 0)
+    Licq::UserListGuard userList;
+    BOOST_FOREACH(const Licq::User* user, **userList)
     {
+      Licq::UserReadGuard u(user);
+
+      if (!u->gpgKey().empty())
+        continue;
+
       luser tmp;
-      tmp.userId = pUser->id();
-      tmp.alias = QString::fromUtf8(pUser->GetAlias());
+      tmp.userId = u->id();
+      tmp.alias = QString::fromUtf8(u->getAlias().c_str());
       list.append(tmp);
     }
   }
-  FOR_EACH_USER_END
 
   qSort(list.begin(), list.end(), compare_luser);
 
@@ -152,14 +160,14 @@ void GPGKeyManager::slot_remove()
 
 void GPGKeyManager::initKeyList()
 {
-  FOR_EACH_USER_START(LOCK_R)
+  Licq::UserListGuard userList;
+  BOOST_FOREACH(const Licq::User* user, **userList)
   {
-    if (strcmp(pUser->GPGKey(), "") != 0)
-    {
-      new KeyListItem(lst_keyList, pUser);
-    }
+    Licq::UserReadGuard u(user);
+
+    if (!u->gpgKey().empty())
+      new KeyListItem(lst_keyList, *u);
   }
-  FOR_EACH_USER_END
 
   lst_keyList->resizeColumnsToContents();
 }
@@ -172,7 +180,7 @@ KeyList::KeyList(QWidget* parent)
   setRootIsDecorated(false);
 }
 
-void KeyList::editUser(const UserId& userId)
+void KeyList::editUser(const Licq::UserId& userId)
 {
   KeyListItem* item = NULL;
   bool found = false;
@@ -190,11 +198,10 @@ void KeyList::editUser(const UserId& userId)
 
   if (!found)
   {
-    const LicqUser* u = gUserManager.fetchUser(userId);
-    if (u == NULL)
+    Licq::UserReadGuard u(userId);
+    if (!u.isLocked())
       return;
-    item = new KeyListItem(this, u);
-    gUserManager.DropUser(u);
+    item = new KeyListItem(this, *u);
     resizeColumnsToContents();
   }
 
@@ -218,20 +225,26 @@ void KeyList::dropEvent(QDropEvent* event)
     return;
 
   unsigned long nPPID = 0;
-  FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
+
   {
-    if (text.startsWith(PPIDSTRING((*_ppit)->PPID())))
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
     {
-      nPPID = (*_ppit)->PPID();
-      break;
+      unsigned long ppid = owner->ppid();
+      char ppidStr[5];
+      Licq::protocolId_toStr(ppidStr, ppid);
+      if (text.startsWith(ppidStr))
+      {
+        nPPID = ppid;
+        break;
+      }
     }
   }
-  FOR_EACH_PROTO_PLUGIN_END;
 
   if (nPPID == 0)
     return;
 
-  editUser(LicqUser::makeUserId(text.mid(4).toLatin1().data(), nPPID));
+  editUser(Licq::UserId(text.mid(4).toLatin1().data(), nPPID));
 }
 
 void KeyList::resizeEvent(QResizeEvent* e)
@@ -263,7 +276,7 @@ void KeyList::resizeColumnsToContents()
 }
 
 // KEYLISTITEM
-KeyListItem::KeyListItem(QTreeWidget* parent, const LicqUser* u)
+KeyListItem::KeyListItem(QTreeWidget* parent, const Licq::User* u)
   : QTreeWidgetItem(parent),
     myUserId(u->id()),
     keySelect(NULL)
@@ -271,11 +284,11 @@ KeyListItem::KeyListItem(QTreeWidget* parent, const LicqUser* u)
   updateText(u);
 }
 
-void KeyListItem::updateText(const LicqUser* u)
+void KeyListItem::updateText(const Licq::User* u)
 {
   setText(0, QString::fromUtf8(u->GetAlias()));
   setText(1, u->UseGPG() ? tr("Yes") : tr("No"));
-  setText(2, u->GPGKey());
+  setText(2, u->gpgKey().c_str());
 }
 
 void KeyListItem::edit()
@@ -289,29 +302,30 @@ void KeyListItem::edit()
 
 void KeyListItem::slot_done()
 {
-  const LicqUser* u = gUserManager.fetchUser(myUserId);
+  Licq::UserReadGuard u(myUserId);
   keySelect = NULL;
 
-  if (u != NULL)
+  if (u.isLocked())
   {
-    if (strcmp(u->GPGKey(), "") == 0)
+    if (u->gpgKey().empty())
       delete this;
     else
-      updateText(u);
-    gUserManager.DropUser(u);
+      updateText(*u);
     dynamic_cast<KeyList*>(treeWidget())->resizeColumnsToContents();
   }
 }
 
 void KeyListItem::unsetKey()
 {
-  LicqUser* u = gUserManager.fetchUser(myUserId);
-
-  if (u != NULL)
   {
-    u->SetUseGPG(false);
-    u->SetGPGKey("");
-    gUserManager.DropUser(u);
-    gMainWindow->slot_updatedUser(myUserId, USER_GENERAL, 0);
+    Licq::UserWriteGuard u(myUserId);
+    if (u.isLocked())
+    {
+      u->SetUseGPG(false);
+      u->setGpgKey("");
+    }
   }
+
+  // Notify all plugins (including ourselves)
+  Licq::gUserManager.notifyUserUpdated(myUserId, Licq::PluginSignal::UserSecurity);
 }
