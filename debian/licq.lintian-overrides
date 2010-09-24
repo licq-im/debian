@@ -1,8 +1,0 @@
-licq: script-with-language-extension usr/bin/viewurl-firefox.sh
-licq: script-with-language-extension usr/bin/viewurl-lynx.sh
-licq: script-with-language-extension usr/bin/viewurl-mozilla.sh
-licq: script-with-language-extension usr/bin/viewurl-ncftp.sh
-licq: script-with-language-extension usr/bin/viewurl-netscape.sh
-licq: script-with-language-extension usr/bin/viewurl-opera.sh
-licq: script-with-language-extension usr/bin/viewurl-seamonkey.sh
-licq: script-with-language-extension usr/bin/viewurl-w3m.sh

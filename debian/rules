@@ -2,20 +2,10 @@
 
 include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/langcore.mk
-include /usr/share/cdbs/1/class/autotools-vars.mk
 
 DEB_INSTALL_DOCS_ALL =
 DEB_INSTALL_CHANGELOGS_ALL = doc/CHANGELOG
 DEB_DH_MAKESHLIBS_ARGS_ALL = -X usr/lib/licq/
-
-confflags  = $(DEB_CONFIGURE_SCRIPT_ENV) $(DEB_CONFIGURE_NORMAL_ARGS)
-confflags += --cache-file=$(CURDIR)/config.cache
-
-# hacks to avoid running these things during the build
-export ACLOCAL    = : aclocal
-export AUTOCONF   = : autoconf
-export AUTOMAKE	  = : automake
-export AUTOHEADER = : autoheader
 
 # cmake settings
 CMAKE = cmake
@@ -30,17 +20,17 @@ CMAKE_NORMAL_ARGS += -DCMAKE_SKIP_RPATH=ON
 CMAKE_NORMAL_ARGS += -DCMAKE_VERBOSE_MAKEFILE=ON
 
 # plugin packages
-CMAKE_PLUGINS := qt4
-PLUGINS := $(filter-out $(CMAKE_PLUGINS),$(patsubst licq-plugin-%,%,$(filter licq-plugin-%,$(shell dh_listpackages))))
+PLUGINS := $(patsubst licq-plugin-%,%,$(filter licq-plugin-%,$(shell dh_listpackages)))
+PLUGINS := $(filter-out kde qt qt4-common,$(PLUGINS))
 
 # directories of plugin packages in source tree
 src/autoreply = auto-reply
 src/console   = console
-src/forwarder = email
-src/kde       = kde-gui
+src/forwarder = forwarder
+src/jabber    = jabber
+src/kde4      = kde4-gui
 src/msn       = msn
 src/osd       = osd
-src/qt        = qt-gui
 src/qt4       = qt4-gui
 src/rms       = rms
 
@@ -48,74 +38,38 @@ src/rms       = rms
 # In order to have both a Qt and a KDE plugin, we make a mangled copy
 # of the Qt plugin in the source tree.
 
-post-patches:: preconfigure-kde-gui
+post-patches:: preconfigure-kde4-gui
 
-preconfigure-kde-gui:
-	cp -a plugins/qt-gui plugins/kde-gui
-	mv plugins/kde-gui/share/qt-gui plugins/kde-gui/share/kde-gui
-	cd plugins/kde-gui && \
-	for i in share/Makefile.in \
-		 share/Makefile.am \
-	         po/Makefile.in \
-		 po/Makefile.am ; \
-	do \
-	    sed -i -e 's/qt-gui/kde-gui/g' $$i ; \
-	done	    
-	cd plugins/kde-gui && \
-	for i in src/licqgui.cpp \
-		 src/mainwin.cpp \
-		 src/gui-defines.h \
-		 src/skinbrowser.cpp ; do \
-	    sed -i -e '/#include/! s/"\(.*\)qt-gui\(.*\)"/"\1kde-gui\2"/g' $$i ; \
-	done	    
+preconfigure-kde4-gui:
+	cp -a plugins/qt4-gui plugins/kde4-gui
 	touch $@
 
 clean::
-	rm -f preconfigure-kde-gui
-	rm -rf plugins/kde-gui
+	rm -f preconfigure-kde4-gui
+	rm -rf plugins/kde4-gui
 
 
 # Build rules
 
-configure/licq:: config.status
-config.status:
-	./configure $(confflags)
+configure/licq:: CMAKE_EXTRA_ARGS += -DBUILD_TESTS=ON
+configure/licq:: $(CMAKE_BUILDDIR)/CMakeCache.txt
+$(CMAKE_BUILDDIR)/CMakeCache.txt:
+	mkdir -p $(@D)
+	cd $(@D) && $(CMAKE) $(CURDIR) $(CMAKE_NORMAL_ARGS) $(CMAKE_EXTRA_ARGS)
 
 build/licq:: debian/stamp-licq-build
 debian/stamp-licq-build:
-	$(MAKE)
+	$(DEB_MAKE_ENVVARS) $(MAKE) -C $(CMAKE_BUILDDIR)
 	touch $@
 
 clean::
 	rm -f debian/stamp-licq-build
-	[ ! -f Makefile ] || $(MAKE) distclean
+	rm -rf $(CMAKE_BUILDDIR)
 
 
-# autotools plugins
+# Plugins
 define build-plugin
-configure/licq-plugin-$(1):: plugins/$$(src/$(1))/config.status
-plugins/$$(src/$(1))/config.status:
-	cd plugins/$$(src/$(1)) && ./configure $$(confflags) $$(extra_confflags)
-
-build/licq-plugin-$(1):: debian/stamp-$(1)-build
-debian/stamp-$(1)-build:
-	$$(MAKE) -C plugins/$$(src/$(1))
-	touch $$@
-
-install/licq-plugin-$(1)::
-	$$(MAKE) -C plugins/$$(src/$(1)) install DESTDIR=$(CURDIR)/debian/licq-plugin-$(1)
-
-clean::
-	rm -f debian/stamp-$(1)-build
-	[ ! -f plugins/$$(src/$(1))/Makefile ] || $$(MAKE) -C plugins/$$(src/$(1)) distclean
-endef
-
-configure/licq-plugin-kde:: extra_confflags = --with-kde
-
-$(foreach X,$(PLUGINS),$(eval $(call build-plugin,$(X))))
-
-# cmake plugins
-define build-cmake-plugin
+configure/licq-plugin-$(1):: CMAKE_EXTRA_ARGS += -DCMAKE_MODULE_PATH=$(CURDIR)/cmake
 configure/licq-plugin-$(1):: plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)/CMakeCache.txt
 plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)/CMakeCache.txt:
 	mkdir -p $$(@D)
@@ -128,33 +82,33 @@ debian/stamp-$(1)-build:
 
 install/licq-plugin-$(1)::
 	$$(DEB_MAKE_ENVVARS) $$(MAKE) -C plugins/$$(src/$(1))/$(CMAKE_BUILDDIR) install DESTDIR=$(CURDIR)/debian/licq-plugin-$(1)
+ifeq ($(1),qt4)
+	rm debian/licq-plugin-qt4/usr/share/licq/qt4-gui/emoticons/FeltTip4/LICENSE
+	mkdir -p debian/licq-plugin-qt4-common/usr/share/licq
+	mv debian/licq-plugin-qt4/usr/share/licq/qt4-gui debian/licq-plugin-qt4-common/usr/share/licq/
+endif
+ifeq ($(1),kde4)
+	rm -r debian/licq-plugin-kde4/usr/share/licq/qt4-gui
+endif
 
 clean::
 	rm -f debian/stamp-$(1)-build
 	rm -rf plugins/$$(src/$(1))/$(CMAKE_BUILDDIR)
 endef
 
-$(foreach X,$(CMAKE_PLUGINS),$(eval $(call build-cmake-plugin,$(X))))
+configure/licq-plugin-kde4:: CMAKE_EXTRA_ARGS += -DWITH_KDE=ON
+
+$(foreach X,$(PLUGINS),$(eval $(call build-plugin,$(X))))
 
 
 # Install rules
 
+install/licq-plugin-qt4-common:: install/licq-plugin-qt4
+
 install/licq install/licq-dev:: install-licq-common
 install-licq-common::
-	$(MAKE) install DESTDIR=$(CURDIR)/debian/licq
+	$(DEB_MAKE_ENVVARS) $(MAKE) -C $(CMAKE_BUILDDIR) install DESTDIR=$(CURDIR)/debian/licq
 	mkdir -p debian/licq/usr/share/pixmaps
 	convert /usr/share/icons/oxygen/32x32/apps/licq.png debian/licq/usr/share/pixmaps/licq.xpm
 	mkdir -p debian/licq-dev/usr
 	mv debian/licq/usr/include debian/licq-dev/usr/include
-	rm -r debian/licq/usr/lib
-
-binary-post-install/licq-plugin-kde::
-	rm debian/$(cdbs_curpkg)/usr/share/licq/kde-gui/emoticons/FeltTip4/LICENSE
-
-binary-post-install/licq-plugin-qt::
-	rm debian/$(cdbs_curpkg)/usr/share/licq/qt-gui/emoticons/FeltTip4/LICENSE
-	mv debian/$(cdbs_curpkg)/usr/share/applications/licq.desktop debian/$(cdbs_curpkg)/usr/share/applications/licq-qt3.desktop
-
-binary-post-install/licq-plugin-qt4::
-	rm debian/$(cdbs_curpkg)/usr/share/licq/qt4-gui/emoticons/FeltTip4/LICENSE
-	mv debian/$(cdbs_curpkg)/usr/share/applications/licq.desktop debian/$(cdbs_curpkg)/usr/share/applications/licq-qt4.desktop
