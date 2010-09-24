@@ -131,8 +131,8 @@ Package: licq-plugin-qt4
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version}), licq-plugin-qt4-common
 Provides: licq-plugin
-Replaces: licq-plugin-qt (<< 1.3.9)
-Breaks: licq-plugin-qt (<< 1.3.9)
+Replaces: licq-plugin-qt (<< 1.3.9-1)
+Breaks: licq-plugin-qt (<< 1.3.9-1)
 Description: graphical user interface plug-in for Licq using Qt4
  This package provides a Qt-based graphical user interface to the Licq instant
  messaging client.  The GUI provides access to all features available in Licq
@@ -156,8 +156,8 @@ Description: graphical user interface plug-in for Licq using Qt4
 Package: licq-plugin-qt4-common
 Architecture: all
 Depends: ${misc:Depends}
-Replaces: licq-plugin-qt4 (<< 1.5.0)
-Breaks: licq-plugin-qt4 (<< 1.5.0)
+Replaces: licq-plugin-qt4 (<< 1.5.0~)
+Breaks: licq-plugin-qt4 (<< 1.5.0~)
 Description: common data files for qt4 and kde4 plugin
  This package contains skins, icons and similar files that are used by both
  licq-plugin-qt4 and licq-plugin-kde4.
