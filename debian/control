@@ -156,6 +156,8 @@ Description: graphical user interface plug-in for Licq using Qt4
 Package: licq-plugin-qt4-common
 Architecture: all
 Depends: ${misc:Depends}
+Replaces: licq-plugin-qt4 (<< 1.5.0)
+Breaks: licq-plugin-qt4 (<< 1.5.0)
 Description: common data files for qt4 and kde4 plugin
  This package contains skins, icons and similar files that are used by both
  licq-plugin-qt4 and licq-plugin-kde4.
