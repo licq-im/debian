@@ -120,19 +120,19 @@ Description: on-screen display plug-in for Licq
  status changed messages are also supported.
 
 Package: licq-plugin-qt
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
-Description: graphical user interface plug-in for Licq using Qt3
- This package provides the Qt-based graphical user interface to the Licq
- instant messaging client.  This version is not linked against the KDE3
- libraries; see licq-plugin-kde for that.  The Qt plug-in has docking support
- for Window Maker, AfterStep and Enlightenment among others.
+Architecture: all
+Depends: licq-plugin-qt4, ${misc:Depends}
+Section: oldlibs
+Description: transitional dummy package
+ This is a transitional dummy package to ease the migration from the deprecated
+ licq-plugin-qt to the new licq-plugin-qt4 package.  You can remove it safely.
 
 Package: licq-plugin-qt4
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version}), licq-plugin-qt4-common
 Provides: licq-plugin
+Replaces: licq-plugin-qt (<< 1.3.9)
+Breaks: licq-plugin-qt (<< 1.3.9)
 Description: graphical user interface plug-in for Licq using Qt4
  This package provides a Qt-based graphical user interface to the Licq instant
  messaging client.  The GUI provides access to all features available in Licq
@@ -152,6 +152,13 @@ Description: graphical user interface plug-in for Licq using Qt4
  well as entirely new dialogs for messaging, history and settings.  Note that
  spell checking and tray icon are available even though this version is not
  linked with KDE libraries.
+
+Package: licq-plugin-qt4-common
+Architecture: all
+Depends: ${misc:Depends}
+Description: common data files for qt4 and kde4 plugin
+ This package contains skins, icons and similar files that are used by both
+ licq-plugin-qt4 and licq-plugin-kde4.
 
 Package: licq-plugin-rms
 Architecture: any
