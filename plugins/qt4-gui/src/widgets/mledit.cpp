@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -218,12 +218,6 @@ void MLEdit::keyPressEvent(QKeyEvent* event)
     }
   }
 
-  if (event->key() == Qt::Key_Delete && event->modifiers() == Qt::ShiftModifier)
-    return cut();
-  if (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ShiftModifier)
-    return paste();
-  if (event->key() == Qt::Key_Insert && event->modifiers() == Qt::ControlModifier)
-    return copy();
   if (event->key() == Qt::Key_PageDown && event->modifiers() == Qt::ShiftModifier)
   {
     emit scrollDownPressed();

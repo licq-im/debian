@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,9 +27,9 @@
 #include <QPainter>
 #include <QWidget>
 
-#include <licq_constants.h>
-#include <licq_file.h>
-#include <licq_log.h>
+#include <licq/daemon.h>
+#include <licq/inifile.h>
+#include <licq/logging/log.h>
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Config::Skin */
@@ -49,7 +49,7 @@ Config::Skin::Skin(const QString& skinName, QObject* parent)
 
 void Config::Skin::loadSkin(const QString& skinName)
 {
-  gLog.Info("%sApplying %s skin.\n", L_INITxSTR, skinName.toLocal8Bit().data());
+  Licq::gLog.info("Applying %s skin", skinName.toLocal8Bit().data());
 
   // Set default values even if skin is valid as skin may not include all settings
   SetDefaultValues();
@@ -61,15 +61,15 @@ void Config::Skin::loadSkin(const QString& skinName)
     return;
   }
 
-  CIniFile skinFile/*(INI_FxFATAL | INI_FxERROR | INI_FxWARN)*/;
-
   QString skinFileName = skinName + ".skin";
   QString subdir = QString(QTGUI_DIR) + SKINS_DIR + skinName + "/";
-  QString baseSkinDir = QString::fromLocal8Bit(BASE_DIR) + subdir;
-  if (!skinFile.LoadFile((baseSkinDir + skinFileName).toLocal8Bit()))
+  QString baseSkinDir = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subdir;
+  Licq::IniFile skinFile((baseSkinDir + skinFileName).toLocal8Bit().data());
+  if (!skinFile.loadFile())
   {
-    baseSkinDir = QString::fromLocal8Bit(SHARE_DIR) + subdir;
-    if (!skinFile.LoadFile((baseSkinDir + skinFileName).toLocal8Bit()))
+    baseSkinDir = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subdir;
+    skinFile.setFilename((baseSkinDir + skinFileName).toLocal8Bit().data());
+    if (!skinFile.loadFile())
     {
       emit changed();
       emit frameChanged();
@@ -79,8 +79,7 @@ void Config::Skin::loadSkin(const QString& skinName)
 
   mySkinName = skinName;
 
-  skinFile.SetFlag(INI_FxWARN);
-  skinFile.SetSection("skin");
+  skinFile.setSection("skin", false);
 
   // Frame
   frame.loadSkin(skinFile, "frame", baseSkinDir);
@@ -97,74 +96,37 @@ void Config::Skin::loadSkin(const QString& skinName)
   // Group Combo Box
   cmbGroups.loadSkin(skinFile, "cmbGroups");
 
+  std::string temp;
+#define GET_COLOR(param, var) \
+  skinFile.get(param, temp, "default"); \
+  if (temp != "default") \
+    var.setNamedColor(temp.c_str());
+
   // Read in the colors
-  char temp[MAX_FILENAME_LEN];
-  skinFile.ReadStr("colors.background", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    backgroundColor.setNamedColor(temp);
+  GET_COLOR("colors.background", backgroundColor);
+  GET_COLOR("colors.gridlines", gridlineColor);
+  GET_COLOR("colors.scrollbar", scrollbarColor);
+  GET_COLOR("colors.btnTxt", buttonTextColor);
+  GET_COLOR("colors.online", onlineColor);
+  GET_COLOR("colors.offline", offlineColor);
+  GET_COLOR("colors.away", awayColor);
+  GET_COLOR("colors.newuser", newUserColor);
+  GET_COLOR("colors.authwait", awaitingAuthColor);
+  GET_COLOR("colors.highlight.bg", highBackColor);
+  GET_COLOR("colors.highlight.fg", highTextColor);
+  GET_COLOR("colors.group.bg", groupBackColor);
+  GET_COLOR("colors.group.fg", groupTextColor);
+  GET_COLOR("colors.group.highlight.bg", groupHighBackColor);
+  GET_COLOR("colors.group.highlight.fg", groupHighTextColor);
 
-  skinFile.ReadStr("colors.gridlines", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    gridlineColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.scrollbar", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    scrollbarColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.btnTxt", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    buttonTextColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.online", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    onlineColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.offline", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    offlineColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.away", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    awayColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.newuser", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    newUserColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.authwait", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    awaitingAuthColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.highlight.bg", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    highBackColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.highlight.fg", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    highTextColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.group.bg", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    groupBackColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.group.fg", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    groupTextColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.group.highlight.bg", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    groupHighBackColor.setNamedColor(temp);
-
-  skinFile.ReadStr("colors.group.highlight.fg", temp, "default");
-  if (strncmp(temp, "default", 7) != 0)
-    groupHighTextColor.setNamedColor(temp);
+#undef GET_COLOR
 
   // And images
-  skinFile.ReadStr("images.groupBack", temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    groupBackImage.load(baseSkinDir + temp);
+  skinFile.get("images.groupBack", temp, "none");
+  if (temp != "none")
+    groupBackImage.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str()));
 
-  skinFile.ReadBool("images.groupBack.tile", tileGroupBackImage, false);
+  skinFile.get("images.groupBack.tile", tileGroupBackImage, false);
 
   emit changed();
   emit frameChanged();
@@ -179,7 +141,7 @@ void Config::Skin::setFrameTransparent(bool transparent)
   emit frameChanged();
 }
 
-void Config::Skin::setFrameStyle(unsigned short frameStyle)
+void Config::Skin::setFrameStyle(unsigned frameStyle)
 {
   if (frameStyle == frame.frameStyle)
     return;
@@ -253,7 +215,7 @@ void Config::Skin::SetDefaultValues()
 }
 
 
-void Config::Skin::AdjustForMenuBar(unsigned short h)
+void Config::Skin::AdjustForMenuBar(int h)
 {
   frame.border.AdjustForMenuBar(myMenuBarHeight, h);
   lblStatus.AdjustForMenuBar(myMenuBarHeight, h);
@@ -264,91 +226,85 @@ void Config::Skin::AdjustForMenuBar(unsigned short h)
   myMenuBarHeight = h;
 }
 
-void Config::FrameSkin::loadSkin(CIniFile& skinFile, const QString& name, const QString& baseSkinDir)
+void Config::FrameSkin::loadSkin(const Licq::IniFile& skinFile,
+    const QString& name, const QString& baseSkinDir)
 {
-  char temp[255];
-  skinFile.SetFlags(0);
-  skinFile.ReadStr((name + ".pixmap").toLatin1().data(), temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    if (!pixmap.load(baseSkinDir + temp))
-      gLog.Error("%sError loading background pixmap (%s).\n", L_ERRORxSTR, temp);
+  std::string temp;
+  skinFile.get((name + ".pixmap").toLatin1().data(), temp, "none");
+  if (temp != "none")
+    if (!pixmap.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str())))
+      Licq::gLog.error("Error loading background pixmap (%s)", temp.c_str());
 
-  skinFile.ReadStr((name + ".mask").toLatin1().data(), temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    if (!mask.load(baseSkinDir + temp))
-      gLog.Error("%sError loading background mask (%s).\n", L_ERRORxSTR, temp);
+  skinFile.get((name + ".mask").toLatin1().data(), temp, "none");
+  if (temp != "none")
+    if (!mask.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str())))
+      Licq::gLog.error("Error loading background mask (%s)", temp.c_str());
 
-  skinFile.SetFlags(INI_FxFATAL | INI_FxERROR);
-  skinFile.ReadNum((name + ".border.top").toLatin1().data(), border.top);
-  skinFile.ReadNum((name + ".border.bottom").toLatin1().data(), border.bottom);
-  skinFile.ReadNum((name + ".border.left").toLatin1().data(), border.left);
-  skinFile.ReadNum((name + ".border.right").toLatin1().data(), border.right);
-  skinFile.SetFlags(0);
-  skinFile.ReadBool((name + ".hasMenuBar").toLatin1().data(), hasMenuBar, hasMenuBar);
-  skinFile.ReadNum((name + ".frameStyle").toLatin1().data(), frameStyle, frameStyle);
-  skinFile.ReadBool((name + ".transparent").toLatin1().data(), transparent, transparent);
+  skinFile.get((name + ".border.top").toLatin1().data(), border.top);
+  skinFile.get((name + ".border.bottom").toLatin1().data(), border.bottom);
+  skinFile.get((name + ".border.left").toLatin1().data(), border.left);
+  skinFile.get((name + ".border.right").toLatin1().data(), border.right);
+  skinFile.get((name + ".hasMenuBar").toLatin1().data(), hasMenuBar, hasMenuBar);
+  skinFile.get((name + ".frameStyle").toLatin1().data(), frameStyle, frameStyle);
+  skinFile.get((name + ".transparent").toLatin1().data(), transparent, transparent);
 }
 
-void Config::ShapeSkin::loadSkin(CIniFile& skinFile, const QString& name)
+void Config::ShapeSkin::loadSkin(const Licq::IniFile& skinFile, const QString& name)
 {
-  signed short x1, y1, x2, y2;
-  skinFile.SetFlags(INI_FxFATAL | INI_FxERROR);
-  skinFile.ReadNum((name + ".rect.x1").toLatin1().data(), x1);
-  skinFile.ReadNum((name + ".rect.y1").toLatin1().data(), y1);
-  skinFile.ReadNum((name + ".rect.x2").toLatin1().data(), x2);
-  skinFile.ReadNum((name + ".rect.y2").toLatin1().data(), y2);
-  skinFile.SetFlags(0);
+  int x1, y1, x2, y2;
+  skinFile.get((name + ".rect.x1").toLatin1().data(), x1);
+  skinFile.get((name + ".rect.y1").toLatin1().data(), y1);
+  skinFile.get((name + ".rect.x2").toLatin1().data(), x2);
+  skinFile.get((name + ".rect.y2").toLatin1().data(), y2);
   rect.setCoords(x1, y1, x2, y2);
 
-  char temp[255];
-  skinFile.ReadStr((name + ".color.fg").toLatin1().data(), temp, "default");
-  foreground = (strncmp(temp, "default", 7) == 0 ? QColor() : QColor(temp));
-  if (strncmp(temp, "transparent", 11) == 0)
+  std::string temp;
+  skinFile.get((name + ".color.fg").toLatin1().data(), temp, "default");
+  foreground = (temp == "default" ? QColor() : QColor(temp.c_str()));
+  if (temp == "transparent")
     foreground.setAlpha(0);
-  skinFile.ReadStr((name + ".color.bg").toLatin1().data(), temp, "default");
-  background = (strncmp(temp, "default", 7) == 0 ? QColor() : QColor(temp));
-  if (strncmp(temp, "transparent", 11) == 0)
+  skinFile.get((name + ".color.bg").toLatin1().data(), temp, "default");
+  background = (temp == "default" ? QColor() : QColor(temp.c_str()));
+  if (temp == "transparent")
     background.setAlpha(0);
 }
 
-void Config::ButtonSkin::loadSkin(CIniFile& skinFile, const QString& name, const QString& baseSkinDir)
+void Config::ButtonSkin::loadSkin(const Licq::IniFile& skinFile, const QString& name, const QString& baseSkinDir)
 {
   Config::ShapeSkin::loadSkin(skinFile, name);
 
-  char temp[255];
-  skinFile.ReadStr((name + ".caption").toLatin1().data(), temp, "default");
-  caption = (strncmp(temp, "default", 7) == 0 ? QString() : QString::fromLocal8Bit(temp));
+  std::string temp;
+  skinFile.get((name + ".caption").toLatin1().data(), temp, "default");
+  caption = (temp == "default" ? QString() : QString::fromLocal8Bit(temp.c_str()));
 
-  skinFile.ReadStr((name + ".pixmapUpFocus").toLatin1().data(), temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    pixmapUpFocus.load(baseSkinDir + temp);
+  skinFile.get((name + ".pixmapUpFocus").toLatin1().data(), temp, "none");
+  if (temp != "none")
+    pixmapUpFocus.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str()));
 
-  skinFile.ReadStr((name + ".pixmapUpNoFocus").toLatin1().data(), temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    pixmapUpNoFocus.load(baseSkinDir + temp);
+  skinFile.get((name + ".pixmapUpNoFocus").toLatin1().data(), temp, "none");
+  if (temp != "none")
+    pixmapUpNoFocus.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str()));
 
-  skinFile.ReadStr((name + ".pixmapDown").toLatin1().data(), temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    pixmapDown.load(baseSkinDir + temp);
+  skinFile.get((name + ".pixmapDown").toLatin1().data(), temp, "none");
+  if (temp != "none")
+    pixmapDown.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str()));
 }
 
-void Config::LabelSkin::loadSkin(CIniFile& skinFile, const QString& name, const QString& baseSkinDir)
+void Config::LabelSkin::loadSkin(const Licq::IniFile& skinFile, const QString& name, const QString& baseSkinDir)
 {
   Config::ShapeSkin::loadSkin(skinFile, name);
   transparent = (background.alpha() == 0);
 
-  char temp[255];
-  skinFile.ReadStr((name + ".pixmap").toLatin1().data(), temp, "none");
-  if (strncmp(temp, "none", 4) != 0)
-    pixmap.load(baseSkinDir + temp);
+  std::string temp;
+  skinFile.get((name + ".pixmap").toLatin1().data(), temp, "none");
+  if (temp != "none")
+    pixmap.load(baseSkinDir + QString::fromLocal8Bit(temp.c_str()));
 
-  skinFile.ReadNum((name + ".margin").toLatin1().data(), margin, margin);
-  skinFile.SetFlags(INI_FxFATAL | INI_FxERROR);
-  skinFile.ReadNum((name + ".frameStyle").toLatin1().data(), frameStyle, frameStyle);
-  skinFile.SetFlags(0);
+  skinFile.get((name + ".margin").toLatin1().data(), margin, margin);
+  skinFile.get((name + ".frameStyle").toLatin1().data(), frameStyle, frameStyle);
 }
 
-void Config::ShapeSkin::AdjustForMenuBar(unsigned short h_old, unsigned short h_new)
+void Config::ShapeSkin::AdjustForMenuBar(int h_old, int h_new)
 {
   if (rect.top() >= 0)
     rect.setTop(rect.top() + h_new - h_old);
@@ -356,7 +312,7 @@ void Config::ShapeSkin::AdjustForMenuBar(unsigned short h_old, unsigned short h_
     rect.setBottom(rect.bottom() + h_new - h_old);
 }
 
-void Config::Border::AdjustForMenuBar(unsigned short h_old, unsigned short h_new)
+void Config::Border::AdjustForMenuBar(int h_old, int h_new)
 {
   top += (h_new - h_old);
 }

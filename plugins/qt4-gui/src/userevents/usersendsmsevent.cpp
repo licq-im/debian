@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,21 +29,21 @@
 #include <QTextCodec>
 #include <QTimer>
 
-#include <licq_icqd.h>
+#include <licq/contactlist/user.h>
+#include <licq/icq.h>
+#include <licq/protocolmanager.h>
 
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 
 #include "widgets/infofield.h"
 #include "widgets/mledit.h"
 
-#include "usereventtabdlg.h"
-
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendSmsEvent */
 
-UserSendSmsEvent::UserSendSmsEvent(const UserId& userId, QWidget* parent)
+UserSendSmsEvent::UserSendSmsEvent(const Licq::UserId& userId, QWidget* parent)
   : UserSendCommon(SmsEvent, userId, parent, "UserSendSmsEvent")
 {
   mySendServerCheck->setChecked(true);
@@ -76,18 +76,13 @@ UserSendSmsEvent::UserSendSmsEvent(const UserId& userId, QWidget* parent)
   count();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(count()));
 
-  LicqUser* u = gUserManager.fetchUser(myUsers.front(), LOCK_W);
-  if (u != NULL)
   {
-    myNumberField->setText(myCodec->toUnicode(u->getCellularNumber().c_str()));
-    gUserManager.DropUser(u);
+    Licq::UserReadGuard u(myUsers.front());
+    if (u.isLocked())
+      myNumberField->setText(myCodec->toUnicode(u->getCellularNumber().c_str()));
   }
 
   myBaseTitle += tr(" - SMS");
-
-  UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
-  if (tabDlg != NULL && tabDlg->tabIsSelected(this))
-    tabDlg->setWindowTitle(myBaseTitle);
 
   setWindowTitle(myBaseTitle);
   myEventTypeGroup->actions().at(SmsEvent)->setChecked(true);
@@ -98,7 +93,7 @@ UserSendSmsEvent::~UserSendSmsEvent()
   // Empty
 }
 
-bool UserSendSmsEvent::sendDone(const LicqEvent* /* e */)
+bool UserSendSmsEvent::sendDone(const Licq::Event* /* e */)
 {
   return true;
 }
@@ -112,16 +107,10 @@ void UserSendSmsEvent::resetSettings()
 
 void UserSendSmsEvent::send()
 {
-  const LicqUser* user = gUserManager.fetchUser(myUsers.front());
-  if (user == NULL)
-    return;
-  QString accountId = user->accountId().c_str();
-  gUserManager.DropUser(user);
-
   // Take care of typing notification now
   mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
+  gProtocolManager.sendTypingNotification(myUsers.front(), false, myConvoId);
 
   unsigned long icqEventTag = 0;
   if (myEventTag.size())
@@ -140,8 +129,8 @@ void UserSendSmsEvent::send()
     return;
 
   //TODO in daemon
-  icqEventTag = gLicqDaemon->icqSendSms(accountId.toLatin1(), LICQ_PPID,
-      myNumberField->text().toLatin1(),
+  icqEventTag = gLicqDaemon->icqSendSms(myUsers.front(),
+      myNumberField->text().toLatin1().data(),
       myMessageEdit->toPlainText().toUtf8().data());
   myEventTag.push_back(icqEventTag);
 

@@ -1,12 +1,29 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2000-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include <stdio.h>
 #include <unistd.h>
-#include "licq_plugin.h"
-#include "rms.h"
 
+#include <licq/pluginbase.h>
+
+#include "pluginversion.h"
+#include "rms.h"
 
 const char *LP_Usage()
 {
@@ -19,21 +36,21 @@ const char *LP_Usage()
 
 const char *LP_Name()
 {
-  static const char name[] = "ICQ Remote Management Server";
+  static const char name[] = "RMS";
   return name;
 }
 
 
 const char *LP_Description()
 {
-  static const char desc[] = "ICQ remote management server for telnet ICQ access.";
+  static const char desc[] = "ICQ remote management server for telnet ICQ access";
   return desc;
 }
 
 
 const char *LP_Version()
 {
-  static const char version[] = VERSION;
+  static const char version[] = PLUGIN_VERSION_STRING;
   return version;
 }
 
@@ -46,7 +63,7 @@ const char *LP_ConfigFile()
 
 const char *LP_Status()
 {
-  static const char enabled[] = "RMS  enabled";
+  static const char enabled[] = "RMS enabled";
   static const char disabled[] = "RMS disabled";
   return licqRMS->Enabled() ? enabled : disabled;
 }
@@ -83,9 +100,9 @@ bool LP_Init(int argc, char **argv)
 }
 
 
-int LP_Main(CICQDaemon *_licqDaemon)
+int LP_Main()
 {
-  int nResult = licqRMS->Run(_licqDaemon);
+  int nResult = licqRMS->Run();
   licqRMS->Shutdown();
   delete licqRMS;
   return nResult;

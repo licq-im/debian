@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
  */
 
 #include "mode2contactlistproxy.h"
+
+#include <licq/contactlist/user.h>
 
 #include "contactbar.h"
 #include "contactlist.h"
@@ -69,7 +71,7 @@ void Mode2ContactListProxy::reset()
   myColumnCount = sourceModel()->columnCount();
 
   // Get bars from All Users system group
-  QModelIndex allUsersIndex = dynamic_cast<ContactListModel*>(sourceModel())->groupIndex(ContactListModel::SystemGroupOffset + GROUP_ALL_USERS);
+  QModelIndex allUsersIndex = dynamic_cast<ContactListModel*>(sourceModel())->allUsersGroupIndex();
   for (int i = 0; i < NumBars; ++i)
     myBars[i] = static_cast<ContactBar*>(allUsersIndex.child(i, 0).internalPointer());
 
@@ -78,10 +80,6 @@ void Mode2ContactListProxy::reset()
   for (int srcGroupRow = 0; srcGroupRow < groupCount; ++srcGroupRow)
   {
     QModelIndex groupIndex = sourceModel()->index(srcGroupRow, 0);
-
-    // Skip the system groups since they'll be filtered by the next proxy anyway
-    if (groupIndex.data(ContactListModel::GroupIdRole).toInt() >= ContactListModel::SystemGroupOffset)
-      continue;
 
     addGroup(groupIndex);
   }
@@ -94,17 +92,11 @@ void Mode2ContactListProxy::sourceDataChanged(const QModelIndex& topLeft, const 
   {
     case ContactListModel::GroupItem:
     {
-      if (topLeft.data(ContactListModel::GroupIdRole).toInt() >= ContactListModel::SystemGroupOffset)
-        // Only system groups have changed, we don't have them so ignore signal
-        return;
-
-      // If signal includes system groups, make sure forwarded signal only contains normal groups
+      int firstRow = topLeft.row() * 2;
       int lastRow = bottomRight.row() * 2 + 1;
-      if (lastRow >= myGroups.size())
-        lastRow = myGroups.size() - 1;
 
       // One or more groups have changed, emit signal for both online and offline proxy groups
-      emit dataChanged(createIndex(topLeft.row() * 2 + NumBars, topLeft.column(), myGroups.at(topLeft.row() * 2)),
+      emit dataChanged(createIndex(firstRow + NumBars, topLeft.column(), myGroups.at(firstRow)),
           createIndex(lastRow + NumBars, bottomRight.column(), myGroups.at(lastRow)));
       return;
     }
@@ -122,7 +114,7 @@ void Mode2ContactListProxy::sourceDataChanged(const QModelIndex& topLeft, const 
       int groupRow = myUserData[cu].groupRow;
       bool wasOnline = ((groupRow & 1) == 0);
 
-      bool isOnline = (topLeft.data(ContactListModel::StatusRole) != ContactListModel::OfflineStatus);
+      bool isOnline = (topLeft.data(ContactListModel::StatusRole) != Licq::User::OfflineStatus);
       if (isOnline == wasOnline)
       {
         // Status hasn't changed, just forward signal with correct row in the proxy model
@@ -181,7 +173,7 @@ void Mode2ContactListProxy::addUser(const QModelIndex& userIndex, bool emitSigna
 {
   // Get data for the user we want to add
   ContactUser* cu = static_cast<ContactUser*>(userIndex.internalPointer());
-  bool isOnline = (userIndex.data(ContactListModel::StatusRole) != ContactListModel::OfflineStatus);
+  bool isOnline = (userIndex.data(ContactListModel::StatusRole) != Licq::User::OfflineStatus);
   bool isVisible = userIndex.data(ContactListModel::VisibilityRole).toBool();
   int unreadEvents = userIndex.data(ContactListModel::UnreadEventsRole).toInt();
 
@@ -300,10 +292,8 @@ void Mode2ContactListProxy::sourceRowsInserted(const QModelIndex& parent, int st
     return;
   }
 
-  // New user(s) added, add them to appropriate group (unless it was in a system group)
-  if (parent.data(ContactListModel::GroupIdRole).toInt() < ContactListModel::SystemGroupOffset)
-    for (int row = start; row <= end; ++row)
-      addUser(sourceModel()->index(row, 0, parent));
+  for (int row = start; row <= end; ++row)
+    addUser(sourceModel()->index(row, 0, parent));
 }
 
 void Mode2ContactListProxy::sourceRowsAboutToBeRemoved(const QModelIndex& parent, int start, int end)

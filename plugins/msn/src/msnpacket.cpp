@@ -1,20 +1,21 @@
 /*
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
-// written by Jon Keating <jon@licq.org>
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2004-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include "msnpacket.h"
 
@@ -22,7 +23,8 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <openssl/md5.h>
+
+#include <licq/md5.h>
 
 #include "msn_constants.h"
 
@@ -125,7 +127,7 @@ string MSN_Base64Decode(string const& strIn)
 unsigned short CMSNPacket::s_nSequence = 0;
 pthread_mutex_t CMSNPacket::s_xMutex = PTHREAD_MUTEX_INITIALIZER;
 
-CMSNPacket::CMSNPacket(bool _bPing) : CPacket()
+CMSNPacket::CMSNPacket(bool _bPing)
 {
   m_pBuffer = 0;
   m_szCommand = 0;
@@ -304,27 +306,27 @@ CPS_MSNGetServer::CPS_MSNGetServer() : CMSNPacket()
   m_pBuffer->Pack(szParams, strlen(szParams));
 };
 
-CPS_MSNAuthenticate::CPS_MSNAuthenticate(char *_szUserName, char *_szPassword, const char *szCookie)
+CPS_MSNAuthenticate::CPS_MSNAuthenticate(char *_szUserName, const string& password, const char *szCookie)
   : CMSNPacket()
 {
   //TODO make a real url encoder
-  char *szPassword = new char[strlen(_szPassword) * 3 + 1];
+  char *szPassword = new char[password.size() * 3 + 1];
   char *szUserName = new char[strlen(_szUserName) * 3 + 1];
-  memset(szPassword, 0, (strlen(_szPassword) * 3) + 1);
+  memset(szPassword, 0, (password.size() * 3) + 1);
   memset(szUserName, 0, (strlen(_szUserName) * 3) + 1);
   char *szPasswd = szPassword;
   char *szUser = szUserName;
   unsigned int i;
-  for (i = 0; i < strlen(_szPassword); i++)
+  for (i = 0; i < password.size(); i++)
   {
-    if (isalnum(_szPassword[i]))
+    if (isalnum(password[i]))
     {
-      *szPasswd = _szPassword[i];
+      *szPasswd = password[i];
       szPasswd += 1;
     }
     else
     {
-      sprintf(szPasswd, "%%%02X", _szPassword[i]); 
+      sprintf(szPasswd, "%%%02X", password[i]);
       szPasswd += 3;
     }
   }
@@ -428,8 +430,8 @@ CPS_MSNChallenge::CPS_MSNChallenge(const char *szHash) : CMSNPacket()
   char szHexOut[33];
   snprintf(szSource, 64, "%sQ1P7W2E4J9R8U3S5", szHash);
   szSource[64] = '\0';
-  MD5((const unsigned char *)szSource, strlen(szSource), szDigest);
-  
+  Licq::md5((const uint8_t*)szSource, strlen(szSource), szDigest);
+
   for (int i = 0; i < 16; i++)
   {
     sprintf(&szHexOut[i*2], "%02x", szDigest[i]);
@@ -570,7 +572,7 @@ CPS_MSNXfr::CPS_MSNXfr() : CMSNPacket()
   m_pBuffer->Pack("SB\r\n", 4);
 }
 
-CPS_MSNCall::CPS_MSNCall(char *szUser) : CMSNPacket()
+CPS_MSNCall::CPS_MSNCall(const char *szUser) : CMSNPacket()
 {
   m_szCommand = strdup("CAL");
   m_nSize += strlen(szUser);

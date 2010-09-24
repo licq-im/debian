@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,12 +32,14 @@
 #include <QStringList>
 #include <QTimer>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 class QMimeData;
 
-class CICQDaemon;
-class LicqEvent;
+namespace Licq
+{
+class Event;
+}
 
 namespace LicqQtGui
 {
@@ -67,26 +69,13 @@ class LicqGui : public QApplication
   Q_OBJECT
 
 public:
-  /**
-   * Get the singleton instance
-   *
-   * @return The instance
-   */
-  static LicqGui* instance()
-  { return myInstance; }
-
   LicqGui(int& argc, char** argv);
   ~LicqGui();
 
-  int Run(CICQDaemon* daemon);
+  int Run();
 
   // Functions to get daemon and gui resources
-  CICQDaemon* licqDaemon() { return myLicqDaemon; }
-  MainWindow* mainWindow() { return myMainWindow; }
-  SignalManager* signalManager() { return mySignalManager; }
   LogWindow* logWindow() { return myLogWindow; }
-  ContactListModel* contactList() { return myContactList; }
-  UserMenu* userMenu() { return myUserMenu; }
   GroupMenu* groupMenu() { return myGroupMenu; }
   DockIcon* dockIcon() { return myDockIcon; }
   UserEventTabDlg* userEventTabDlg() { return myUserEventTabDlg; }
@@ -105,7 +94,7 @@ public:
    * @param parent Parent window to use for confirmation box or NULL to use mainwin
    * @return true if contact was removed
    */
-  bool removeUserFromList(const UserId& userId, QWidget* parent = NULL);
+  bool removeUserFromList(const Licq::UserId& userId, QWidget* parent = NULL);
 
   /**
    * Show contact info dialog
@@ -115,14 +104,14 @@ public:
    * @param toggle True to close dialog if already open
    * @param updateNow True to make the dialog contents update
    */
-  void showInfoDialog(int fcn, const UserId& userId, bool toggle = false, bool updateNow = false);
+  void showInfoDialog(int fcn, const Licq::UserId& userId, bool toggle = false, bool updateNow = false);
 
   /**
    * Show contact view event dialog (used when chat mode is disabled)
    *
    * @param userId Contact id
    */
-  UserViewEvent* showViewEventDialog(const UserId& userid);
+  UserViewEvent* showViewEventDialog(const Licq::UserId& userid);
 
   /**
    * Show contact event dialog
@@ -132,7 +121,7 @@ public:
    * @param convoId Conversation id
    * @param autoPopup True if the dialog was triggered automatically, false if triggered by the user
    */
-  UserEventCommon* showEventDialog(int fcn, const UserId& userId, int convoId = -1, bool autoPopup = false);
+  UserEventCommon* showEventDialog(int fcn, const Licq::UserId& userId, int convoId = -1, bool autoPopup = false);
 
   /**
    * Replace event dialog
@@ -142,39 +131,33 @@ public:
    * @param newDialog New event dialog
    * @param userId Contact id
    */
-  void replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, const UserId& userId);
+  void replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, const Licq::UserId& userId);
 
   /**
    * Toggle floaty for a contact
    *
    * @param userId Contact id
    */
-  void toggleFloaty(const UserId& userId);
-
-  /**
-   * Trigger contact data to be reread from daemon
-   * Needed since daemon won't generate signals for some changes.
-   *
-   * @param userId Contact id
-   */
-  void updateUserData(const UserId& userId);
+  void toggleFloaty(const Licq::UserId& userId);
 
   /**
    * Set new status for all owners
    *
    * @param status New status
    * @param invisible True to set status with invisible mode active
+   * @param autoMessage Auto response message to set
    */
-  void changeStatus(unsigned long status, bool invisible = false);
+  void changeStatus(unsigned status, bool invisible = false, const QString& autoMessage = QString());
 
   /**
    * Set new status for an owner
    *
    * @param status New status
-   * @param ppid Protocol id
+   * @param userId Owner to change status for
    * @param invisible True to set status with invisible mode active
+   * @param autoMessage Auto response message to set
    */
-  void changeStatus(unsigned long status, unsigned long ppid, bool invisible = false);
+  void changeStatus(unsigned status, const Licq::UserId& userId, bool invisible = false, const QString& autoMessage = QString());
 
   /**
    * Invoke the desktop-aware URL viewer
@@ -182,6 +165,16 @@ public:
    * @param url The URL to open
    */
   void viewUrl(const QString& url);
+
+  /**
+   * Set group membership for a user
+   *
+   * @param userId User id
+   * @param groupId Group id (user group or system group)
+   * @param inGroup True to add user to group or false to remove
+   * @param updateServer True if server list should be updated
+   */
+  void setUserInGroup(const Licq::UserId& userId, int groupId, bool inGroup, bool updateServer = true);
 
 public slots:
   /**
@@ -195,19 +188,21 @@ public slots:
    *
    * @param userId Contact id or negative for any contact
    */
-  void showNextEvent(const UserId& userId = USERID_NONE);
+  void showNextEvent(const Licq::UserId& userId = Licq::UserId());
 
   /**
    * Open dialogs for all owner events
+   *
+   * @return True if there were any events to open
    */
-  void showAllOwnerEvents();
+  bool showAllOwnerEvents();
 
   /**
    * Open dialogs for all events
    */
   void showAllEvents();
 
-  void showDefaultEventDialog(const UserId& userId);
+  void showDefaultEventDialog(const Licq::UserId& userId);
 
   /**
    * Open a send message dialog and set message text
@@ -215,7 +210,7 @@ public slots:
    * @param userId User to send message to
    * @param message Text to put in input area
    */
-  void sendMsg(const UserId& userId, const QString& message);
+  void sendMsg(const Licq::UserId& userId, const QString& message);
 
   /**
    * Open a file transfer dialog for a specified file
@@ -224,14 +219,14 @@ public slots:
    * @param filename Path to file to sendof
    * @param description Text to put in description area
    */
-  void sendFileTransfer(const UserId& userId, const QString& filename, const QString& description);
+  void sendFileTransfer(const Licq::UserId& userId, const QString& filename, const QString& description);
 
   /**
    * Open a chat request dialog
    *
    * @param userId User to open chat request dialog for
    */
-  void sendChatRequest(const UserId& userId);
+  void sendChatRequest(const Licq::UserId& userId);
 
   /**
    * Act on object being dropped on a user
@@ -241,7 +236,7 @@ public slots:
    * @param mimeData Dropped data
    * @return true if data was accepted
    */
-  bool userDropEvent(const UserId& userId, const QMimeData& mimeData);
+  bool userDropEvent(const Licq::UserId& userId, const QMimeData& mimeData);
 
 signals:
   /**
@@ -251,7 +246,7 @@ signals:
    *
    * @param event Event object that was sent
    */
-  void eventSent(const LicqEvent* event);
+  void eventSent(const Licq::Event* event);
 
 private slots:
 #ifdef Q_WS_X11
@@ -266,21 +261,21 @@ private slots:
    *
    * @param userId User dialog was opened for
    */
-  void userEventFinished(const UserId& userId);
+  void userEventFinished(const Licq::UserId& userId);
 
   /**
    * A send user event dialog has finished
    *
    * @param userId User dialog was opened for
    */
-  void sendEventFinished(const UserId& userId);
+  void sendEventFinished(const Licq::UserId& userId);
 
   /**
    * Open a message dialog
    *
    * @param userId User to open dialog for
    */
-  void showMessageDialog(const UserId& userId);
+  void showMessageDialog(const Licq::UserId& userId);
 
   /**
    * Act on changes to the contact list
@@ -289,7 +284,7 @@ private slots:
    * @param argument Additional data, usage depend on sub signal type
    * @param userId Id for affected user, if applicable
    */
-  void listUpdated(unsigned long subSignal, int argument, const UserId& userId);
+  void listUpdated(unsigned long subSignal, int argument, const Licq::UserId& userId);
 
   /**
    * Act on changes to a contact
@@ -299,7 +294,7 @@ private slots:
    * @param argument Additional data, usage depend on sub signal type
    * @param cid Conversation id
    */
-  void userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  void userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
   /**
    * Set conversation id for user event dialog
@@ -307,7 +302,7 @@ private slots:
    * @param userId User to find dialog for
    * @param convoId Conversation id to set
    */
-  void convoSet(const UserId& userId, unsigned long convoId);
+  void convoSet(const Licq::UserId& userId, unsigned long convoId);
 
   /**
    * Someone joined an ongoing conversation
@@ -316,7 +311,7 @@ private slots:
    * @param ppid Protocol of conversation
    * @param convoId Id of conversation
    */
-  void convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId);
+  void convoJoin(const Licq::UserId& userId, unsigned long ppid, unsigned long convoId);
 
   /**
    * Someone left an ongoing conversation
@@ -325,20 +320,15 @@ private slots:
    * @param ppid Protocol of conversation
    * @param convoId Id of conversation
    */
-  void convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId);
+  void convoLeave(const Licq::UserId& userId, unsigned long ppid, unsigned long convoId);
   void autoAway();
   void updateDockIcon();
 
 private:
-  static LicqGui* myInstance;
-
   void loadGuiConfig();
   void loadFloatiesConfig();
 
-  void createFloaty(const UserId& userId, unsigned short x = 0, unsigned short y = 0,
-      unsigned short w = 0);
-
-  CICQDaemon* myLicqDaemon;
+  void createFloaty(const Licq::UserId& userId, int x = 0, int y = 0, int w = 0);
 
   QString mySkin;
   QString myIcons;
@@ -366,6 +356,8 @@ private:
   int grabKeysym;
   QTimer myAutoAwayTimer;
 };
+
+extern LicqGui* gLicqGui;
 
 } // namespace LicqQtGui
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,14 @@
 
 #include <QObject>
 
-#include <licq_types.h>
-
 class QSocketNotifier;
 
-class LicqSignal;
-class LicqEvent;
+namespace Licq
+{
+class Event;
+class PluginSignal;
+class UserId;
+}
 
 namespace LicqQtGui
 {
@@ -48,7 +50,7 @@ signals:
    * @param argument Additional data, usage depend on sub signal type
    * @param userId Id for affected user, if applicable
    */
-  void updatedList(unsigned long subSignal, int argument, const UserId& userId);
+  void updatedList(unsigned long subSignal, int argument, const Licq::UserId& userId);
 
   /**
    * Data for a user has changed
@@ -58,7 +60,7 @@ signals:
    * @param argument Additional data, usage depend on sub signal type
    * @param cid Conversation id
    */
-  void updatedUser(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
+  void updatedUser(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid);
 
   /**
    * Status has changed
@@ -67,9 +69,9 @@ signals:
    */
   void updatedStatus(unsigned long ppid);
 
-  void doneOwnerFcn(const LicqEvent* ev);
-  void doneUserFcn(const LicqEvent* ev);
-  void searchResult(const LicqEvent* ev);
+  void doneOwnerFcn(const Licq::Event* ev);
+  void doneUserFcn(const Licq::Event* ev);
+  void searchResult(const Licq::Event* ev);
   void logon();
   void logoff();
 
@@ -79,7 +81,7 @@ signals:
    *
    * @param userId User to show event for
    */
-  void ui_viewevent(const UserId& userId);
+  void ui_viewevent(const Licq::UserId& userId);
 
   /**
    * Open a message dialog for a user
@@ -87,16 +89,8 @@ signals:
    *
    * @param userId User to open dialog for
    */
-  void ui_message(const UserId& userId);
+  void ui_message(const Licq::UserId& userId);
   void protocolPlugin(unsigned long);
-
-  /**
-   * A new event is ongoing for a user
-   *
-   * @param userId User event is sent for
-   * @param eventTag Id of event
-   */
-  void eventTag(const UserId& userId, unsigned long eventTag);
 
   /**
    * A conversation id has been associated with a user
@@ -104,7 +98,7 @@ signals:
    * @param userId User id to associate conversation with
    * @param convoId Conversation id
    */
-  void socket(const UserId& userId, unsigned long convoId);
+  void socket(const Licq::UserId& userId, unsigned long convoId);
 
   /**
    * Someone joined an ongoing conversation
@@ -113,7 +107,7 @@ signals:
    * @param ppid Protocol of conversation
    * @param convoId Id of conversation
    */
-  void convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId);
+  void convoJoin(const Licq::UserId& userId, unsigned long ppid, unsigned long convoId);
 
   /**
    * Someone left an ongoing conversation
@@ -122,20 +116,42 @@ signals:
    * @param ppid Protocol of conversation
    * @param convoId Id of conversation
    */
-  void convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId);
+  void convoLeave(const Licq::UserId& userId, unsigned long ppid, unsigned long convoId);
   void verifyImage(unsigned long);
-  void newOwner(const QString& accountId, unsigned long ppid);
+
+  /**
+   * A new owner was created (as part of registration process)
+   *
+   * @param userId User id of new owner
+   */
+  void newOwner(const Licq::UserId& userId);
+
+  /**
+   * An owner was added
+   *
+   * @param userId User id of the owner
+   */
+  void ownerAdded(const Licq::UserId& userId);
+
+  /**
+   * An owner was removed
+   *
+   * @param userId User id of the owner
+   */
+  void ownerRemoved(const Licq::UserId& userId);
 
 private:
   int myPipe;
   QSocketNotifier* sn;
 
-  void ProcessSignal(LicqSignal* sig);
-  void ProcessEvent(LicqEvent* ev);
+  void ProcessSignal(Licq::PluginSignal* sig);
+  void ProcessEvent(Licq::Event* ev);
 
 private slots:
   void process();
 };
+
+extern SignalManager* gGuiSignalManager;
 
 } // namespace LicqQtGui
 

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,7 +34,8 @@
 #include <QTextCodec>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
 
 #include "config/chat.h"
 #include "config/general.h"
@@ -204,39 +205,6 @@ QWidget* Settings::Chat::createPageChat(QWidget* parent)
   myTerminalLabel->setBuddy(myTerminalEdit);
   myExtensionsLayout->addWidget(myTerminalEdit, 0, 1);
 
-  myUseCustomUrlViewer = new QCheckBox(tr("Use custom URI viewer"));
-  myUseCustomUrlViewer->setToolTip(tr("Use a custom browser for URIs, instead of the system wide setting."));
-  myExtensionsLayout->addWidget(myUseCustomUrlViewer, 1, 0, 1, 2);
-
-  myUrlViewerLabel = new QLabel(tr("URI viewer:"));
-  myUrlViewerLabel->setToolTip(tr("The command to run in case Qt is unable to open an URL.\n"
-        "It is passed an URL as the last parameter.\n"
-        "Refer to the hints dialog for Qt URL handling rules."));
-  myExtensionsLayout->addWidget(myUrlViewerLabel, 2, 0);
-
-  myUrlViewerCombo = new QComboBox();
-  myUrlViewerCombo->setEditable(true);
-  myUrlViewerCombo->addItem("viewurl-firefox.sh");
-  myUrlViewerCombo->addItem("viewurl-firefox.sh");
-  myUrlViewerCombo->addItem("viewurl-lynx.sh");
-  myUrlViewerCombo->addItem("viewurl-mozilla.sh");
-  myUrlViewerCombo->addItem("viewurl-ncftp.sh");
-  myUrlViewerCombo->addItem("viewurl-netscape.sh");
-  myUrlViewerCombo->addItem("viewurl-opera.sh");
-  myUrlViewerCombo->addItem("viewurl-seamonkey.sh");
-  myUrlViewerCombo->addItem("viewurl-w3m.sh");
-  myUrlViewerCombo->setToolTip(myUrlViewerLabel->toolTip());
-  myUrlViewerLabel->setBuddy(myUrlViewerCombo);
-  myExtensionsLayout->addWidget(myUrlViewerCombo, 2, 1);
-#ifdef USE_KDE
-  myUseCustomUrlViewer->setVisible(false);
-  myUrlViewerLabel->setVisible(false);
-  myUrlViewerCombo->setVisible(false);
-#else
-  connect(myUseCustomUrlViewer, SIGNAL(toggled(bool)), myUrlViewerCombo, SLOT(setEnabled(bool)));
-  connect(myUseCustomUrlViewer, SIGNAL(toggled(bool)), myUrlViewerLabel, SLOT(setEnabled(bool)));
-#endif
-
   myPageChatLayout->addWidget(myChatBox);
   myPageChatLayout->addWidget(myLocaleBox);
   myPageChatLayout->addWidget(myExtensionsBox);
@@ -391,7 +359,7 @@ QWidget* Settings::Chat::createPageChatDisp(QWidget* parent)
   myChatColorsLayout->setRowStretch(7, 1);
 
   myChatTabs = new TabWidget(w);
-  myChatView = new HistoryView(false, USERID_NONE, myChatTabs);
+  myChatView = new HistoryView(false, Licq::UserId(), myChatTabs);
   myChatTabs->addTab(myChatView, "Marge");
 
   myPageChatDispLayout->addWidget(myChatDispBox, 0, 0);
@@ -511,14 +479,14 @@ void Settings::Chat::updatePreviews()
     if (i < 2 && myShowHistoryCheck->isChecked() == false)
       continue;
 
-    myChatView->addMsg(i%2 == 0 ? D_RECEIVER : D_SENDER, (i<2),
+    myChatView->addMsg(i%2 == 0, (i<2),
           QString(""),
           msgDate,
           true, false, false, false,
           names[i % 2],
           MLView::toRichText(tr(msgs[i]), true, true));
 
-    myHistoryView->addMsg(i%2 == 0 ? D_RECEIVER : D_SENDER, false,
+    myHistoryView->addMsg(i%2 == 0, false,
           QString(""),
           msgDate,
           true, false, false, false,
@@ -576,13 +544,6 @@ void Settings::Chat::load()
   myShowUserPicHiddenCheck->setChecked(chatConfig->showUserPicHidden());
   myPopupAutoResponseCheck->setChecked(chatConfig->popupAutoResponse());
 
-  myUseCustomUrlViewer->setChecked(chatConfig->useCustomUrlBrowser());
-  if (!chatConfig->useCustomUrlBrowser())
-  {
-    myUrlViewerLabel->setEnabled(false);
-    myUrlViewerCombo->setEnabled(false);
-  }
-
   if (!chatConfig->msgChatView())
   {
     myTabbedChattingCheck->setEnabled(false);
@@ -590,9 +551,9 @@ void Settings::Chat::load()
     myShowNoticesCheck->setChecked(false);
   }
 
-  mySendTNCheck->setChecked(gLicqDaemon->SendTypingNotification());
+  mySendTNCheck->setChecked(Licq::gDaemon.sendTypingNotification());
 
-  QByteArray defaultEncoding = gUserManager.DefaultUserEncoding();
+  QByteArray defaultEncoding = Licq::gUserManager.defaultUserEncoding().c_str();
   if (defaultEncoding.isEmpty())
     myDefaultEncodingCombo->setCurrentIndex(0);
   else
@@ -608,11 +569,8 @@ void Settings::Chat::load()
   }
   myShowAllEncodingsCheck->setChecked(chatConfig->showAllEncodings());
 
-  QString urlViewer = gLicqDaemon->getUrlViewer();
-  myUrlViewerCombo->setItemText(myUrlViewerCombo->currentIndex(),
-      urlViewer.isNull() ? DEFAULT_URL_VIEWER : urlViewer);
-  myTerminalEdit->setText(gLicqDaemon->Terminal() == NULL ?
-      tr("none") : QString(gLicqDaemon->Terminal()));
+  myTerminalEdit->setText(Licq::gDaemon.terminal().empty() ?
+      tr("none") : QString(Licq::gDaemon.terminal().c_str()));
 
   updatePreviews();
 }
@@ -661,17 +619,15 @@ void Settings::Chat::apply()
   chatConfig->setShowUserPic(myShowUserPicCheck->isChecked());
   chatConfig->setShowUserPicHidden(myShowUserPicHiddenCheck->isChecked());
   chatConfig->setPopupAutoResponse(myPopupAutoResponseCheck->isChecked());
-  chatConfig->setUseCustomUrlBrowser(myUseCustomUrlViewer->isChecked());
 
-  gLicqDaemon->SetSendTypingNotification(mySendTNCheck->isChecked());
+  Licq::gDaemon.setSendTypingNotification(mySendTNCheck->isChecked());
 
-  gLicqDaemon->SetTerminal(myTerminalEdit->text().toLocal8Bit());
-  gLicqDaemon->setUrlViewer(myUrlViewerCombo->currentText().toLocal8Bit());
+  Licq::gDaemon.setTerminal(myTerminalEdit->text().toLocal8Bit().data());
 
   if (myDefaultEncodingCombo->currentIndex() > 0)
-    gUserManager.SetDefaultUserEncoding(UserCodec::encodingForName(myDefaultEncodingCombo->currentText()));
+    Licq::gUserManager.setDefaultUserEncoding(UserCodec::encodingForName(myDefaultEncodingCombo->currentText()).data());
   else
-    gUserManager.SetDefaultUserEncoding("");
+    Licq::gUserManager.setDefaultUserEncoding("");
   chatConfig->setShowAllEncodings(myShowAllEncodingsCheck->isChecked());
 
   chatConfig->blockUpdates(false);

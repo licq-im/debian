@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,18 +29,21 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <licq_events.h>
-#include <licq_icqd.h>
+#include <licq/contactlist/user.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/protocolmanager.h>
+#include <licq/userevents.h>
 
-#include "core/licqgui.h"
 #include "core/signalmanager.h"
 
 #include "helpers/support.h"
 
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::KeyRequestDlg */
 
-KeyRequestDlg::KeyRequestDlg(const UserId& userId, QWidget* parent)
+KeyRequestDlg::KeyRequestDlg(const Licq::UserId& userId, QWidget* parent)
   : QDialog(parent),
     myUserId(userId),
     myIcqEventTag(0)
@@ -48,7 +51,7 @@ KeyRequestDlg::KeyRequestDlg(const UserId& userId, QWidget* parent)
   Support::setWidgetProps(this, "KeyRequestDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
 
-  const LicqUser* u = gUserManager.fetchUser(myUserId);
+  Licq::UserReadGuard u(myUserId);
   setWindowTitle(tr("Licq - Secure Channel with %1")
       .arg(QString::fromUtf8(u->GetAlias())));
 
@@ -60,18 +63,18 @@ KeyRequestDlg::KeyRequestDlg(const UserId& userId, QWidget* parent)
   QString t2;
   switch (u->SecureChannelSupport())
   {
-    case SECURE_CHANNEL_SUPPORTED:
+    case Licq::SECURE_CHANNEL_SUPPORTED:
       t2 = tr("The remote uses Licq %1/SSL.")
-        .arg(CUserEvent::LicqVersionToString(u->LicqVersion()));
-      if (gLicqDaemon->CryptoEnabled())
+        .arg(Licq::UserEvent::licqVersionToString(u->LicqVersion()).c_str());
+      if (Licq::gDaemon.haveCryptoSupport())
         QTimer::singleShot(0, this, SLOT(startSend()));
       break;
 
-    case SECURE_CHANNEL_NOTSUPPORTED:
+    case Licq::SECURE_CHANNEL_NOTSUPPORTED:
       t2 = tr("The remote uses Licq %1, however it\n"
               "has no secure channel support compiled in.\n"
               "This probably won't work.")
-        .arg(CUserEvent::LicqVersionToString(u->LicqVersion()));
+        .arg(Licq::UserEvent::licqVersionToString(u->LicqVersion()).c_str());
       break;
 
     default:
@@ -98,7 +101,7 @@ KeyRequestDlg::KeyRequestDlg(const UserId& userId, QWidget* parent)
 
   top_lay->addWidget(buttons);
 
-  if (gLicqDaemon->CryptoEnabled())
+  if (Licq::gDaemon.haveCryptoSupport())
   {
     myOpen = !u->Secure();
     if (u->Secure())
@@ -113,8 +116,6 @@ KeyRequestDlg::KeyRequestDlg(const UserId& userId, QWidget* parent)
     btnSend->setEnabled(false);
   }
 
-  gUserManager.DropUser(u);
-
   show();
 }
 
@@ -122,15 +123,15 @@ KeyRequestDlg::~KeyRequestDlg()
 {
   if (myIcqEventTag != 0)
   {
-    gLicqDaemon->CancelEvent(myIcqEventTag);
+    Licq::gDaemon.cancelEvent(myIcqEventTag);
     myIcqEventTag = 0;
   }
 }
 
 void KeyRequestDlg::startSend()
 {
-  connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneEvent(const LicqEvent*)));
+  connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+      SLOT(doneEvent(const Licq::Event*)));
   btnSend->setEnabled(false);
 
   if (myOpen)
@@ -147,15 +148,15 @@ void KeyRequestDlg::startSend()
 
 void KeyRequestDlg::openConnection()
 {
-  myIcqEventTag = gLicqDaemon->secureChannelOpen(myUserId);
+  myIcqEventTag = gProtocolManager.secureChannelOpen(myUserId);
 }
 
 void KeyRequestDlg::closeConnection()
 {
-  myIcqEventTag = gLicqDaemon->secureChannelClose(myUserId);
+  myIcqEventTag = gProtocolManager.secureChannelClose(myUserId);
 }
 
-void KeyRequestDlg::doneEvent(const LicqEvent* e)
+void KeyRequestDlg::doneEvent(const Licq::Event* e)
 {
   if (!e->Equals(myIcqEventTag))
     return;
@@ -177,13 +178,13 @@ void KeyRequestDlg::doneEvent(const LicqEvent* e)
     color = "red";
     switch (e->Result())
     {
-      case EVENT_FAILED:
+      case Licq::Event::ResultFailed:
         text = tr("Remote client does not support OpenSSL.");
         break;
-      case EVENT_ERROR: // could not connect to remote host (or out of memory)
+      case Licq::Event::ResultError: // could not connect to remote host (or out of memory)
         text = tr("Could not connect to remote client.");
         break;
-      case EVENT_SUCCESS:
+      case Licq::Event::ResultSuccess:
         if (myOpen)
         {
           color = "ForestGreen";
@@ -199,7 +200,7 @@ void KeyRequestDlg::doneEvent(const LicqEvent* e)
         text = tr("Unknown state.");
         break;
     }
-    if (e->Result() == EVENT_SUCCESS)
+    if (e->Result() == Licq::Event::ResultSuccess)
     {
       btnSend->setEnabled(false);
       QTimer::singleShot(500, this, SLOT(close()));

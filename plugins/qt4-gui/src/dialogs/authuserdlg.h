@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 
 #include <QDialog>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 class QLineEdit;
 
@@ -36,13 +36,13 @@ class AuthUserDlg : public QDialog
    Q_OBJECT
 
 public:
-  AuthUserDlg(const UserId& userId, bool grant, QWidget* parent = 0);
+  AuthUserDlg(const Licq::UserId& userId, bool grant, QWidget* parent = 0);
 
 private:
   QLineEdit* myUin;
   MLEdit* myResponse;
 
-  UserId myUserId;
+  Licq::UserId myUserId;
   bool myGrant;
 
 private slots:

@@ -60,28 +60,23 @@ function Message(id, pp, uid, message) {
 
 //callback for server push reponses
 function acceptResponse() {
-  if (xmlhttp.readyState == 4 && xmlhttp.responseXML != null)
-  {
-		if (xmlhttp.status == 200) {
-			response = xmlhttp.responseXML.documentElement;
-			method = response.getElementsByTagName('method')[0].firstChild.data;
-			eval(method + '(response)');
-		} else {
-			alert("There was a problem retrieving the XML data:\n" + xmlhttp.statusText);
-		}
+	if (xmlhttp.responseXML != null) {
+		response = xmlhttp.responseXML.documentElement;
+		method = response.getElementsByTagName('method')[0].firstChild.data;
+		eval(method + '(response)');
+	} else {
+		alert("There was a problem retrieving the XML data:\n" + xmlhttp.statusText);
 	}
 }
 
 //callback for single events
 function acceptResponse2() {
-	if (xmlhttp2.readyState == 4) {
-		if (xmlhttp2.status == 200) {
-			response = xmlhttp2.responseXML.documentElement;
-			method = response.getElementsByTagName('method')[0].firstChild.data;
-			eval(method + '(response)');
-		} else {
-			alert("There was a problem retrieving the XML data:\n" + xmlhttp2.statusText);
-		}
+	if (xmlhttp2.responseXML != null) {
+		response = xmlhttp2.responseXML.documentElement;
+		method = response.getElementsByTagName('method')[0].firstChild.data;
+		eval(method + '(response)');
+	} else {
+		alert("There was a problem retrieving the XML data:\n" + xmlhttp2.statusText);
 	}
 }
 
@@ -127,7 +122,7 @@ function viewEvent(response) {
 
 function requestViewEvent(id, pp) {
 	xmlhttp2 = new XMLHttpRequest();
-	xmlhttp2.onreadystatechange = acceptResponse2;
+	xmlhttp2.onload = acceptResponse2;
 	xmlhttp2.open("GET", baseurl + "/viewEvent.php?id=" + id + "&pp=" + pp, true);
 	xmlhttp2.send(null);
 }
@@ -164,7 +159,7 @@ function sortContacts() {
 			var contact = sortedContacts[status][i];
 			var uclass = contact.status;
 			var pp = "";
-			if (contact.pp.toLowerCase() == "licq" &&
+			if (contact.pp.toLowerCase() == "icq" &&
 				(aimLower.indexOf(contact.id.charAt(0), 0) != -1 ||
 				aimUpper.indexOf(contact.id.charAt(0), 0) != -1)) {
 				pp = "aim";
@@ -177,7 +172,7 @@ function sortContacts() {
 				imgsrc = "images/msg.png";
 			}
 			if (contact.status.indexOf('(') != -1) {
-				imgsrc = "images/licq.invisible.png";
+				imgsrc = "images/icq.invisible.png";
 				uclass = "invisible";
 			}
 			key = contact.id + '-' + contact.pp;
@@ -239,7 +234,7 @@ function sendMessage(id, pp) {
 	var message = document.getElementById(id + '-' + pp + '-input').value;
 	ackMessages[uid] = new Message(id, pp, uid, message);
 	xmlhttp2 = new XMLHttpRequest();
-	xmlhttp2.onreadystatechange = acceptResponse2;
+	xmlhttp2.onload = acceptResponse2;
 	xmlhttp2.open("POST", baseurl + "/sendMessage.php", true);
 	xmlhttp2.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 	xmlhttp2.send('uid=' + uid + '&id=' + id + '&pp=' + pp + '&msg=' + escape(message));
@@ -358,8 +353,9 @@ function _updateOwners() {
 function showSelectStatus(e, id, pp) {
 	var statusMenu = document.getElementById('statusMenu');
 	var statuss = new Array();
-	statuss["Licq"] = new Array('Online', 'Free For Chat', 'Away', 'Not Available', 'Occupied', 'Do Not Disturb', 'Offline');
+  statuss["ICQ"] = new Array('Online', 'Free For Chat', 'Away', 'Not Available', 'Occupied', 'Do Not Disturb', 'Offline');
 	statuss["MSN"] = new Array('Online', 'Away', 'Occupied', 'Offline');
+	statuss["Jabber"] = new Array('Online', 'Free For Chat', 'Away', 'Not Available', 'Do Not Disturb', 'Offline');
 	var statushtml = "";
 	for (var i = 0; i < statuss[pp].length; ++i) {
     statushtml += "<div onclick=\"changeStatus('" + pp + "', '" + statuss[pp][i] + "')\"><img src=\"images/" + pp.toLowerCase() + "." + statuss[pp][i].toLowerCase().replace(/ /g,"") + ".png\">" + statuss[pp][i] + "</div>";
@@ -374,7 +370,7 @@ function showSelectStatus(e, id, pp) {
 
 function changeStatus(pp, status) {
 	xmlhttp2 = new XMLHttpRequest();
-	xmlhttp2.onreadystatechange = acceptResponse2;
+	xmlhttp2.onload = acceptResponse2;
 	xmlhttp2.open("POST", baseurl + "/changeStatus.php", true);
 	xmlhttp2.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
   xmlhttp2.send('pp=' + pp + '&status=' + escape(status.replace(/ /g,"")));
@@ -411,7 +407,7 @@ function doLogin(uin, password) {
 		login = "&uin=" + uin + "&password=" + password;
 	}
 	xmlhttp.open("GET", baseurl + "/push.php?listtype=" + listtype + login, true);
-	xmlhttp.onreadystatechange = acceptResponse;
+	xmlhttp.onload = acceptResponse;
 	xmlhttp.send(null);
 	document.getElementById('login').style.display = 'none';
 	document.getElementById('contactList').style.display = 'block';
@@ -576,7 +572,7 @@ function stop_resize(event)
 function requestViewHistory(id, pp)
 {
   xmlhttp2 = new XMLHttpRequest();
-  xmlhttp2.onreadystatechange = acceptResponse2;
+  xmlhttp2.onload = acceptResponse2;
   xmlhttp2.open("GET", baseurl + "/viewHistory.php?id=" + id + "&pp=" + pp + "&lenght=" + loadHistory + "&offset=0", true);
   xmlhttp2.send(null);
 }

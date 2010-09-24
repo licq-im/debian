@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -85,7 +85,7 @@ bool MainContactListProxy::filterAcceptsRow(int source_row, const QModelIndex& s
       // Filter "Other users" (id 0) when empty regardless of configuration
       if (myThreadedView &&
           (!Config::ContactList::instance()->showEmptyGroups() ||
-          item.data(ContactListModel::GroupIdRole).toInt() == 0))
+          item.data(ContactListModel::GroupIdRole).toInt() == ContactListModel::OtherUsersGroupId))
       {
         // Check for empty groups
         if (item.data(ContactListModel::UserCountRole).toInt() == 0)

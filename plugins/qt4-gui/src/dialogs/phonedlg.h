@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2009 Licq developers
+ * Copyright (C) 2004-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 
 #include <QDialog>
 
-#include "licq_user.h"
+#include <licq/contactlist/user.h>
 
 class QCheckBox;
 class QComboBox;
@@ -37,11 +37,11 @@ class EditPhoneDlg : public QDialog
   Q_OBJECT
 
 public:
-  EditPhoneDlg(QWidget* parent, const struct PhoneBookEntry* pbe = 0,
+  EditPhoneDlg(QWidget* parent, const struct Licq::PhoneBookEntry* pbe = 0,
       int nEntry = -1);
 
 signals:
-  void updated(struct PhoneBookEntry, int);
+  void updated(struct Licq::PhoneBookEntry, int);
 
 private:
   QCheckBox* cbRemove0s;

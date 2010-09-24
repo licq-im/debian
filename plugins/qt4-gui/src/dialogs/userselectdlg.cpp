@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2003-2009 Licq developers
+ * Copyright (C) 2003-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,8 +31,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
 
 #include "helpers/support.h"
 
@@ -88,15 +87,16 @@ UserSelectDlg::UserSelectDlg(QWidget* parent)
   // Populate the combo box
 
   // For now, just have one owner
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o == 0)
   {
-    close();
-    return;
+    Licq::OwnerReadGuard o(LICQ_PPID);
+    if (!o.isLocked())
+    {
+      close();
+      return;
+    }
+    cmbUser->addItem(QString("%1 (%2)").arg(o->getAlias().c_str()).arg(o->accountId().c_str()));
+    edtPassword->setText(o->password().c_str());
   }
-  cmbUser->addItem(QString("%1 (%2)").arg(o->GetAlias()).arg(o->IdString()));
-  edtPassword->setText(o->Password());
-  gUserManager.DropOwner(o);
 
   // Wait for dialog to finish before returning to caller
   exec();
@@ -108,15 +108,12 @@ UserSelectDlg::~UserSelectDlg()
 
 void UserSelectDlg::slot_ok()
 {
-  ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
-  if (o == 0)
+  Licq::OwnerWriteGuard o(LICQ_PPID);
+  if (o.isLocked())
   {
-    close();
-    return;
+    o->SetSavePassword(chkSavePassword->isChecked());
+    o->setPassword(edtPassword->text().toLatin1().data());
   }
-  o->SetSavePassword(chkSavePassword->isChecked());
-  o->SetPassword(edtPassword->text().toLatin1());
-  gUserManager.DropOwner(o);
 
   close();
 }

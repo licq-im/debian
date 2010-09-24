@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,10 +35,11 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-#include <licq_countrycodes.h>
-#include <licq_icqd.h>
-#include <licq_languagecodes.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/event.h>
+#include <licq/icq.h>
+#include <licq/icqcodes.h>
 
 #include "contactlist/contactlist.h"
 
@@ -62,8 +63,8 @@ SearchUserDlg::SearchUserDlg()
   setAttribute(Qt::WA_DeleteOnClose, true);
   setWindowTitle(tr("Licq - User Search"));
 
-  connect(LicqGui::instance()->signalManager(),
-      SIGNAL(searchResult(const LicqEvent*)), SLOT(searchResult(const LicqEvent*)));
+  connect(gGuiSignalManager, SIGNAL(searchResult(const Licq::Event*)),
+      SLOT(searchResult(const Licq::Event*)));
 
   QVBoxLayout* lay = new QVBoxLayout(this);
 
@@ -244,25 +245,25 @@ void SearchUserDlg::startSearch()
 
   if (edtUin->text().trimmed().isEmpty())
   {
-    QTextCodec* codec = QTextCodec::codecForName(gUserManager.DefaultUserEncoding());
+    QTextCodec* codec = QTextCodec::codecForName(Licq::gUserManager.defaultUserEncoding().c_str());
     if (codec == 0)
       codec = QTextCodec::codecForLocale();
     searchTag = gLicqDaemon->icqSearchWhitePages(
-        codec->fromUnicode(edtFirst->text()),
-        codec->fromUnicode(edtLast->text()),
-        codec->fromUnicode(edtNick->text()),
+        codec->fromUnicode(edtFirst->text()).data(),
+        codec->fromUnicode(edtLast->text()).data(),
+        codec->fromUnicode(edtNick->text()).data(),
         edtEmail->text().toLocal8Bit().data(),
         mins[cmbAge->currentIndex()],
         maxs[cmbAge->currentIndex()],
         cmbGender->currentIndex(),
         GetLanguageByIndex(cmbLanguage->currentIndex())->nCode,
-        codec->fromUnicode(edtCity->text()),
-        codec->fromUnicode(edtState->text()),
+        codec->fromUnicode(edtCity->text()).data(),
+        codec->fromUnicode(edtState->text()).data(),
         GetCountryByIndex(cmbCountry->currentIndex())->nCode,
-        codec->fromUnicode(edtCoName->text()),
-        codec->fromUnicode(edtCoDept->text()),
-        codec->fromUnicode(edtCoPos->text()),
-        codec->fromUnicode(edtKeyword->text()),
+        codec->fromUnicode(edtCoName->text()).data(),
+        codec->fromUnicode(edtCoDept->text()).data(),
+        codec->fromUnicode(edtCoPos->text()).data(),
+        codec->fromUnicode(edtKeyword->text()).data(),
         chkOnlineOnly->isChecked());
   }
   else
@@ -319,7 +320,7 @@ void SearchUserDlg::resetSearch()
   btnSearch->setEnabled(true);
 }
 
-void SearchUserDlg::searchResult(const LicqEvent* e)
+void SearchUserDlg::searchResult(const Licq::Event* e)
 {
   if (!e->Equals(searchTag))
     return;
@@ -327,54 +328,54 @@ void SearchUserDlg::searchResult(const LicqEvent* e)
   btnSearch->setEnabled(true);
   btnDone->setEnabled(true);
 
-  if (e->SearchAck() != NULL && USERID_ISVALID(e->SearchAck()->userId()))
+  if (e->SearchAck() != NULL && e->SearchAck()->userId().isValid())
     searchFound(e->SearchAck());
 
-  if (e->Result() == EVENT_SUCCESS)
+  if (e->Result() == Licq::Event::ResultSuccess)
     searchDone(e->SearchAck());
-  else if (e->Result() != EVENT_ACKED)
+  else if (e->Result() != Licq::Event::ResultAcked)
     searchFailed();
 }
 
-void SearchUserDlg::searchFound(const CSearchAck* s)
+void SearchUserDlg::searchFound(const Licq::SearchData* s)
 {
   QString text;
   QTreeWidgetItem* item = new QTreeWidgetItem(foundView);
-  QTextCodec* codec = QTextCodec::codecForName(gUserManager.DefaultUserEncoding());
+  QTextCodec* codec = QTextCodec::codecForName(Licq::gUserManager.defaultUserEncoding().c_str());
   if (codec == NULL)
     codec = QTextCodec::codecForLocale();
 
   item->setData(0, Qt::UserRole, QVariant::fromValue(s->userId()));
-  item->setText(0, codec->toUnicode(s->Alias()));
+  item->setText(0, codec->toUnicode(s->alias().c_str()));
 
   item->setTextAlignment(1, Qt::AlignRight);
-  item->setText(1, LicqUser::getUserAccountId(s->userId()).c_str());
+  item->setText(1, s->userId().accountId().c_str());
 
-  item->setText(2, codec->toUnicode(s->FirstName()) + " " + codec->toUnicode(s->LastName()));
+  item->setText(2, codec->toUnicode(s->firstName().c_str()) + " " + codec->toUnicode(s->lastName().c_str()));
 
-  item->setText(3, s->Email());
+  item->setText(3, s->email().c_str());
 
-        switch (s->Status())
-        {
-          case SA_OFFLINE:
+  switch (s->status())
+  {
+    case Licq::SearchData::StatusOffline:
             text = tr("Offline");
             break;
-          case SA_ONLINE:
+    case Licq::SearchData::StatusOnline:
             text = tr("Online");
             break;
-          case SA_DISABLED:
+    case Licq::SearchData::StatusDisabled:
           default:
             text = tr("Unknown");
         }
   item->setText(4, text);
 
-        text = (s->Age() ? QString::number(s->Age()) : tr("?")) + "/";
-        switch (s->Gender())
-        {
-          case GENDER_FEMALE:
+  text = (s->age() ? QString::number(s->age()) : tr("?")) + "/";
+  switch (s->gender())
+  {
+    case Licq::User::GenderFemale:
             text += tr("F");
             break;
-          case GENDER_MALE:
+    case Licq::User::GenderMale:
             text += tr("M");
             break;
           default:
@@ -382,17 +383,17 @@ void SearchUserDlg::searchFound(const CSearchAck* s)
         }
   item->setText(5, text);
 
-  item->setText(6, s->Auth() ? tr("No") : tr("Yes"));
+  item->setText(6, s->auth() ? tr("No") : tr("Yes"));
 }
 
-void SearchUserDlg::searchDone(const CSearchAck* sa)
+void SearchUserDlg::searchDone(const Licq::SearchData* sa)
 {
-  if (sa == NULL || sa->More() == 0)
+  if (sa == NULL || sa->more() == 0)
     lblSearch->setText(tr("Search complete."));
-  else if (sa->More() == ~0UL)
+  else if (sa->more() == ~0UL)
     lblSearch->setText(tr("More users found. Narrow search."));
   else
-    lblSearch->setText(tr("%1 more users found. Narrow search.").arg(sa->More()));
+    lblSearch->setText(tr("%1 more users found. Narrow search.").arg(sa->more()));
 
   searchTag = 0;
   for (int i = 0; i < foundView->columnCount(); i++)
@@ -432,10 +433,10 @@ void SearchUserDlg::viewInfo()
 {
   foreach (QTreeWidgetItem* current, foundView->selectedItems())
   {
-    UserId userId = current->data(0, Qt::UserRole).value<UserId>();
+    Licq::UserId userId = current->data(0, Qt::UserRole).value<Licq::UserId>();
 
-    gUserManager.addUser(userId, false);
-    LicqGui::instance()->showInfoDialog(mnuUserGeneral, userId, false, true);
+    Licq::gUserManager.addUser(userId, false);
+    gLicqGui->showInfoDialog(mnuUserGeneral, userId, false, true);
   }
 }
 
@@ -443,7 +444,7 @@ void SearchUserDlg::addUser()
 {
   foreach (QTreeWidgetItem* current, foundView->selectedItems())
   {
-    UserId userId = current->data(0, Qt::UserRole).value<UserId>();
+    Licq::UserId userId = current->data(0, Qt::UserRole).value<Licq::UserId>();
 
     new AddUserDlg(userId, this);
   }

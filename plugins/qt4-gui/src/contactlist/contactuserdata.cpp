@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,16 +30,17 @@
 #include <QTextCodec>
 
 // Licq
-#include <licq_events.h>
-#include <licq_socket.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/icqdefines.h>
+#include <licq/pluginsignal.h>
+#include <licq/socket.h>
+#include <licq/userevents.h>
 
 // Qt-gui
 #include "config/contactlist.h"
 
 #include "core/gui-defines.h"
 
-#include "helpers/licqstrings.h"
 #include "helpers/usercodec.h"
 
 #include "contactgroup.h"
@@ -49,6 +50,7 @@ using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ContactUserData */
 
 using std::string;
+using Licq::User;
 
 #define FLASH_TIME 500
 
@@ -59,8 +61,8 @@ QTimer* ContactUserData::myAnimateTimer = NULL;
 int ContactUserData::myAnimatorCount = 0;
 
 
-ContactUserData::ContactUserData(const LicqUser* licqUser, QObject* parent)
-  : myStatus(ICQ_STATUS_OFFLINE),
+ContactUserData::ContactUserData(const Licq::User* licqUser, QObject* parent)
+  : myStatus(User::OfflineStatus),
     myEvents(0),
     myFlash(false),
     mySubGroup(ContactListModel::OfflineSubGroup),
@@ -71,7 +73,7 @@ ContactUserData::ContactUserData(const LicqUser* licqUser, QObject* parent)
     myUserIcon(NULL)
 {
   myUserId = licqUser->id();
-  myPpid = licqUser->PPID();
+  myPpid = licqUser->protocolId();
   myAccountId = licqUser->realAccountId().c_str();
 
   if (myRefreshTimer == NULL)
@@ -89,7 +91,7 @@ ContactUserData::ContactUserData(const LicqUser* licqUser, QObject* parent)
     myAnimateTimer->setInterval(FLASH_TIME);
   }
 
-  updateAll(licqUser);
+  update(licqUser, 0);
 }
 
 ContactUserData::~ContactUserData()
@@ -108,110 +110,128 @@ ContactUserData::~ContactUserData()
 
 void ContactUserData::update(unsigned long subSignal, int argument)
 {
-  switch (subSignal)
+  if (subSignal == Licq::PluginSignal::UserEvents && argument == 0)
   {
-    case USER_EVENTS:
-      if (argument == 0)
-      {
-        // User fetched our auto response message
-        myCarCounter = ((5*1000/FLASH_TIME)+1)&(-2);
-        startAnimation();
-        return;
-      }
-      break;
-
-    case USER_STATUS:
-      if (argument == 1)
-      {
-        // User came online
-        myOnlCounter = 5*1000/FLASH_TIME; // run about 5 seconds
-        startAnimation();
-        // Fall trough to actually update status
-      }
-      break;
-
-//    case USER_BASIC:
-//    case USER_GENERAL:
-//    case USER_EXT:
-//    case USER_SECURITY:
-//    case USER_TYPING:
+    // User fetched our auto response message
+    myCarCounter = ((5*1000/FLASH_TIME)+1)&(-2);
+    startAnimation();
+    return;
   }
 
-  // TODO: Add better handling of subsignals so we don't have to update everything so often
-
-
+  if (subSignal == Licq::PluginSignal::UserStatus && argument == 1)
   {
-    LicqUserReadGuard u(myUserId);
-    if (u.isLocked())
-    {
-      // Group membership is handled by ContactList so send it a signal to update
-      emit updateUserGroups(this, *u);
-
-      // No specific handling for this signal so reread everything from the daemon
-      updateAll(*u);
-    }
+    // User came online
+    myOnlCounter = 5*1000/FLASH_TIME; // run about 5 seconds
+    startAnimation();
+    // Fall trough to actually update status
   }
 
-  emit dataChanged(this);
+  Licq::UserReadGuard u(myUserId);
+  if (!u.isLocked())
+    return;
+
+  update(*u, subSignal);
 }
 
-void ContactUserData::updateAll(const LicqUser* u)
+void ContactUserData::update(const Licq::User* u, unsigned long subSignal)
 {
-  myStatus = u->Status();
-  myStatusFull = u->StatusFull();
-  myStatusInvisible = u->StatusInvisible();
-  myStatusTyping = u->GetTyping() == ICQ_TYPING_ACTIVE;
-  myPhoneFollowMeStatus = u->PhoneFollowMeStatus();
-  myIcqPhoneStatus = u->ICQphoneStatus();
-  mySharedFilesStatus = u->SharedFilesStatus();
-  myCustomAR = u->CustomAutoResponse()[0] != '\0';
-  mySecure = u->Secure();
-  myUrgent = false;
-  myBirthday = (u->Birthday() == 0);
-  myPhone = !u->getUserInfoString("PhoneNumber").empty();
-  myCellular = !u->getCellularNumber().empty();
-  myGPGKey = (u->GPGKey() != 0) && (strcmp(u->GPGKey(), "") != 0);
-  myGPGKeyEnabled = u->UseGPG();
+  // Save some old values so we know if we got changes to signal
+  ContactListModel::SubGroupType oldSubGroup = mySubGroup;
+  bool oldVisibility = myVisibility;
 
-  myNotInList = u->NotInList();
-  myNewUser = u->NewUser();
-  myAwaitingAuth = u->GetAwaitingAuth();
-  myInIgnoreList = u->IgnoreList();
-  myInOnlineNotify = u->OnlineNotify();
-  myInInvisibleList = u->InvisibleList();
-  myInVisibleList = u->VisibleList();
-  myTouched = u->Touched();
-  myNewMessages = u->NewMessages();
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserStatus)
+  {
+    myStatus = u->status();
+    myStatusInvisible = u->isInvisible();
+    myTouched = u->Touched();
+  }
+
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserTyping)
+    myStatusTyping = u->isTyping();
+
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserPluginStatus)
+  {
+    myPhoneFollowMeStatus = u->PhoneFollowMeStatus();
+    myIcqPhoneStatus = u->ICQphoneStatus();
+    mySharedFilesStatus = u->SharedFilesStatus();
+  }
+
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserInfo)
+  {
+    myBirthday = (u->Birthday() == 0);
+    myPhone = !u->getUserInfoString("PhoneNumber").empty();
+    myCellular = !u->getCellularNumber().empty();
+  }
+
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserSecurity)
+  {
+    mySecure = u->Secure();
+    myGPGKey = !u->gpgKey().empty();
+    myGPGKeyEnabled = u->UseGPG();
+  }
+
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserSettings)
+  {
+    myCustomAR = !u->customAutoResponse().empty();
+    myNotInList = u->NotInList();
+    myNewUser = u->NewUser();
+    myAwaitingAuth = u->GetAwaitingAuth();
+    myInIgnoreList = u->IgnoreList();
+    myInOnlineNotify = u->OnlineNotify();
+    myInInvisibleList = u->InvisibleList();
+    myInVisibleList = u->VisibleList();
+  }
 
   updateExtendedStatus();
 
-  // Set sub group to put user in
-  ContactListModel::SubGroupType newSubGroup = ContactListModel::OnlineSubGroup;
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserEvents)
+    updateEvents(u);
 
-  if (myNotInList)
-    newSubGroup = ContactListModel::NotInListSubGroup;
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserPicture)
+    updatePicture(u);
 
-  else if (myStatus == ICQ_STATUS_OFFLINE)
-    newSubGroup = ContactListModel::OfflineSubGroup;
+  if (subSignal != Licq::PluginSignal::UserGroups &&
+      subSignal != Licq::PluginSignal::UserPicture &&
+      subSignal != Licq::PluginSignal::UserTyping &&
+      subSignal != Licq::PluginSignal::UserSecurity)
+  {
+    if (myNotInList)
+      mySubGroup = ContactListModel::NotInListSubGroup;
+    else if (myStatus == User::OfflineStatus)
+      mySubGroup = ContactListModel::OfflineSubGroup;
+    else
+      mySubGroup = ContactListModel::OnlineSubGroup;
+
+    updateText(u);
+    updateSorting();
+    updateVisibility();
+  }
+
+  // Note: When we get called from constructor, noone is connected to our signals
+  //       and myUserInstances is empty so below code won't trigger anything strange
+
+  // Signal our own data changes before starting to touch groups and bars
+  if (subSignal != Licq::PluginSignal::UserGroups)
+    emit dataChanged(this);
 
   // If status has changed update the sub groups of all groups
-  if (newSubGroup != mySubGroup)
-  {
+  if (mySubGroup != oldSubGroup)
     foreach (ContactUser* user, myUserInstances)
-      user->group()->updateSubGroup(mySubGroup, newSubGroup, myEvents);
-    mySubGroup = newSubGroup;
-  }
+      user->group()->updateSubGroup(oldSubGroup, mySubGroup, myEvents);
 
-  if (myEvents != u->NewMessages())
-  {
+  // Update group visibility
+  if (myVisibility != oldVisibility)
     foreach (ContactUser* user, myUserInstances)
-      user->group()->updateNumEvents(u->NewMessages() - myEvents, mySubGroup);
+      user->group()->updateVisibility(myVisibility, mySubGroup);
 
-    myEvents = u->NewMessages();
-  }
+  // Add/remove us to/from groups
+  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserSettings || subSignal == Licq::PluginSignal::UserGroups)
+    // Group membership is handled by ContactList so send it a signal to update
+    emit updateUserGroups(this, u);
+}
 
-  updateText(u);
-
+void ContactUserData::updatePicture(const Licq::User* u)
+{
   if (myUserIcon != NULL)
   {
     delete myUserIcon;
@@ -220,20 +240,32 @@ void ContactUserData::updateAll(const LicqUser* u)
 
   if (u->GetPicturePresent())
   {
-    myUserIcon = new QImage(QString::fromLocal8Bit(BASE_DIR) + USER_DIR + "/" +
-        myAccountId + ".pic");
+    myUserIcon = new QImage(QString::fromLocal8Bit(u->pictureFileName().c_str()));
     if (myUserIcon->isNull())
     {
       delete myUserIcon;
       myUserIcon = NULL;
     }
   }
+}
+
+void ContactUserData::updateEvents(const Licq::User* u)
+{
+  myUrgent = false;
+  myNewMessages = u->NewMessages();
+  if (myEvents != myNewMessages)
+  {
+    foreach (ContactUser* user, myUserInstances)
+      user->group()->updateNumEvents(myNewMessages - myEvents, mySubGroup);
+
+    myEvents = myNewMessages;
+  }
 
   myEventSubCommand = 0;
 
-  if (u->NewMessages() > 0)
+  if (myNewMessages > 0)
   {
-    for (unsigned short i = 0; i < u->NewMessages(); i++)
+    for (unsigned short i = 0; i < myNewMessages; i++)
     {
       switch (u->EventPeek(i)->SubCommand())
       {
@@ -262,7 +294,7 @@ void ContactUserData::updateAll(const LicqUser* u)
     }
   }
   Config::ContactList::FlashMode flash = Config::ContactList::instance()->flash();
-  bool shouldFlash = ((u->NewMessages() > 0 &&  flash == Config::ContactList::FlashAll) ||
+  bool shouldFlash = ((myNewMessages > 0 &&  flash == Config::ContactList::FlashAll) ||
       (myUrgent && flash == Config::ContactList::FlashUrgent));
 
   if (shouldFlash != myFlash)
@@ -275,9 +307,6 @@ void ContactUserData::updateAll(const LicqUser* u)
       startAnimation();
     }
   }
-
-  updateSorting();
-  updateVisibility();
 }
 
 void ContactUserData::updateExtendedStatus()
@@ -351,28 +380,19 @@ void ContactUserData::updateSorting()
 {
   // Set status sort order
   int sort = 9;
-  switch (myStatus)
-  {
-    case ICQ_STATUS_FREEFORCHAT:
-    case ICQ_STATUS_ONLINE:
-      sort = 0;
-      break;
-    case ICQ_STATUS_OCCUPIED:
-      sort = 1;
-      break;
-    case ICQ_STATUS_DND:
-      sort = 2;
-      break;
-    case ICQ_STATUS_AWAY:
-      sort = 3;
-      break;
-    case ICQ_STATUS_NA:
-      sort = 4;
-      break;
-    case ICQ_STATUS_OFFLINE:
-      sort = 5;
-      break;
-  }
+  if (myStatus & User::OccupiedStatus)
+    sort = 1;
+  else if (myStatus & User::DoNotDisturbStatus)
+    sort = 2;
+  else if (myStatus & User::AwayStatus)
+    sort = 3;
+  else if (myStatus & User::NotAvailableStatus)
+    sort = 4;
+  else if (myStatus == User::OfflineStatus)
+    sort = 5;
+  else
+    sort = 0;
+
   // Set sorting
   mySortKey = "";
   switch (Config::ContactList::instance()->sortByStatus())
@@ -392,21 +412,19 @@ void ContactUserData::updateSorting()
   mySortKey += myText[0];
 }
 
-bool ContactUserData::updateText(const LicqUser* licqUser)
+bool ContactUserData::updateText(const Licq::User* licqUser)
 {
   bool hasChanged = false;
 
   myAlias = QString::fromUtf8(licqUser->getAlias().c_str());
 
-  for (unsigned short i = 0; i < Config::ContactList::instance()->columnCount(); i++)
+  for (int i = 0; i < Config::ContactList::instance()->columnCount(); i++)
   {
     QString format = Config::ContactList::instance()->columnFormat(i);
     format.replace("%a", "@_USER_ALIAS_@");
 
     const QTextCodec* codec = UserCodec::codecForUser(licqUser);
-    char* temp = licqUser->usprintf(codec->fromUnicode(format));
-    QString newStr = codec->toUnicode(temp);
-    free(temp);
+    QString newStr = codec->toUnicode(licqUser->usprintf(codec->fromUnicode(format).data()).c_str());
 
     newStr.replace("@_USER_ALIAS_@", myAlias);
 
@@ -421,8 +439,10 @@ bool ContactUserData::updateText(const LicqUser* licqUser)
 
 void ContactUserData::configUpdated()
 {
+  bool oldVisibility = myVisibility;
+
   {
-    LicqUserReadGuard u(myUserId);
+    Licq::UserReadGuard u(myUserId);
     if (!u.isLocked())
       return;
 
@@ -432,37 +452,33 @@ void ContactUserData::configUpdated()
   }
 
   emit dataChanged(this);
+
+  // Update groups
+  if (myVisibility != oldVisibility)
+    foreach (ContactUser* user, myUserInstances)
+      user->group()->updateVisibility(myVisibility, mySubGroup);
 }
 
 void ContactUserData::updateVisibility()
 {
-  bool visibility = false;
+  myVisibility = false;
 
   // Only hide contacts who are offline
-  if (myStatus != ContactListModel::OfflineStatus)
-    visibility = true;
+  if (myStatus != User::OfflineStatus)
+    myVisibility = true;
 
   // Don't hide contacts with unread events
   if (myEvents > 0)
-    visibility = true;
+    myVisibility = true;
 
   // ... or the contact is in online notify list and option "Always show online notify users" is active
   if (Config::ContactList::instance()->alwaysShowONU() &&
       ((myExtendedStatus & ContactListModel::OnlineNotifyStatus) != 0))
-    visibility = true;
+    myVisibility = true;
 
   // ... or the contact is not added to the list
   if ((myExtendedStatus & ContactListModel::NotInListStatus) != 0)
-    visibility = true;
-
-  if (visibility == myVisibility)
-    return;
-
-  // Update groups
-  foreach (ContactUser* user, myUserInstances)
-    user->group()->updateVisibility(visibility, mySubGroup);
-
-  myVisibility = visibility;
+    myVisibility = true;
 }
 
 bool ContactUserData::setData(const QVariant& value, int role)
@@ -474,7 +490,7 @@ bool ContactUserData::setData(const QVariant& value, int role)
     return true;
 
   {
-    LicqUserWriteGuard u(myUserId);
+    Licq::UserWriteGuard u(myUserId);
     if (!u.isLocked())
       return false;
 
@@ -498,7 +514,7 @@ void ContactUserData::refresh()
   bool birthday;
   bool hasChanged;
   {
-    LicqUserReadGuard u(myUserId);
+    Licq::UserReadGuard u(myUserId);
     if (!u.isLocked())
       return;
 
@@ -629,9 +645,6 @@ QVariant ContactUserData::data(int column, int role) const
     case ContactListModel::StatusRole:
       return myStatus;
 
-    case ContactListModel::FullStatusRole:
-      return static_cast<unsigned int>(myStatusFull);
-
     case ContactListModel::ExtendedStatusRole:
       return myExtendedStatus;
 
@@ -670,7 +683,7 @@ QVariant ContactUserData::data(int column, int role) const
 
 QString ContactUserData::tooltip() const
 {
-  LicqUserReadGuard u(myUserId);
+  Licq::UserReadGuard u(myUserId);
   if (!u.isLocked())
     return "";
 
@@ -680,14 +693,13 @@ QString ContactUserData::tooltip() const
   QString s = "<nobr>";
   if (config->popupPicture() && u->GetPicturePresent())
   {
-    QString file = QString::fromLocal8Bit(BASE_DIR) + USER_DIR + "/" +
-      u->IdString() + ".pic";
+    QString file = QString::fromLocal8Bit(u->pictureFileName().c_str());
     QImage picture = QImage(file);
     if (!picture.isNull())
       s += QString("<center><img src=\"%1\"></center>").arg(file);
   }
 
-  s += LicqStrings::getStatus(myStatus, myStatusInvisible);
+  s += User::statusToString(myStatus).c_str();
 
   if (config->popupAlias() && !u->getAlias().empty())
     s += "<br>" + QString::fromUtf8(u->getAlias().c_str());
@@ -702,7 +714,7 @@ QString ContactUserData::tooltip() const
   if (myBirthday)
     s += "<br><b>" + tr("Birthday Today!") + "</b>";
 
-  if (myStatus != ICQ_STATUS_OFFLINE)
+  if (myStatus != User::OfflineStatus)
   {
     if (myStatusTyping)
       s += "<br>" + tr("Typing a message");
@@ -729,14 +741,12 @@ QString ContactUserData::tooltip() const
   if (config->popupAuth() && u->GetAwaitingAuth())
     s += "<br>" + tr("Awaiting authorization");
 
-  if (!u->StatusOffline() && u->ClientInfo() && *u->ClientInfo())
-    s += "<br>" + codec->toUnicode(u->ClientInfo());
+  if (u->isOnline() && !u->clientInfo().empty())
+    s += "<br>" + codec->toUnicode(u->clientInfo().c_str());
 
-  if (u->AutoResponse() && *u->AutoResponse() &&
-      myStatus != ICQ_STATUS_OFFLINE &&
-      myStatus != ICQ_STATUS_ONLINE)
+  if (!u->autoResponse().empty() && myStatus & User::MessageStatuses)
     s += "<br><u>" + tr("Auto Response:") + "</u><br>&nbsp;&nbsp;&nbsp;" +
-      codec->toUnicode(u->AutoResponse()).trimmed()
+      codec->toUnicode(u->autoResponse().c_str()).trimmed()
       .replace("\n", "<br>&nbsp;&nbsp;&nbsp;");
 
   if (config->popupEmail())
@@ -762,11 +772,11 @@ QString ContactUserData::tooltip() const
   if (config->popupIP() && (u->Ip() || u->IntIp()))
   {
     char buf[32];
-    ip_ntoa(u->Ip(), buf);
+    Licq::ip_ntoa(u->Ip(), buf);
     s += "<br>" + tr("Ip: ") + QString::fromAscii(buf);
     if (u->IntIp() != 0 && u->IntIp() != u->Ip())
     {
-      ip_ntoa(u->IntIp(), buf);
+      Licq::ip_ntoa(u->IntIp(), buf);
       s += " / " + QString::fromAscii(buf);
     }
   }
@@ -778,7 +788,7 @@ QString ContactUserData::tooltip() const
     s += "<br>" + tr("O: ") + t.toString();
   }
 
-  if (config->popupOnlineSince() && !u->StatusOffline())
+  if (config->popupOnlineSince() && u->isOnline())
   {
     time_t nLoggedIn = (time(0) > u->OnlineSince() ? time(0) - u->OnlineSince() : 0);
     unsigned long nWeek, nDay, nHour, nMinute;
@@ -820,31 +830,13 @@ QString ContactUserData::tooltip() const
   }
 
   if (config->popupIdleTime() && u->IdleSince())
-  {
-    char* szTemp;
-    szTemp = u->usprintf("%I");
-    QString temp(szTemp);
-    free(szTemp);
-    s += "<br>" + tr("Idle: ") + temp;
-  }
+    s += "<br>" + tr("Idle: ") + u->usprintf("%I").c_str();
 
   if (config->popupLocalTime())
-  {
-    char* szTemp;
-    szTemp = u->usprintf("%F");
-    QString temp(szTemp);
-    free(szTemp);
-    s += "<br>" + tr("Local time: ") + temp;
-  }
+    s += "<br>" + tr("Local time: ") + u->usprintf("%F").c_str();
 
   if (config->popupID())
-  {
-    char* szTemp;
-    szTemp = u->usprintf("%u");
-    QString temp(szTemp);
-    free(szTemp);
-    s += "<br>" + tr("ID: ") + temp;
-  }
+    s += "<br>" + tr("ID: ") + u->usprintf("%u").c_str();
 
   s += "</nobr>";
 

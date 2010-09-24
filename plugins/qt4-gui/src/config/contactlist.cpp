@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,10 @@
 
 #include "config.h"
 
-#include <licq_file.h>
-#include <licq_user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/inifile.h>
+
+#include "contactlist/contactlist.h"
 
 using namespace LicqQtGui;
 
@@ -43,133 +45,155 @@ Config::ContactList::ContactList(QObject* parent)
 {
 }
 
-void Config::ContactList::loadConfiguration(CIniFile& iniFile)
+void Config::ContactList::loadConfiguration(Licq::IniFile& iniFile)
 {
-  iniFile.SetSection("appearance");
-  iniFile.ReadBool("GridLines", myShowGridLines, false);
-  iniFile.ReadBool("FontStyles", myUseFontStyles, true);
-  iniFile.ReadBool("ShowHeader", myShowHeader, true);
-  iniFile.ReadBool("ShowOfflineUsers", myShowOffline, true);
-  iniFile.ReadBool("AlwaysShowONU", myAlwaysShowONU, true);
-  iniFile.ReadBool("ShowDividers", myShowDividers, true);
-  iniFile.ReadNum("SortByStatus", mySortByStatus, 1);
-  iniFile.ReadNum("SortColumn", mySortColumn, 0);
-  iniFile.ReadBool("SortColumnAscending", mySortColumnAscending, true);
-  iniFile.ReadBool("UseThreadView", myThreadView, true);
-  iniFile.ReadBool("UseMode2View", myMode2View, false);
-  iniFile.ReadBool("ShowEmptyGroups", myShowEmptyGroups, true);
-  iniFile.ReadNum("TVGroupStates", myGroupStates[0], 0xFFFFFFFE);
-  iniFile.ReadNum("TVGroupStates2", myGroupStates[1], 0xFFFFFFFE);
-  iniFile.ReadBool("ShowExtIcons", myShowExtendedIcons, true);
-  iniFile.ReadBool("ShowPhoneIcons", myShowPhoneIcons, true);
-  iniFile.ReadBool("ShowUserIcons", myShowUserIcons, true);
-  iniFile.ReadBool("ScrollBar", myAllowScrollBar, true);
-  iniFile.ReadBool("SystemBackground", myUseSystemBackground, false);
-  iniFile.ReadBool("DragMovesUser", myDragMovesUser, true);
+  iniFile.setSection("appearance");
+  iniFile.get("GridLines", myShowGridLines, false);
+  iniFile.get("FontStyles", myUseFontStyles, true);
+  iniFile.get("ShowHeader", myShowHeader, true);
+  iniFile.get("ShowOfflineUsers", myShowOffline, true);
+  iniFile.get("AlwaysShowONU", myAlwaysShowONU, true);
+  iniFile.get("ShowDividers", myShowDividers, true);
+  iniFile.get("SortByStatus", mySortByStatus, 1);
+  iniFile.get("SortColumn", mySortColumn, 0);
+  iniFile.get("SortColumnAscending", mySortColumnAscending, true);
+  iniFile.get("UseMode2View", myMode2View, false);
+  iniFile.get("ShowEmptyGroups", myShowEmptyGroups, true);
+  iniFile.get("TVGroupStates", myGroupStates[0], 0xFFFFFFFE);
+  iniFile.get("TVGroupStates2", myGroupStates[1], 0xFFFFFFFE);
+  iniFile.get("ShowExtIcons", myShowExtendedIcons, true);
+  iniFile.get("ShowPhoneIcons", myShowPhoneIcons, true);
+  iniFile.get("ShowUserIcons", myShowUserIcons, true);
+  iniFile.get("ScrollBar", myAllowScrollBar, true);
+  iniFile.get("SystemBackground", myUseSystemBackground, false);
+  iniFile.get("DragMovesUser", myDragMovesUser, true);
 
-  unsigned short flash;
-  iniFile.ReadNum("Flash", flash, FlashUrgent);
+  int flash;
+  iniFile.get("Flash", flash, FlashUrgent);
   myFlash = static_cast<FlashMode>(flash);
 
-  unsigned short groupType;
-  iniFile.ReadNum("StartUpGroupId", myGroupId, GROUP_ALL_USERS);
-  iniFile.ReadNum("StartUpGroupType", groupType, GROUPS_SYSTEM);
-  myGroupType = static_cast<GroupType>(groupType);
-
-  // Check that the group actually exists
-  if (!gUserManager.groupExists(myGroupType, myGroupId))
+  if (!iniFile.get("GroupId", myGroupId, ContactListModel::AllGroupsGroupId))
   {
-    myGroupId = GROUP_ALL_USERS;
-    myGroupType = GROUPS_SYSTEM;
+    // Group id missing, see if old parameters exist
+
+    int oldGroupId; // 0=All, 1=OnlineNotify, 2=Visible, 3=Invisible, 4=Ignore, 5=NewUsers
+    int oldGroupType; // 0=System, 1=User
+    bool oldThreadView;
+    iniFile.get("UseThreadView", oldThreadView, true);
+    iniFile.get("StartUpGroupId", oldGroupId, 0);
+    iniFile.get("StartUpGroupType", oldGroupType, 0);
+
+    if (oldGroupType == 0 && oldGroupId == 0 && oldThreadView)
+      // Threaded view
+      myGroupId = ContactListModel::AllGroupsGroupId;
+    else if (oldGroupType != 0)
+      // User group
+      myGroupId = oldGroupId;
+    else if (oldGroupId == 0)
+      myGroupId = ContactListModel::AllUsersGroupId;
+    else if (oldGroupId == 1)
+      myGroupId = ContactListModel::OnlineNotifyGroupId;
+    else if (oldGroupId == 2)
+      myGroupId = ContactListModel::VisibleListGroupId;
+    else if (oldGroupId == 3)
+      myGroupId = ContactListModel::InvisibleListGroupId;
+    else if (oldGroupId == 4)
+      myGroupId = ContactListModel::IgnoreListGroupId;
+    else if (oldGroupId == 5)
+      myGroupId = ContactListModel::NewUsersGroupId;
   }
 
-  iniFile.ReadNum("NumColumns", myColumnCount, 1);
-  for (unsigned short i = 0; i < myColumnCount; i++)
+  // Check that the group actually exists
+  if (myGroupId <= 0 || (myGroupId >= ContactListModel::SystemGroupOffset &&
+      myGroupId != ContactListModel::AllUsersGroupId && myGroupId != ContactListModel::AllGroupsGroupId) ||
+      (myGroupId < ContactListModel::SystemGroupOffset && !Licq::gUserManager.groupExists(myGroupId)))
+    myGroupId = ContactListModel::AllGroupsGroupId;
+
+  iniFile.get("NumColumns", myColumnCount, 1);
+  for (int i = 0; i < myColumnCount; i++)
   {
-    char s[32];
-    unsigned short us;
+    std::string s;
+    int us;
 
     QString key = QString("Column%1.").arg(i + 1);
-    iniFile.ReadStr((key + "Title").toLatin1().data(), s, "Alias");
-    myColumnHeading[i] = QString::fromLocal8Bit(s);
-    iniFile.ReadStr((key + "Format").toLatin1().data(), s, "%a");
-    myColumnFormat[i] = QString::fromLocal8Bit(s);
-    iniFile.ReadNum((key + "Width").toLatin1().data(), myColumnWidth[i], 100);
-    iniFile.ReadNum((key + "Align").toLatin1().data(), us, 0);
+    iniFile.get((key + "Title").toLatin1().data(), s, "Alias");
+    myColumnHeading[i] = QString::fromLocal8Bit(s.c_str());
+    iniFile.get((key + "Format").toLatin1().data(), s, "%a");
+    myColumnFormat[i] = QString::fromLocal8Bit(s.c_str());
+    iniFile.get((key + "Width").toLatin1().data(), myColumnWidth[i], 100);
+    iniFile.get((key + "Align").toLatin1().data(), us, 0);
     myColumnAlignment[i] = static_cast<AlignmentMode>(us);
   }
 
-  iniFile.ReadBool("showPopPicture", myPopupPicture, true);
-  iniFile.ReadBool("showPopAlias", myPopupAlias, false);
-  iniFile.ReadBool("showPopAuth", myPopupAuth, false);
-  iniFile.ReadBool("showPopName", myPopupName, false);
-  iniFile.ReadBool("showPopEmail", myPopupEmail, false);
-  iniFile.ReadBool("showPopPhone", myPopupPhone, true);
-  iniFile.ReadBool("showPopFax", myPopupFax, false);
-  iniFile.ReadBool("showPopCellular", myPopupCellular, true);
-  iniFile.ReadBool("showPopIP", myPopupIP, false);
-  iniFile.ReadBool("showPopLastOnelin", myPopupLastOnline, false);
-  iniFile.ReadBool("showPopOnlineSince", myPopupOnlineSince, false);
-  iniFile.ReadBool("showPopIdleTime", myPopupIdleTime, true);
-  iniFile.ReadBool("showPopLocalTime", myPopupLocalTime, false);
-  iniFile.ReadBool("showPopID", myPopupID, true);
+  iniFile.get("showPopPicture", myPopupPicture, true);
+  iniFile.get("showPopAlias", myPopupAlias, false);
+  iniFile.get("showPopAuth", myPopupAuth, false);
+  iniFile.get("showPopName", myPopupName, false);
+  iniFile.get("showPopEmail", myPopupEmail, false);
+  iniFile.get("showPopPhone", myPopupPhone, true);
+  iniFile.get("showPopFax", myPopupFax, false);
+  iniFile.get("showPopCellular", myPopupCellular, true);
+  iniFile.get("showPopIP", myPopupIP, false);
+  iniFile.get("showPopLastOnelin", myPopupLastOnline, false);
+  iniFile.get("showPopOnlineSince", myPopupOnlineSince, false);
+  iniFile.get("showPopIdleTime", myPopupIdleTime, true);
+  iniFile.get("showPopLocalTime", myPopupLocalTime, false);
+  iniFile.get("showPopID", myPopupID, true);
 
   emit listLayoutChanged();
   emit currentListChanged();
   emit listLookChanged();
 }
 
-void Config::ContactList::saveConfiguration(CIniFile& iniFile) const
+void Config::ContactList::saveConfiguration(Licq::IniFile& iniFile) const
 {
-  iniFile.SetSection("appearance");
-  iniFile.WriteBool("GridLines", myShowGridLines);
-  iniFile.WriteBool("FontStyles", myUseFontStyles);
-  iniFile.WriteBool("ShowHeader", myShowHeader);
-  iniFile.WriteBool("ShowDividers", myShowDividers);
-  iniFile.WriteNum("SortByStatus", mySortByStatus);
-  iniFile.WriteNum("SortColumn", mySortColumn);
-  iniFile.WriteBool("SortColumnAscending", mySortColumnAscending);
-  iniFile.WriteBool("ShowOfflineUsers", myShowOffline);
-  iniFile.WriteBool("AlwaysShowONU", myAlwaysShowONU);
-  iniFile.WriteBool("UseThreadView", myThreadView);
-  iniFile.WriteBool("UseMode2View", myMode2View);
-  iniFile.WriteBool("ShowEmptyGroups", myShowEmptyGroups);
-  iniFile.WriteNum("TVGroupStates", myGroupStates[0]);
-  iniFile.WriteNum("TVGroupStates2", myGroupStates[1]);
-  iniFile.WriteBool("ShowExtIcons", myShowExtendedIcons);
-  iniFile.WriteBool("ShowPhoneIcons", myShowPhoneIcons);
-  iniFile.WriteBool("ShowUserIcons", myShowUserIcons);
-  iniFile.WriteNum("Flash", static_cast<unsigned short>(myFlash));
-  iniFile.WriteBool("ScrollBar", myAllowScrollBar);
-  iniFile.WriteBool("SystemBackground", myUseSystemBackground);
-  iniFile.WriteBool("DragMovesUser", myDragMovesUser);
-  iniFile.WriteNum("StartUpGroupId", myGroupId);
-  iniFile.WriteNum("StartUpGroupType", static_cast<unsigned short>(myGroupType));
+  iniFile.setSection("appearance");
+  iniFile.set("GridLines", myShowGridLines);
+  iniFile.set("FontStyles", myUseFontStyles);
+  iniFile.set("ShowHeader", myShowHeader);
+  iniFile.set("ShowDividers", myShowDividers);
+  iniFile.set("SortByStatus", mySortByStatus);
+  iniFile.set("SortColumn", mySortColumn);
+  iniFile.set("SortColumnAscending", mySortColumnAscending);
+  iniFile.set("ShowOfflineUsers", myShowOffline);
+  iniFile.set("AlwaysShowONU", myAlwaysShowONU);
+  iniFile.set("UseMode2View", myMode2View);
+  iniFile.set("ShowEmptyGroups", myShowEmptyGroups);
+  iniFile.set("TVGroupStates", myGroupStates[0]);
+  iniFile.set("TVGroupStates2", myGroupStates[1]);
+  iniFile.set("ShowExtIcons", myShowExtendedIcons);
+  iniFile.set("ShowPhoneIcons", myShowPhoneIcons);
+  iniFile.set("ShowUserIcons", myShowUserIcons);
+  iniFile.set("Flash", static_cast<int>(myFlash));
+  iniFile.set("ScrollBar", myAllowScrollBar);
+  iniFile.set("SystemBackground", myUseSystemBackground);
+  iniFile.set("DragMovesUser", myDragMovesUser);
+  iniFile.set("GroupId", myGroupId);
 
-  iniFile.WriteNum("NumColumns", myColumnCount);
-  for (unsigned short i = 0; i < myColumnCount; i++)
+  iniFile.set("NumColumns", myColumnCount);
+  for (int i = 0; i < myColumnCount; i++)
   {
     QString key = QString("Column%1.").arg(i + 1);
-    iniFile.WriteStr((key + "Title").toLatin1().data(), myColumnHeading[i].toLocal8Bit().data());
-    iniFile.WriteStr((key + "Format").toLatin1().data(), myColumnFormat[i].toLocal8Bit().data());
-    iniFile.WriteNum((key + "Width").toLatin1().data(), myColumnWidth[i]);
-    iniFile.WriteNum((key + "Align").toLatin1().data(), static_cast<unsigned short>(myColumnAlignment[i]));
+    iniFile.set((key + "Title").toLatin1().data(), myColumnHeading[i].toLocal8Bit().data());
+    iniFile.set((key + "Format").toLatin1().data(), myColumnFormat[i].toLocal8Bit().data());
+    iniFile.set((key + "Width").toLatin1().data(), myColumnWidth[i]);
+    iniFile.set((key + "Align").toLatin1().data(), static_cast<int>(myColumnAlignment[i]));
   }
 
-  iniFile.WriteBool("showPopPicture", myPopupPicture);
-  iniFile.WriteBool("showPopAlias", myPopupAlias);
-  iniFile.WriteBool("showPopAuth", myPopupAuth);
-  iniFile.WriteBool("showPopName", myPopupName);
-  iniFile.WriteBool("showPopEmail", myPopupEmail);
-  iniFile.WriteBool("showPopPhone", myPopupPhone);
-  iniFile.WriteBool("showPopFax", myPopupFax);
-  iniFile.WriteBool("showPopCellular", myPopupCellular);
-  iniFile.WriteBool("showPopIP", myPopupIP);
-  iniFile.WriteBool("showPopLastOnelin", myPopupLastOnline);
-  iniFile.WriteBool("showPopOnlineSince", myPopupOnlineSince);
-  iniFile.WriteBool("showPopIdleTime", myPopupIdleTime);
-  iniFile.WriteBool("showPopLocalTime", myPopupLocalTime);
-  iniFile.WriteBool("showPopID", myPopupID);
+  iniFile.set("showPopPicture", myPopupPicture);
+  iniFile.set("showPopAlias", myPopupAlias);
+  iniFile.set("showPopAuth", myPopupAuth);
+  iniFile.set("showPopName", myPopupName);
+  iniFile.set("showPopEmail", myPopupEmail);
+  iniFile.set("showPopPhone", myPopupPhone);
+  iniFile.set("showPopFax", myPopupFax);
+  iniFile.set("showPopCellular", myPopupCellular);
+  iniFile.set("showPopIP", myPopupIP);
+  iniFile.set("showPopLastOnelin", myPopupLastOnline);
+  iniFile.set("showPopOnlineSince", myPopupOnlineSince);
+  iniFile.set("showPopIdleTime", myPopupIdleTime);
+  iniFile.set("showPopLocalTime", myPopupLocalTime);
+  iniFile.set("showPopID", myPopupID);
 }
 
 void Config::ContactList::blockUpdates(bool block)
@@ -207,7 +231,7 @@ void Config::ContactList::setColumnCount(int columnCount)
 }
 
 void Config::ContactList::setColumn(int column, const QString& heading,
-    const QString& format, unsigned short width, AlignmentMode alignment)
+    const QString& format, int width, AlignmentMode alignment)
 {
   if (column < 0 || column >= MAX_COLUMNCOUNT)
     return;
@@ -229,7 +253,7 @@ void Config::ContactList::setColumn(int column, const QString& heading,
   }
 }
 
-void Config::ContactList::setSortByStatus(unsigned short sortByStatus)
+void Config::ContactList::setSortByStatus(int sortByStatus)
 {
   if (sortByStatus == mySortByStatus)
     return;
@@ -367,16 +391,6 @@ void Config::ContactList::setShowOffline(bool showOffline)
   changeCurrentList();
 }
 
-void Config::ContactList::setThreadView(bool threadView)
-{
-  if (threadView == myThreadView)
-    return;
-
-  myThreadView = threadView;
-
-  changeCurrentList();
-}
-
 void Config::ContactList::setMode2View(bool mode2View)
 {
   if (mode2View == myMode2View)
@@ -397,18 +411,17 @@ void Config::ContactList::setShowEmptyGroups(bool showEmptyGroups)
   changeCurrentList();
 }
 
-void Config::ContactList::setGroup(GroupType groupType, int groupId)
+void Config::ContactList::setGroup(int groupId)
 {
-  if (groupType == myGroupType && groupId == myGroupId)
+  if (groupId == myGroupId)
     return;
 
-  myGroupType = groupType;
   myGroupId = groupId;
 
   changeCurrentList();
 }
 
-void Config::ContactList::setSortColumn(unsigned short column, bool ascending)
+void Config::ContactList::setSortColumn(int column, bool ascending)
 {
   mySortColumn = column;
   mySortColumnAscending = ascending;

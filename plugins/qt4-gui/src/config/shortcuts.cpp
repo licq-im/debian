@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2009 Licq developers
+ * Copyright (C) 2009-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 
 #include "shortcuts.h"
 
-#include <licq_file.h>
+#include <licq/inifile.h>
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Config::Shortcuts */
@@ -76,6 +76,7 @@ Config::Shortcuts::Shortcuts(QObject* parent)
 
   // Shortcuts for main window (contact list)
   ADD_SHORTCUT(MainwinAccountManager, "Mainwin.AccountManager", 0)
+  ADD_SHORTCUT(MainwinAddGroup, "Mainwin.AddGroup", 0)
   ADD_SHORTCUT(MainwinEditGroups, "Mainwin.EditGroups", Qt::CTRL + Qt::Key_G)
   ADD_SHORTCUT(MainwinExit, "Mainwin.Exit", Qt::CTRL + Qt::Key_Q)
   ADD_SHORTCUT(MainwinHide, "Mainwin.Hide", Qt::CTRL + Qt::Key_H)
@@ -97,7 +98,6 @@ Config::Shortcuts::Shortcuts(QObject* parent)
   ADD_SHORTCUT(MainwinToggleMiniMode, "Mainwin.MainwinToggleMiniMode", Qt::CTRL + Qt::Key_M)
   ADD_SHORTCUT(MainwinToggleShowHeader, "Mainwin.MainwinToggleShowHeader", 0)
   ADD_SHORTCUT(MainwinToggleShowOffline, "Mainwin.MainwinToggleShowOffline", Qt::CTRL + Qt::Key_O)
-  ADD_SHORTCUT(MainwinToggleThreadView, "Mainwin.MainwinToggleThreadView", Qt::CTRL + Qt::Key_T)
   ADD_SHORTCUT(MainwinUserCheckAutoresponse, "Mainwin.UserCheckAutoresponse", Qt::CTRL + Qt::Key_C)
   ADD_SHORTCUT(MainwinUserSendChatRequest, "Mainwin.UserSendChatRequest", Qt::CTRL + Qt::Key_C)
   ADD_SHORTCUT(MainwinUserSendMessage, "Mainwin.UserSendMessage", Qt::CTRL + Qt::Key_S)
@@ -109,15 +109,15 @@ Config::Shortcuts::Shortcuts(QObject* parent)
 #undef ADD_SHORTCUT
 }
 
-void Config::Shortcuts::loadConfiguration(CIniFile& iniFile)
+void Config::Shortcuts::loadConfiguration(Licq::IniFile& iniFile)
 {
-  iniFile.SetSection("shortcuts");
+  iniFile.setSection("shortcuts");
 
   QMap<ShortcutType, QString>::iterator i;
   for (i = myConfigKeysMap.begin(); i != myConfigKeysMap.end(); ++i)
   {
     std::string s;
-    iniFile.readString(i.value().toAscii().data(), s);
+    iniFile.get(i.value().toAscii().data(), s);
     if (s.empty())
       myShortcutsMap[i.key()] = QKeySequence(myDefaultShortcutsMap[i.key()]);
     else if(s == "None")
@@ -129,13 +129,13 @@ void Config::Shortcuts::loadConfiguration(CIniFile& iniFile)
   emit shortcutsChanged();
 }
 
-void Config::Shortcuts::saveConfiguration(CIniFile& iniFile) const
+void Config::Shortcuts::saveConfiguration(Licq::IniFile& iniFile) const
 {
-  iniFile.SetSection("shortcuts");
+  iniFile.setSection("shortcuts");
 
   QMap<ShortcutType, QString>::const_iterator i;
   for (i = myConfigKeysMap.begin(); i != myConfigKeysMap.end(); ++i)
-    iniFile.writeString(i.value().toAscii().data(),
+    iniFile.set(i.value().toAscii().data(),
         myShortcutsMap[i.key()].isEmpty() ? "None" :
         myShortcutsMap[i.key()].toString(QKeySequence::PortableText).toLatin1().data());
 }

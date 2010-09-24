@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,9 +28,12 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_events.h>
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/icq.h>
+#include <licq/icqdefines.h>
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
@@ -84,14 +87,14 @@ RandomChatDlg::RandomChatDlg(QWidget* parent)
 RandomChatDlg::~RandomChatDlg()
 {
   if (myTag != 0)
-    gLicqDaemon->CancelEvent(myTag);
+    Licq::gDaemon.cancelEvent(myTag);
 }
 
 void RandomChatDlg::okPressed()
 {
   myOkButton->setEnabled(false);
-  connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(userEventDone(const LicqEvent*)));
+  connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+      SLOT(userEventDone(const Licq::Event*)));
   unsigned long nGroup = ICQ_RANDOMxCHATxGROUP_NONE;
   switch(myGroupsList->currentRow())
   {
@@ -110,7 +113,7 @@ void RandomChatDlg::okPressed()
   setWindowTitle(tr("Searching for Random Chat Partner..."));
 }
 
-void RandomChatDlg::userEventDone(const LicqEvent* event)
+void RandomChatDlg::userEventDone(const Licq::Event* event)
 {
   if (!event->Equals(myTag))
     return;
@@ -120,20 +123,20 @@ void RandomChatDlg::userEventDone(const LicqEvent* event)
 
   switch (event->Result())
   {
-    case EVENT_FAILED:
+    case Licq::Event::ResultFailed:
       WarnUser(this, tr("No random chat user found in that group."));
       break;
-    case EVENT_TIMEDOUT:
+    case Licq::Event::ResultTimedout:
       WarnUser(this, tr("Random chat search timed out."));
       break;
-    case EVENT_ERROR:
+    case Licq::Event::ResultError:
       WarnUser(this, tr("Random chat search had an error."));
       break;
     default:
       //TODO when CSearchAck changes
-      UserId userId = event->SearchAck()->userId();
-      gUserManager.addUser(userId, false);
-      LicqGui::instance()->showEventDialog(ChatEvent, userId);
+      Licq::UserId userId = event->SearchAck()->userId();
+      Licq::gUserManager.addUser(userId, false);
+      gLicqGui->showEventDialog(ChatEvent, userId);
       close();
       return;
   }
@@ -182,8 +185,8 @@ SetRandomChatGroupDlg::SetRandomChatGroupDlg(QWidget* parent)
   myGroupsList->addItem(tr("Seeking Women"));
   myGroupsList->addItem(tr("Seeking Men"));
 
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o == NULL)
+  Licq::OwnerReadGuard o(LICQ_PPID);
+  if (!o.isLocked())
   {
     close();
     return;
@@ -204,7 +207,6 @@ SetRandomChatGroupDlg::SetRandomChatGroupDlg(QWidget* parent)
     default:
       myGroupsList->setCurrentRow(0); break;
   }
-  gUserManager.DropOwner(o);
 
   show();
 }
@@ -212,15 +214,15 @@ SetRandomChatGroupDlg::SetRandomChatGroupDlg(QWidget* parent)
 SetRandomChatGroupDlg::~SetRandomChatGroupDlg()
 {
   if (myTag != 0)
-    gLicqDaemon->CancelEvent(myTag);
+    Licq::gDaemon.cancelEvent(myTag);
 }
 
 void SetRandomChatGroupDlg::okPressed()
 {
   myOkButton->setEnabled(false);
   myCancelButton = new QPushButton(tr("&Cancel"), this);
-  connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(userEventDone(const LicqEvent*)));
+  connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+      SLOT(userEventDone(const Licq::Event*)));
   unsigned long nGroup = ICQ_RANDOMxCHATxGROUP_NONE;
   switch(myGroupsList->currentRow())
   {
@@ -240,7 +242,7 @@ void SetRandomChatGroupDlg::okPressed()
   setWindowTitle(tr("Setting Random Chat Group..."));
 }
 
-void SetRandomChatGroupDlg::userEventDone(const LicqEvent* event)
+void SetRandomChatGroupDlg::userEventDone(const Licq::Event* event)
 {
   if (!event->Equals(myTag))
     return;
@@ -251,13 +253,13 @@ void SetRandomChatGroupDlg::userEventDone(const LicqEvent* event)
 
   switch (event->Result())
   {
-    case EVENT_FAILED:
+    case Licq::Event::ResultFailed:
       setWindowTitle(windowTitle() + tr("failed"));
       break;
-    case EVENT_TIMEDOUT:
+    case Licq::Event::ResultTimedout:
       setWindowTitle(windowTitle() + tr("timed out"));
       break;
-    case EVENT_ERROR:
+    case Licq::Event::ResultError:
       setWindowTitle(windowTitle() + tr("error"));
       break;
     default:

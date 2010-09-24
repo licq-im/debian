@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 
 #include "awaymsgdlg.h"
 
+#include <boost/foreach.hpp>
+
 #include <QCloseEvent>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -34,14 +36,13 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_log.h>
-#include <licq_sar.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/sarmanager.h>
+#include <licq/logging/log.h>
 
 #include "core/licqgui.h"
 
-#include "helpers/licqstrings.h"
 #include "helpers/support.h"
 #include "helpers/usercodec.h"
 
@@ -51,20 +52,22 @@
 
 #include "hintsdlg.h"
 
+using Licq::User;
+using Licq::SarManager;
+using Licq::gSarManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::AwayMsgDlg */
 
 AwayMsgDlg* AwayMsgDlg::myInstance = NULL;
 
-void AwayMsgDlg::showAwayMsgDlg(unsigned short status, bool autoClose,
-    unsigned long ppid, bool invisible, bool setStatus)
+void AwayMsgDlg::showAwayMsgDlg(unsigned status, bool autoClose, unsigned long ppid)
 {
   if (myInstance == NULL)
     myInstance = new AwayMsgDlg();
   else
     myInstance->raise();
 
-  myInstance->selectAutoResponse(status, autoClose, ppid, invisible, setStatus);
+  myInstance->selectAutoResponse(status, autoClose, ppid);
 }
 
 AwayMsgDlg::AwayMsgDlg(QWidget* parent)
@@ -111,77 +114,90 @@ AwayMsgDlg::~AwayMsgDlg()
   myInstance = NULL;
 }
 
-void AwayMsgDlg::selectAutoResponse(unsigned short status, bool autoClose,
-    unsigned long ppid, bool invisible, bool setStatus)
+void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, unsigned long ppid)
 {
-  switch (status & 0x00FF)
-  {
-    case ICQ_STATUS_ONLINE: // Fall through
-    case ICQ_STATUS_OFFLINE:
-      status = (status & 0xFF00) | ICQ_STATUS_AWAY;
-      break;
-  }
+  // If requested status doesn't support message, set away
+  if ((status & User::MessageStatuses) == 0)
+    status |= User::AwayStatus;
+  status |= User::OnlineStatus;
 
   myStatus = status;
-  myInvisible = invisible;
   myPpid = ppid;
-  mySetStatus = setStatus;
+  SarManager::List sarList;
 
   // Fill in the select menu
   myMenu->clear();
-  switch (myStatus)
-  {
-    case ICQ_STATUS_NA:
-      mySAR = SAR_NA;
-      break;
-    case ICQ_STATUS_OCCUPIED:
-      mySAR = SAR_OCCUPIED;
-      break;
-    case ICQ_STATUS_DND:
-      mySAR = SAR_DND;
-      break;
-    case ICQ_STATUS_FREEFORCHAT:
-      mySAR = SAR_FFC;
-      break;
-    case ICQ_STATUS_AWAY: // Fall through
-    default:
-      mySAR = SAR_AWAY;
-  }
+  if (myStatus & User::DoNotDisturbStatus)
+    sarList = SarManager::DoNotDisturbList;
+  else if (myStatus & User::OccupiedStatus)
+    sarList = SarManager::OccupiedList;
+  else if (myStatus & User::NotAvailableStatus)
+    sarList = SarManager::NotAvailableList;
+  else if (myStatus & User::FreeForChatStatus)
+    sarList = SarManager::FreeForChatList;
+  else // if (myStatus & User::AwayStatus)
+    sarList = SarManager::AwayList;
 
-  if (mySAR >= 0)
+  const Licq::SarList& sars(gSarManager.getList(sarList));
+  for (Licq::SarList::const_iterator i = sars.begin(); i != sars.end(); ++i)
   {
-    SARList& sar = gSARManager.Fetch(mySAR);
-    for (unsigned i = 0; i < sar.size(); i++)
-    {
-      QAction* a = myMenu->addAction(
-          QString::fromLocal8Bit(sar[i]->Name()),
-          this, SLOT(selectMessage()));
-      a->setData(i);
-    }
-    gSARManager.Drop();
+    QAction* a = myMenu->addAction(QString::fromLocal8Bit(i->name.c_str()), this, SLOT(selectMessage()));
+    a->setData(QString::fromLocal8Bit(i->text.c_str()));
   }
+  gSarManager.releaseList();
 
   myMenu->addSeparator();
   QAction* a = myMenu->addAction(tr("&Edit Items"), this, SLOT(selectMessage()));
-  a->setData(999);
+  a->setData(QString());
 
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o == NULL)
-    return;
+  {
+    QString statusStr = User::statusToString(myStatus, true, false).c_str();
+    QString autoResponse;
 
-  setWindowTitle(QString(tr("Set %1 Response for %2"))
-      .arg(LicqStrings::getStatus(myStatus, false))
-      .arg(QString::fromUtf8(o->GetAlias())));
+    if (myPpid == 0)
+    {
+      setWindowTitle(QString(tr("Set %1 Response for all accounts"))
+          .arg(statusStr));
 
-  const QTextCodec* codec = UserCodec::defaultEncoding();
-  if (*o->AutoResponse())
-    myAwayMsg->setText(codec->toUnicode(o->AutoResponse()));
-  else
-    myAwayMsg->setText(tr("I'm currently %1, %a.\n"
-          "You can leave me a message.\n"
-          "(%m messages pending from you).")
-        .arg(LicqStrings::getStatus(myStatus, false)));
-  gUserManager.DropOwner(o);
+      // Check all owners for existing away messages
+      Licq::OwnerListGuard ownerList;
+      BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+      {
+        Licq::OwnerReadGuard o(owner);
+
+        if (!o->autoResponse().empty())
+        {
+          const QTextCodec* codec = UserCodec::defaultEncoding();
+          autoResponse = codec->toUnicode(o->autoResponse().c_str());
+          break;
+        }
+      }
+    }
+    else
+    {
+      Licq::OwnerReadGuard o(myPpid);
+      if (!o.isLocked())
+        return;
+
+      setWindowTitle(QString(tr("Set %1 Response for %2"))
+          .arg(statusStr)
+          .arg(QString::fromUtf8(o->GetAlias())));
+
+      if (!o->autoResponse().empty())
+      {
+        const QTextCodec* codec = UserCodec::defaultEncoding();
+        autoResponse = codec->toUnicode(o->autoResponse().c_str());
+      }
+    }
+
+    if (!autoResponse.isEmpty())
+      myAwayMsg->setText(autoResponse);
+    else
+      myAwayMsg->setText(tr("I'm currently %1, %a.\n"
+            "You can leave me a message.\n"
+            "(%m messages pending from you).")
+          .arg(statusStr));
+  }
 
   myAwayMsg->setFocus();
   QTimer::singleShot(0, myAwayMsg, SLOT(selectAll()));
@@ -241,22 +257,15 @@ void AwayMsgDlg::ok()
 {
   myAutoCloseCounter = -1;
 
-  if (mySetStatus)
-  {
-    if (myPpid == 0)
-      LicqGui::instance()->changeStatus(myStatus, myInvisible);
-    else
-      LicqGui::instance()->changeStatus(myStatus, myPpid, myInvisible);
-  }
+  bool invisible = (myStatus & User::InvisibleStatus) != 0;
 
   QString s = myAwayMsg->toPlainText().trimmed();
-
-  ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
-  if (o != NULL)
+  if (myPpid == 0)
+    gLicqGui->changeStatus(myStatus, invisible, s);
+  else
   {
-    const QTextCodec* codec = UserCodec::defaultEncoding();
-    o->SetAutoResponse(codec->fromUnicode(s));
-    gUserManager.DropOwner(o);
+    Licq::UserId userId = Licq::gUserManager.ownerUserId(myPpid);
+    gLicqGui->changeStatus(myStatus, userId, invisible, s);
   }
 
   close();
@@ -296,16 +305,10 @@ void AwayMsgDlg::selectMessage()
   if (a == NULL)
     return;
 
-  unsigned int result = a->data().toUInt();
+  QString text = a->data().toString();
 
-  if (result == 999) // User chose "Edit Items"
+  if (text.isNull()) // User chose "Edit Items"
     SettingsDlg::show(SettingsDlg::RespMsgPage);
   else
-  {
-    SARList& sar = gSARManager.Fetch(mySAR);
-    if (result < sar.size())
-      myAwayMsg->setText(QString::fromLocal8Bit(sar[result]->AutoResponse()));
-
-    gSARManager.Drop();
-  }
+    myAwayMsg->setText(text);
 }

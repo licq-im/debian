@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,14 +20,15 @@
 #ifndef HISTORYVIEW_H
 #define HISTORYVIEW_H
 
-#include <licq_constants.h>
-
 #include "mlview.h"
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
-class CUserEvent;
-class LicqEvent;
+namespace Licq
+{
+class Event;
+class UserEvent;
+}
 
 namespace LicqQtGui
 {
@@ -45,12 +46,12 @@ public:
    * @param userId User to display chat history for
    * @param parent Parent widget
    */
-  HistoryView(bool historyMode = false, const UserId& userId = USERID_NONE, QWidget* parent = 0);
+  HistoryView(bool historyMode = false, const Licq::UserId& userId = Licq::UserId(), QWidget* parent = 0);
   virtual ~HistoryView();
 
-  void setHistoryConfig(unsigned short msgStyle, const QString& dateFormat,
+  void setHistoryConfig(int msgStyle, const QString& dateFormat,
       bool extraSpacing, bool reverse);
-  void setChatConfig(unsigned short msgStyle, const QString& dateFormat,
+  void setChatConfig(int msgStyle, const QString& dateFormat,
       bool extraSpacing, bool appendLineBreak, bool showNotices);
   void setColors(const QString& back, const QString& rcv, const QString& snt,
       const QString& rcvHist = QString(), const QString& sntHist = QString(),
@@ -62,11 +63,11 @@ public:
    *
    * @param userId New user
    */
-  void setOwner(const UserId& userId);
+  void setOwner(const Licq::UserId& userId);
 
   void updateContent();
   void clear();
-  void addMsg(direction dir, bool fromHistory, const QString& eventDescription, const QDateTime& date,
+  void addMsg(bool isReceiver, bool fromHistory, const QString& eventDescription, const QDateTime& date,
     bool isDirect, bool isMultiRec, bool isUrgent, bool isEncrypted,
     const QString& contactName, QString messageText, QString anchor = QString());
   void addNotice(const QDateTime& dateTime, QString messageText);
@@ -74,8 +75,8 @@ public:
   virtual QSize sizeHint() const;
 
 public slots:
-  void addMsg(const CUserEvent* event, const UserId& userId = USERID_NONE);
-  void addMsg(const LicqEvent* event);
+  void addMsg(const Licq::UserEvent* event, const Licq::UserId& userId = Licq::UserId());
+  void addMsg(const Licq::Event* event);
   void setColors();
 
 signals:
@@ -84,8 +85,8 @@ signals:
 private:
   void internalAddMsg(QString s);
 
-  UserId myUserId;
-  unsigned short myMsgStyle;
+  Licq::UserId myUserId;
+  int myMsgStyle;
   QString myDateFormat;
   bool myExtraSpacing;
   bool myReverse;

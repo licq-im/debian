@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,11 +25,12 @@
 
 #include <QObject>
 
-#include <licq_types.h>
-
 #include "core/gui-defines.h"
 
-class CIniFile;
+namespace Licq
+{
+class IniFile;
+}
 
 namespace LicqQtGui
 {
@@ -85,15 +86,13 @@ public:
   int columnCount() const { return myColumnCount; }
   const QString& columnHeading(int column) { return myColumnHeading[column]; }
   const QString& columnFormat(int column) { return myColumnFormat[column]; }
-  unsigned short columnWidth(int column) { return myColumnWidth[column]; }
+  int columnWidth(int column) { return myColumnWidth[column]; }
   AlignmentMode columnAlignment(int column) { return myColumnAlignment[column]; }
 
   bool showOffline() const { return myShowOffline; }
   bool alwaysShowONU() const { return myAlwaysShowONU; }
-  bool threadView() const { return myThreadView; }
   bool mode2View() const { return myMode2View; }
   bool showEmptyGroups() const { return myShowEmptyGroups; }
-  GroupType groupType() { return myGroupType; }
   int groupId() { return myGroupId; }
   bool groupState(int group, bool online) const;
 
@@ -101,8 +100,8 @@ public:
   bool useFontStyles() const { return myUseFontStyles; }
   bool showHeader() const { return myShowHeader; }
   bool showDividers() const { return myShowDividers; }
-  unsigned short sortByStatus() const { return mySortByStatus; }
-  unsigned short sortColumn() const { return mySortColumn; }
+  int sortByStatus() const { return mySortByStatus; }
+  int sortColumn() const { return mySortColumn; }
   bool sortColumnAscending() const { return mySortColumnAscending; }
   bool showExtendedIcons() const { return myShowExtendedIcons; }
   bool showPhoneIcons() const { return myShowPhoneIcons; }
@@ -131,31 +130,36 @@ public slots:
   /**
    * Load configuration from file
    */
-  void loadConfiguration(CIniFile& iniFile);
+  void loadConfiguration(Licq::IniFile& iniFile);
 
   /**
    * Save configuration to file
    */
-  void saveConfiguration(CIniFile& iniFile) const;
+  void saveConfiguration(Licq::IniFile& iniFile) const;
 
   // Set functions
   void setColumnCount(int columnCount);
   void setColumn(int column, const QString& heading, const QString& format,
-      unsigned short width, AlignmentMode alignment);
+      int width, AlignmentMode alignment);
 
   void setShowOffline(bool showOffline);
   void setAlwaysShowONU(bool alwaysShowONU);
-  void setThreadView(bool threadView);
   void setMode2View(bool mode2View);
   void setShowEmptyGroups(bool showEmptyGroups);
-  void setGroup(GroupType groupType, int groupId);
+
+  /**
+   * Set current group to display
+   *
+   * @param groupId Id of group to display
+   */
+  void setGroup(int groupId);
 
   void setShowGridLines(bool showGridLines);
   void setUseFontStyles(bool useFontStyles);
   void setShowHeader(bool showHeader);
   void setShowDividers(bool showDividers);
-  void setSortByStatus(unsigned short sortByStatus);
-  void setSortColumn(unsigned short column, bool ascending = true);
+  void setSortByStatus(int sortByStatus);
+  void setSortColumn(int column, bool ascending = true);
   void setGroupState(int group, bool online, bool expanded);
   void setShowExtendedIcons(bool showExtendedIcons);
   void setShowPhoneIcons(bool showPhoneIcons);
@@ -182,7 +186,6 @@ public slots:
 
   // Toggle functions for convenience
   void toggleShowOffline() { setShowOffline(!myShowOffline); }
-  void toggleThreadView() { setThreadView(!myThreadView); }
   void toggleShowHeader() { setShowHeader(!myShowHeader); }
 
 signals:
@@ -220,19 +223,17 @@ private:
   bool myBlockUpdates;
 
   // Contact list layout
-  unsigned short myColumnCount;
+  int myColumnCount;
   QString myColumnHeading[MAX_COLUMNCOUNT];
   QString myColumnFormat[MAX_COLUMNCOUNT];
-  unsigned short myColumnWidth[MAX_COLUMNCOUNT];
+  int myColumnWidth[MAX_COLUMNCOUNT];
   AlignmentMode myColumnAlignment[MAX_COLUMNCOUNT];
 
   // Contact list contents
   bool myShowOffline;
   bool myAlwaysShowONU;
-  bool myThreadView;
   bool myMode2View;
   bool myShowEmptyGroups;
-  GroupType myGroupType;
   int myGroupId;
 
   // Contact list look
@@ -251,10 +252,10 @@ private:
   bool myDragMovesUser;
 
   // Contact list sorting
-  unsigned short mySortByStatus;
+  int mySortByStatus;
 
   // Contact list state
-  unsigned short mySortColumn;
+  int mySortColumn;
   bool mySortColumnAscending;
   int myGroupStates[2];
 

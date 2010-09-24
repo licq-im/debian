@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2009 Licq developers
+ * Copyright (C) 2009-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,10 @@
 #include <QObject>
 #include <QMap>
 
-class CIniFile;
+namespace Licq
+{
+class IniFile;
+}
 
 namespace LicqQtGui
 {
@@ -69,6 +72,7 @@ public:
     InputDeleteLineBack,
     InputDeleteWordBack,
     MainwinAccountManager,
+    MainwinAddGroup,
     MainwinEditGroups,
     MainwinExit,
     MainwinHide,
@@ -90,7 +94,6 @@ public:
     MainwinToggleMiniMode,
     MainwinToggleShowHeader,
     MainwinToggleShowOffline,
-    MainwinToggleThreadView,
     MainwinUserCheckAutoresponse,
     MainwinUserSendChatRequest,
     MainwinUserSendMessage,
@@ -145,12 +148,12 @@ public slots:
   /**
    * Load configuration from file
    */
-  void loadConfiguration(CIniFile& iniFile);
+  void loadConfiguration(Licq::IniFile& iniFile);
 
   /**
    * Save configuration to file
    */
-  void saveConfiguration(CIniFile& iniFile) const;
+  void saveConfiguration(Licq::IniFile& iniFile) const;
 
   /**
    * Set a keyboard shortcut

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,11 +28,10 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_events.h>
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/event.h>
+#include <licq/icq.h>
 
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 #include "core/signalmanager.h"
 
@@ -50,8 +49,8 @@ SecurityDlg::SecurityDlg(QWidget* parent)
   setAttribute(Qt::WA_DeleteOnClose, true);
   setWindowTitle(title);
 
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o == NULL)
+  Licq::OwnerReadGuard o(LICQ_PPID);
+  if (!o.isLocked())
   {
     InformUser(this, tr("No ICQ owner found.\nPlease create one first."));
     close();
@@ -79,8 +78,6 @@ SecurityDlg::SecurityDlg(QWidget* parent)
       o->HideIp());
 #undef ADD_CHECK
 
-  gUserManager.DropOwner(o);
-
   top_lay->addWidget(boxOptions);
 
   QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel);
@@ -98,37 +95,39 @@ SecurityDlg::SecurityDlg(QWidget* parent)
 
 void SecurityDlg::ok()
 {
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-
-  if (o == NULL)
+  bool auth, web, ip;
+  bool changed;
   {
-    // Even though we protected from this in constructor,
-    // it's never too bad to persuade
-    close();
-    return;
-  }
+    Licq::OwnerReadGuard o(LICQ_PPID);
 
-  if (o->Status() == ICQ_STATUS_OFFLINE)
-  {
-    gUserManager.DropOwner(o);
-    InformUser(this, tr("You need to be connected to the\n"
+    if (!o.isLocked())
+    {
+      // Even though we protected from this in constructor,
+      // it's never too bad to persuade
+      close();
+      return;
+    }
+
+    if (o->status() == Licq::User::OfflineStatus)
+    {
+      InformUser(this, tr("You need to be connected to the\n"
           "ICQ Network to change the settings."));
-    return;
+      return;
+    }
+
+    auth = chkAuthorization->isChecked();
+    web = chkWebAware->isChecked();
+    ip = chkHideIp->isChecked();
+
+    changed = (auth != o->GetAuthorization() || web != o->WebAware() || ip != o->HideIp());
   }
 
-  bool auth = chkAuthorization->isChecked();
-  bool web = chkWebAware->isChecked();
-  bool ip = chkHideIp->isChecked();
-
-  if (auth != o->GetAuthorization() ||
-      web != o->WebAware() ||
-      ip != o->HideIp())
+  if (changed)
   {
-    gUserManager.DropOwner(o);
     btnUpdate->setEnabled(false);
 
-    connect(LicqGui::instance()->signalManager(),
-        SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(doneUserFcn(const LicqEvent*)));
+    connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+        SLOT(doneUserFcn(const Licq::Event*)));
 
     setWindowTitle(title + " [" + tr("Setting...") + "]");
 
@@ -137,12 +136,10 @@ void SecurityDlg::ok()
     return; // prevents the dialog from closing
   }
 
-  gUserManager.DropOwner(o);
-
   close();
 }
 
-void SecurityDlg::doneUserFcn(const LicqEvent* e)
+void SecurityDlg::doneUserFcn(const Licq::Event* e)
 {
   if (!e->Equals(eSecurityInfo))
     return;
@@ -151,22 +148,22 @@ void SecurityDlg::doneUserFcn(const LicqEvent* e)
   QString result = QString::null;
   btnUpdate->setEnabled(true);
 
-  disconnect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(const LicqEvent*)), this, SLOT(doneUserFcn(const LicqEvent*)));
+  disconnect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+      this, SLOT(doneUserFcn(const Licq::Event*)));
 
   switch (e->Result())
   {
-    case EVENT_FAILED:
+    case Licq::Event::ResultFailed:
       result = tr("failed");
       InformUser(this, tr("Setting security options failed."));
       break;
 
-    case EVENT_TIMEDOUT:
+    case Licq::Event::ResultTimedout:
       result = tr("timed out");
       InformUser(this, tr("Timeout while setting security options."));
       break;
 
-    case EVENT_ERROR:
+    case Licq::Event::ResultError:
       result = tr("error");
       InformUser(this, tr("Internal error while setting security options."));
       break;

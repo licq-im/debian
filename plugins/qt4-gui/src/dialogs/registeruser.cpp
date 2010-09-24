@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,9 +31,10 @@
 #include <QVBoxLayout>
 #include <QWizardPage>
 
-#include <licq_icqd.h>
+#include <licq/contactlist/owner.h>
+#include <licq/daemon.h>
+#include <licq/icq.h>
 
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 #include "core/signalmanager.h"
 
@@ -67,7 +68,7 @@ RegisterUserDlg::RegisterUserDlg(QWidget* parent)
 
 RegisterUserDlg::~RegisterUserDlg()
 {
-  emit signal_done(mySuccess, myId, myPpid);
+  emit signal_done(mySuccess, myUserId);
 }
 
 void RegisterUserDlg::createIntroPage()
@@ -188,8 +189,8 @@ bool RegisterUserDlg::validateCurrentPage()
     // Disable dialog while we're waiting for server to respond
     setEnabled(false);
     button(CancelButton)->setEnabled(true);
-    connect(LicqGui::instance()->signalManager(),
-        SIGNAL(verifyImage(unsigned long)), SLOT(gotCaptcha(unsigned long)));
+    connect(gGuiSignalManager, SIGNAL(verifyImage(unsigned long)),
+        SLOT(gotCaptcha(unsigned long)));
     gLicqDaemon->icqRegister(myPasswordField->text().toLatin1().data());
     return false;
   }
@@ -202,8 +203,8 @@ bool RegisterUserDlg::validateCurrentPage()
     // Disable dialog while we're waiting for server to respond
     setEnabled(false);
     button(CancelButton)->setEnabled(true);
-    connect(LicqGui::instance()->signalManager(),
-        SIGNAL(newOwner(const QString&, unsigned long)), SLOT(gotNewOwner(const QString&, unsigned long)));
+    connect(gGuiSignalManager, SIGNAL(newOwner(const Licq::UserId&)),
+        SLOT(gotNewOwner(const Licq::UserId&)));
     gLicqDaemon->icqVerify(myCaptchaField->text().toLatin1().data());
     return false;
   }
@@ -214,37 +215,35 @@ bool RegisterUserDlg::validateCurrentPage()
 void RegisterUserDlg::gotCaptcha(unsigned long /* ppid */)
 {
   // We got the image so reenable the dialog, set the image and go to next page
-  disconnect(LicqGui::instance()->signalManager(),
-      SIGNAL(verifyImage(unsigned long)), this, SLOT(gotCaptcha(unsigned long)));
+  disconnect(gGuiSignalManager, SIGNAL(verifyImage(unsigned long)),
+      this, SLOT(gotCaptcha(unsigned long)));
   setEnabled(true);
-  myCaptchaImage->setPixmap(QPixmap(QString(BASE_DIR) + "/Licq_verify.jpg"));
+  myCaptchaImage->setPixmap(QPixmap(QString(Licq::gDaemon.baseDir().c_str()) + "Licq_verify.jpg"));
   myGotCaptcha = true;
   next();
 }
 
-void RegisterUserDlg::gotNewOwner(const QString& id, unsigned long ppid)
+void RegisterUserDlg::gotNewOwner(const Licq::UserId& userId)
 {
   // We got the new owner
-  disconnect(LicqGui::instance()->signalManager(),
-      SIGNAL(newOwner(const QString&, unsigned long)), this, SLOT(gotNewOwner(const QString&, unsigned long)));
+  disconnect(gGuiSignalManager, SIGNAL(newOwner(const Licq::UserId& userId)),
+      this, SLOT(gotNewOwner(const Licq::UserId& userId)));
 
   // Save "Remember password" setting
-  ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_W);
-  if (o != NULL)
   {
-    o->SetSavePassword(mySavePassword->isChecked());
-    gUserManager.DropOwner(o);
-    gLicqDaemon->SaveConf();
+    Licq::OwnerWriteGuard o(LICQ_PPID);
+    if (o.isLocked())
+      o->SetSavePassword(mySavePassword->isChecked());
   }
+  Licq::gDaemon.SaveConf();
 
   // Mark that we have finished
   mySuccess = true;
-  myId = id;
-  myPpid = ppid;
+  myUserId = userId;
 
   // Go to result page
   setEnabled(true);
   myGotOwner = true;
-  myOwnerIdField->setText(id);
+  myOwnerIdField->setText(myUserId.accountId().c_str());
   next();
 }

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,25 +20,29 @@
 
 #include "contactgroup.h"
 
-#include <licq_user.h>
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/usermanager.h>
 
 #include "contactbar.h"
+#include "contactlist.h"
 #include "contactuser.h"
 
 using namespace LicqQtGui;
 
-ContactGroup::ContactGroup(int id, const QString& name)
+ContactGroup::ContactGroup(int id, const QString& name, unsigned showMask, unsigned hideMask)
   : ContactItem(ContactListModel::GroupItem),
     myGroupId(id),
     myName(name),
     myEvents(0),
-    myVisibleContacts(0)
+    myVisibleContacts(0),
+    myShowMask(showMask),
+    myHideMask(hideMask)
 {
-  if (myGroupId != 0)
-    mySortKey = myGroupId;
-  else
-    // Put "Other Users" last when sorting
+  // Put "Other Users" last when sorting
+  if (myGroupId == ContactListModel::OtherUsersGroupId)
     mySortKey = 65535;
+  else
+    mySortKey = myGroupId;
 
   update();
 
@@ -46,13 +50,15 @@ ContactGroup::ContactGroup(int id, const QString& name)
     myBars[i] = new ContactBar(static_cast<ContactListModel::SubGroupType>(i), this);
 }
 
-ContactGroup::ContactGroup(const LicqGroup* group)
+ContactGroup::ContactGroup(const Licq::Group* group)
   : ContactItem(ContactListModel::GroupItem),
     myGroupId(group->id()),
     myName(QString::fromLocal8Bit(group->name().c_str())),
     mySortKey(group->sortIndex()),
     myEvents(0),
-    myVisibleContacts(0)
+    myVisibleContacts(0),
+    myShowMask(0),
+    myHideMask(ContactListModel::IgnoreStatus)
 {
   for (int i = 0; i < 3; ++i)
     myBars[i] = new ContactBar(static_cast<ContactListModel::SubGroupType>(i), this);
@@ -71,11 +77,12 @@ ContactGroup::~ContactGroup()
 void ContactGroup::update()
 {
   // System groups and "Other users" aren't present in daemon group list
-  if (myGroupId == 0 || myGroupId >= ContactListModel::SystemGroupOffset)
+  if (myGroupId == ContactListModel::OtherUsersGroupId ||
+      myGroupId >= ContactListModel::SystemGroupOffset)
     return;
 
   {
-    LicqGroupReadGuard g(myGroupId);
+    Licq::GroupReadGuard g(myGroupId);
     if (!g.isLocked())
       return;
 
@@ -89,10 +96,11 @@ void ContactGroup::update()
 void ContactGroup::updateSortKey()
 {
   // System groups and "Other users" aren't present in daemon group list
-  if (myGroupId == 0 || myGroupId >= ContactListModel::SystemGroupOffset)
+  if (myGroupId == ContactListModel::OtherUsersGroupId ||
+      myGroupId >= ContactListModel::SystemGroupOffset)
     return;
 
-  LicqGroupReadGuard g(myGroupId);
+  Licq::GroupReadGuard g(myGroupId);
   if (!g.isLocked())
     return;
 
@@ -132,48 +140,58 @@ int ContactGroup::indexOf(ContactUser* user) const
 
 void ContactGroup::addUser(ContactUser* user, ContactListModel::SubGroupType subGroup)
 {
-  // Signal that we are about to add a row
+  // Insert user in model
   emit beginInsert(this, rowCount());
-
   myUsers.append(user);
-  myBars[subGroup]->countIncrease();
-  myEvents += user->numEvents();
-  myBars[subGroup]->updateNumEvents(user->numEvents());
-  if (user->visibility())
-  {
-    myVisibleContacts++;
-    myBars[subGroup]->updateVisibility(true);
-  }
-
-  // Signal that we're done adding
   emit endInsert();
 
-  // Update group and bar as counters may have changed
-  emit barDataChanged(myBars[subGroup], subGroup);
+  // Update group data
+  myEvents += user->numEvents();
+  if (user->visibility())
+    myVisibleContacts++;
   emit dataChanged(this);
+
+  // Update bar data
+  myBars[subGroup]->countIncrease();
+  myBars[subGroup]->updateNumEvents(user->numEvents());
+  if (user->visibility())
+    myBars[subGroup]->updateVisibility(true);
+  emit barDataChanged(myBars[subGroup], subGroup);
 }
 
 void ContactGroup::removeUser(ContactUser* user, ContactListModel::SubGroupType subGroup)
 {
-  // Signal that we are about to remove a row
-  emit beginRemove(this, indexOf(user));
-
-  myUsers.removeAll(user);
+  // Update bar data
   myBars[subGroup]->countDecrease();
-  myEvents -= user->numEvents();
   myBars[subGroup]->updateNumEvents(-user->numEvents());
   if (user->visibility())
-  {
-    myVisibleContacts--;
     myBars[subGroup]->updateVisibility(false);
-  }
+  emit barDataChanged(myBars[subGroup], subGroup);
 
-  // Signal that we're done removing
+  // Remove user from model
+  emit beginRemove(this, indexOf(user));
+  myUsers.removeAll(user);
   emit endRemove();
 
-  // Update group and bar as counters may have changed
-  emit barDataChanged(myBars[subGroup], subGroup);
+  // Update group data
+  myEvents -= user->numEvents();
+  if (user->visibility())
+    myVisibleContacts--;
   emit dataChanged(this);
+}
+
+bool ContactGroup::acceptUser(unsigned extendedStatus)
+{
+  // User must not match any bits in the hide mask
+  if (myHideMask != 0 && (extendedStatus & myHideMask))
+    return false;
+
+  // User must match at least one bit in the show mask
+  if (myShowMask != 0 && !(extendedStatus & myShowMask))
+    return false;
+
+  // Default, accept user
+  return true;
 }
 
 void ContactGroup::updateSubGroup(ContactListModel::SubGroupType oldSubGroup, ContactListModel::SubGroupType newSubGroup, int eventCounter)
@@ -192,22 +210,26 @@ void ContactGroup::updateNumEvents(int counter, ContactListModel::SubGroupType s
   if (counter == 0)
     return;
 
-  myEvents += counter;
+  // Update bar data
   myBars[subGroup]->updateNumEvents(counter);
-
   emit barDataChanged(myBars[subGroup], subGroup);
+
+  // Update group data
+  myEvents += counter;
   emit dataChanged(this);
 }
 
 void ContactGroup::updateVisibility(bool increase, ContactListModel::SubGroupType subGroup)
 {
+  // Update bar data
+  myBars[subGroup]->updateVisibility(increase);
+  emit barDataChanged(myBars[subGroup], subGroup);
+
+  // Update group data
   if (increase)
     myVisibleContacts++;
   else
     myVisibleContacts--;
-  myBars[subGroup]->updateVisibility(increase);
-
-  emit barDataChanged(myBars[subGroup], subGroup);
   emit dataChanged(this);
 }
 
@@ -260,7 +282,8 @@ bool ContactGroup::setData(const QVariant& value, int role)
     return false;
 
   // Don't allow system groups or "Other users" to be renamed this way
-  if (myGroupId == 0 || myGroupId >= ContactListModel::SystemGroupOffset)
+  if (myGroupId == ContactListModel::OtherUsersGroupId ||
+      myGroupId >= ContactListModel::SystemGroupOffset)
     return false;
 
   QString newName = value.toString();
@@ -268,7 +291,7 @@ bool ContactGroup::setData(const QVariant& value, int role)
     return true;
 
   // Don't save new name here, daemon will signal us when name has changed
-  gUserManager.RenameGroup(myGroupId, newName.toLocal8Bit().data());
+  Licq::gUserManager.RenameGroup(myGroupId, newName.toLocal8Bit().data());
 
   return true;
 }

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,10 @@
 
 #include "config.h"
 
+#include <sstream>
 #include <unistd.h>
 
+#include <QDateTime>
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QPushButton>
@@ -38,7 +40,9 @@
 #include <QFileDialog>
 #endif
 
-#include <licq_icq.h>
+#include <licq/daemon.h>
+#include <licq/logging/logservice.h>
+#include <licq/logging/logutils.h>
 
 #include "core/messagebox.h"
 
@@ -48,6 +52,7 @@
 
 #undef connect
 
+using Licq::PluginLogSink;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::LogWindow */
 
@@ -90,30 +95,51 @@ LogWindow::LogWindow(QWidget* parent)
 
   adjustSize();
 
-  sn = new QSocketNotifier(Pipe(), QSocketNotifier::Read, this);
+  myLogSink.reset(new PluginLogSink());
+  Licq::gDaemon.getLogService().registerLogSink(myLogSink);
+
+  sn = new QSocketNotifier(myLogSink->getReadPipe(), QSocketNotifier::Read, this);
   connect(sn, SIGNAL(activated(int)), SLOT(log(int)));
 }
 
-void LogWindow::log(int fd)
+LogWindow::~LogWindow()
 {
-  char buf[4];
-  read(fd, buf, 1);
+  Licq::gDaemon.getLogService().unregisterLogSink(myLogSink);
+}
 
-  QString str = QString::fromUtf8(NextLogMsg());
+void LogWindow::log(int /*fd*/)
+{
+  using Licq::LogSink;
+  using namespace Licq::LogUtils;
+
+  LogSink::Message::Ptr message = myLogSink->popMessage();
+
+  QDateTime dt;
+  dt.setTime_t(message->time.sec);
+  dt.setTime(dt.time().addMSecs(message->time.msec));
+
+  QString str;
+  str += dt.time().toString("hh:mm:ss.zzz");
+  str += " [";
+  str += QString::fromUtf8(levelToShortString(message->level));
+  str += "] ";
+  str += QString::fromUtf8(message->sender.c_str());
+  str += ": ";
+  str += QString::fromUtf8(message->text.c_str());
+
+  if (!str.endsWith('\n'))
+    str += '\n';
+
+  if (myLogSink->isLoggingPackets() && !message->packet.empty())
+  {
+    str += QString::fromUtf8(packetToString(message).c_str()) + '\n';
+  }
 
   outputBox->appendNoNewLine(str);
   outputBox->GotoEnd();
 
-  /* The next call will block, so we need to clear the log so that processing
-     can continue */
-  unsigned short nNextLogType = NextLogType();
-  ClearLog();
-
-  if (nNextLogType == L_ERROR)
+  if (message->level == Licq::Log::Error)
     CriticalUser(NULL, str);
-
-  else if (nNextLogType == L_MESSAGE)
-    InformUser(NULL, str);
 }
 
 void LogWindow::save()

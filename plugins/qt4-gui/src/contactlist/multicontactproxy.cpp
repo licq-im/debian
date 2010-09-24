@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 using namespace LicqQtGui;
 using std::set;
+using Licq::UserId;
 
 
 MultiContactProxy::MultiContactProxy(ContactListModel* contactList, QObject* parent)
@@ -73,9 +74,9 @@ void MultiContactProxy::crop(const QModelIndexList& indexes)
   invalidateFilter();
 }
 
-void MultiContactProxy::addGroup(GroupType groupType, unsigned long groupId)
+void MultiContactProxy::addGroup(int groupId)
 {
-  QModelIndex groupIndex = dynamic_cast<ContactListModel*>(sourceModel())->groupIndex(groupType, groupId);
+  QModelIndex groupIndex = dynamic_cast<ContactListModel*>(sourceModel())->groupIndex(groupId);
   int numUsers = sourceModel()->rowCount(groupIndex);
   for (int i = 0; i < numUsers; ++i)
   {
@@ -92,7 +93,7 @@ void MultiContactProxy::addGroup(GroupType groupType, unsigned long groupId)
 
 QModelIndex MultiContactProxy::rootIndex() const
 {
-  return mapFromSource(dynamic_cast<ContactListModel*>(sourceModel())->groupIndex(GROUPS_SYSTEM, 0));
+  return mapFromSource(dynamic_cast<ContactListModel*>(sourceModel())->allUsersGroupIndex());
 }
 
 bool MultiContactProxy::filterAcceptsRow(int source_row, const QModelIndex& source_parent) const
@@ -104,7 +105,7 @@ bool MultiContactProxy::filterAcceptsRow(int source_row, const QModelIndex& sour
     case ContactListModel::GroupItem:
     {
       // We only want the "All users" group
-      if (item.data(ContactListModel::GroupIdRole).toInt() != ContactListModel::SystemGroupOffset)
+      if (item.data(ContactListModel::GroupIdRole).toInt() != ContactListModel::AllUsersGroupId)
         return false;
 
       break;

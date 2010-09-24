@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,11 +25,10 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/pluginsignal.h>
 
-#include "core/licqgui.h"
-
-#include "helpers/licqstrings.h"
 #include "helpers/support.h"
 
 #include "widgets/mledit.h"
@@ -39,7 +38,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::CustomAutoRespDlg */
 
-CustomAutoRespDlg::CustomAutoRespDlg(const UserId& userId, QWidget* parent)
+CustomAutoRespDlg::CustomAutoRespDlg(const Licq::UserId& userId, QWidget* parent)
   : QDialog(parent),
     myUserId(userId)
 {
@@ -71,20 +70,20 @@ CustomAutoRespDlg::CustomAutoRespDlg(const UserId& userId, QWidget* parent)
 
   lay->addWidget(buttons);
 
-  const LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_R);
-
-  if (u == NULL)
+  Licq::UserReadGuard u(myUserId);
+  if (!u.isLocked())
     return;
 
   setWindowTitle(tr("Set Custom Auto Response for %1").arg(QString::fromUtf8(u->GetAlias())));
-  if (u->CustomAutoResponse()[0] != '\0')
-    myMessage->setText(QString::fromLocal8Bit(u->CustomAutoResponse()));
+  if (!u->customAutoResponse().empty())
+    myMessage->setText(QString::fromLocal8Bit(u->customAutoResponse().c_str()));
   else
-    if (u->StatusToUser() != ICQ_STATUS_OFFLINE)
+  {
+    unsigned status = u->statusToUser();
+    if (status != Licq::User::OfflineStatus)
       myMessage->setText(tr("I am currently %1.\nYou can leave me a message.")
-          .arg(LicqStrings::getStatus(u->StatusToUser(), false)));
-
-  gUserManager.DropUser(u);
+          .arg(Licq::User::statusToString(status, true, false).c_str()));
+  }
 
   myMessage->setFocus();
   QTimer::singleShot(0, myMessage, SLOT(selectAll()));
@@ -96,31 +95,29 @@ void CustomAutoRespDlg::ok()
 {
   QString s = myMessage->toPlainText().trimmed();
 
-  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
-  if (u != NULL)
   {
-    u->SetCustomAutoResponse(s.toLocal8Bit());
-    gUserManager.DropUser(u);
-
-    // Daemon doesn't send signal when autoresponse is changed so we must tell
-    // contact list to update since custom autoresponse affects extended icons
-    LicqGui::instance()->updateUserData(myUserId);
+    Licq::UserWriteGuard u(myUserId);
+    if (u.isLocked())
+      u->setCustomAutoResponse(s.toLocal8Bit().data());
   }
+
+  // Notify all plugins (including ourselves)
+  Licq::gUserManager.notifyUserUpdated(myUserId, Licq::PluginSignal::UserSettings);
+
   close();
 }
 
 void CustomAutoRespDlg::clear()
 {
-  LicqUser* u = gUserManager.fetchUser(myUserId, LOCK_W);
-  if (u != NULL)
   {
-    u->ClearCustomAutoResponse();
-    gUserManager.DropUser(u);
-
-    // Daemon doesn't send signal when autoresponse is changed so we must tell
-    // contact list to update since custom autoresponse affects extended icons
-    LicqGui::instance()->updateUserData(myUserId);
+    Licq::UserWriteGuard u(myUserId);
+    if (u.isLocked())
+      u->clearCustomAutoResponse();
   }
+
+  // Notify all plugins (including ourselves)
+  Licq::gUserManager.notifyUserUpdated(myUserId, Licq::PluginSignal::UserSettings);
+
   close();
 }
 

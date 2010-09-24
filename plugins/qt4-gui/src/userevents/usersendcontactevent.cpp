@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,13 +26,17 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/event.h>
+#include <licq/icq.h>
+#include <licq/icqdefines.h>
+#include <licq/protocolmanager.h>
 
 #include "config/chat.h"
 
+#include "contactlist/contactlist.h"
+
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 
 #include "dialogs/mmsenddlg.h"
 #include "dialogs/showawaymsgdlg.h"
@@ -41,12 +45,12 @@
 
 #include "widgets/mledit.h"
 
-#include "usereventtabdlg.h"
-
+using Licq::StringList;
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendContactEvent */
 
-UserSendContactEvent::UserSendContactEvent(const UserId& userId, QWidget* parent)
+UserSendContactEvent::UserSendContactEvent(const Licq::UserId& userId, QWidget* parent)
   : UserSendCommon(ContactEvent, userId, parent, "UserSendContactEvent")
 {
   myMassMessageCheck->setChecked(false);
@@ -69,14 +73,10 @@ UserSendContactEvent::UserSendContactEvent(const UserId& userId, QWidget* parent
 
   w->setToolTip(tr("Drag Users Here - Right Click for Options"));
 
-  myContactsList = new MMUserView(myUsers.front(), LicqGui::instance()->contactList());
+  myContactsList = new MMUserView(myUsers.front(), gGuiContactList);
   lay->addWidget(myContactsList);
 
   myBaseTitle += tr(" - Contact List");
-
-  UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
-  if (tabDlg != NULL && tabDlg->tabIsSelected(this))
-    tabDlg->setWindowTitle(myBaseTitle);
 
   setWindowTitle(myBaseTitle);
   myEventTypeGroup->actions().at(ContactEvent)->setChecked(true);
@@ -87,28 +87,23 @@ UserSendContactEvent::~UserSendContactEvent()
   // Empty
 }
 
-void UserSendContactEvent::setContact(const UserId& userId)
+void UserSendContactEvent::setContact(const Licq::UserId& userId)
 {
-  const LicqUser* u = gUserManager.fetchUser(userId);
-
-  if (u != NULL)
-  {
+  Licq::UserReadGuard u(userId);
+  if (u.isLocked())
     myContactsList->add(u->id());
-    gUserManager.DropUser(u);
-  }
 }
 
-bool UserSendContactEvent::sendDone(const LicqEvent* e)
+bool UserSendContactEvent::sendDone(const Licq::Event* e)
 {
   if (e->Command() != ICQ_CMDxTCP_START)
     return true;
 
   bool showAwayDlg = false;
-  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
-  if (u != NULL)
   {
-    showAwayDlg = u->Away() && u->ShowAwayMsg();
-    gUserManager.DropUser(u);
+    Licq::UserReadGuard u(myUsers.front());
+    if (u.isLocked())
+      showAwayDlg = u->Away() && u->ShowAwayMsg();
   }
 
   if (showAwayDlg && Config::Chat::instance()->popupAutoResponse())
@@ -129,25 +124,17 @@ void UserSendContactEvent::send()
   // Take care of typing notification now
   mySendTypingTimer->stop();
 
-  const LicqUser* user = gUserManager.fetchUser(myUsers.front());
-  QString accountId = user->accountId().c_str();
-  gUserManager.DropUser(user);
-  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
+  gProtocolManager.sendTypingNotification(myUsers.front(), false, myConvoId);
 
   StringList users;
 
-  UserId userId;
+  Licq::UserId userId;
   foreach (userId, myContactsList->contacts())
   {
-    const LicqUser* user = gUserManager.fetchUser(userId, LOCK_R);
-    if (user == NULL)
-      continue;
-    QString accountId = user->accountId().c_str();
-    gUserManager.DropUser(user);
-    users.push_back(accountId.toLatin1().data());
+    users.push_back(userId.accountId());
   }
 
-  if (users.size() == 0)
+  if (users.empty())
     return;
 
   if (!checkSecure())
@@ -156,7 +143,7 @@ void UserSendContactEvent::send()
   if (myMassMessageCheck->isChecked())
   {
     MMSendDlg* m = new MMSendDlg(myMassMessageList, this);
-    connect(m, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
+    connect(m, SIGNAL(eventSent(const Licq::Event*)), SIGNAL(eventSent(const Licq::Event*)));
     int r = m->go_contact(users);
     delete m;
     if (r != QDialog::Accepted) return;
@@ -164,7 +151,7 @@ void UserSendContactEvent::send()
 
   unsigned long icqEventTag;
   icqEventTag = gLicqDaemon->icqSendContactList(
-      accountId.toLatin1(),
+      myUsers.front(),
       users,
       mySendServerCheck->isChecked() ? false : true,
       myUrgentCheck->isChecked() ? ICQ_TCPxMSG_URGENT : ICQ_TCPxMSG_NORMAL,

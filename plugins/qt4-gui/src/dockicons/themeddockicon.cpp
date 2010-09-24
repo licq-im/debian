@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,7 +26,9 @@
 #include <QFile>
 #include <QPainter>
 
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/daemon.h>
+#include <licq/inifile.h>
 
 #include "config/general.h"
 #include "core/messagebox.h"
@@ -34,6 +36,7 @@
 
 #include "dockiconwidget.h"
 
+using Licq::User;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::ThemedDockIcon */
 
@@ -53,7 +56,7 @@ void ThemedDockIcon::updateConfig()
   cleanup();
 
   // Open the config file and read it
-  char temp[MAX_FILENAME_LEN];
+  std::string temp;
   QString baseDockDir;
 
   if (myTheme[0] == '/')
@@ -63,20 +66,19 @@ void ThemedDockIcon::updateConfig()
       baseDockDir += "/";
   }
   else
-    baseDockDir = QString::fromLocal8Bit(SHARE_DIR) + QTGUI_DIR +
+    baseDockDir = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR +
       DOCK_DIR + myTheme + "/";
 
   QByteArray filename = QFile::encodeName(baseDockDir);
   filename.append(myTheme);
   filename.append(".dock");
 
-  CIniFile dockFile(INI_FxWARN);
+  Licq::IniFile dockFile(filename.data());
 
-  if (!dockFile.LoadFile(filename))
+  if (!dockFile.loadFile())
   {
-    WarnUser(NULL, tr("Unable to load dock theme file:\n(%1)\n%2")
-        .arg(filename.data())
-        .arg(strerror(dockFile.Error())));
+    WarnUser(NULL, tr("Unable to load dock theme file:\n(%1)")
+        .arg(filename.data()));
     myIcon->hide();
     return;
   }
@@ -84,15 +86,15 @@ void ThemedDockIcon::updateConfig()
   myIcon->show();
 
   // Message icons
-  if (dockFile.SetSection("background"))
+  if (dockFile.setSection("background", false))
   {
 #define READDOCK(parm, var) \
-    dockFile.ReadStr((parm), temp, "none"); \
-    if (strcmp(temp, "none") == 0) \
+    dockFile.get((parm), temp, "none"); \
+    if (temp == "none") \
       WarnUser(NULL, tr("Dock theme unspecified image: %1").arg((parm))); \
     else \
     { \
-      (var) = new QPixmap(baseDockDir + temp); \
+      (var) = new QPixmap(baseDockDir + QString::fromLocal8Bit(temp.c_str())); \
       if ((var)->isNull()) \
       { \
         WarnUser(NULL, tr("Unable to load dock theme image: %1").arg((parm))); \
@@ -101,9 +103,9 @@ void ThemedDockIcon::updateConfig()
       } \
       else \
       { \
-        dockFile.ReadStr(parm "Mask", temp, "none"); \
-        if (strcmp(temp, "none") != 0) \
-          (var)->setMask(QBitmap(baseDockDir + temp)); \
+        dockFile.get(parm "Mask", temp, "none"); \
+        if (temp != "none") \
+          (var)->setMask(QBitmap(baseDockDir + QString::fromLocal8Bit(temp.c_str()))); \
       } \
     }
 
@@ -115,17 +117,17 @@ void ThemedDockIcon::updateConfig()
   }
 
   // Status icons
-  if (dockFile.SetSection("status"))
+  if (dockFile.setSection("status", false))
   {
     QBitmap mask;
-    dockFile.ReadStr("Mask", temp, "none");
-    if (strcmp(temp, "none") != 0)
-      mask = QBitmap(baseDockDir + temp);
+    dockFile.get("Mask", temp, "none");
+    if (temp != "none")
+      mask = QBitmap(baseDockDir + QString::fromLocal8Bit(temp.c_str()));
 #define READDOCK(parm, var) \
-    dockFile.ReadStr((parm), temp, "none"); \
-    if (strcmp(temp, "none") != 0) \
+    dockFile.get((parm), temp, "none"); \
+    if (temp != "none") \
     { \
-      (var) = new QPixmap(baseDockDir + temp); \
+      (var) = new QPixmap(baseDockDir + QString::fromLocal8Bit(temp.c_str())); \
       if ((var)->isNull()) \
       { \
         WarnUser(NULL, tr("Unable to load dock theme image: %1").arg((parm))); \
@@ -148,8 +150,6 @@ void ThemedDockIcon::updateConfig()
 #undef READDOCK
   }
 
-  dockFile.CloseFile();
-
   updateStatusIcon();
   updateIconMessages(myNewMsg, mySysMsg);
 }
@@ -165,33 +165,34 @@ void ThemedDockIcon::updateIconStatus()
 
   QPixmap* p = NULL;
 
-  if (myInvisible)
-    p = pixInvisible;
-  else
-    switch (myStatus)
-    {
-      case ICQ_STATUS_ONLINE:
-        p = pixOnline;
-        break;
-      case ICQ_STATUS_AWAY:
-        p = pixAway;
-        break;
-      case ICQ_STATUS_NA:
-        p = pixNA;
-        break;
-      case ICQ_STATUS_OCCUPIED:
-        p = pixOccupied;
-        break;
-      case ICQ_STATUS_DND:
-        p = pixDND;
-        break;
-      case ICQ_STATUS_FREEFORCHAT:
-        p = pixFFC;
-        break;
-      case ICQ_STATUS_OFFLINE:
-        p = pixOffline;
-        break;
-    }
+  switch (User::singleStatus(myStatus))
+  {
+    case User::InvisibleStatus:
+      p = pixInvisible;
+      break;
+    case User::AwayStatus:
+      p = pixAway;
+      break;
+    case User::NotAvailableStatus:
+      p = pixNA;
+      break;
+    case User::OccupiedStatus:
+      p = pixOccupied;
+      break;
+    case User::DoNotDisturbStatus:
+      p = pixDND;
+      break;
+    case User::FreeForChatStatus:
+      p = pixFFC;
+      break;
+    case User::OfflineStatus:
+      p = pixOffline;
+      break;
+    case User::OnlineStatus:
+    default:
+      p = pixOnline;
+      break;
+  }
 
   QPixmap* face = myIcon->face();
   if (face != NULL && p != NULL)

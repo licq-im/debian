@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,10 +61,8 @@
 #include <QFileDialog>
 #endif
 
-#include <licq_chat.h>
-#include <licq_icqd.h>
-#include <licq_log.h>
-#include <licq_translate.h>
+#include <licq/icqchat.h>
+#include <licq/logging/log.h>
 
 #include "config/chat.h"
 #include "config/general.h"
@@ -104,20 +102,15 @@ static const int col_array[] =
 
 
 // ---------------------------------------------------------------------------
-ChatDlg::ChatDlg(const UserId& userId, QWidget* parent)
+ChatDlg::ChatDlg(const Licq::UserId& userId, QWidget* parent)
   : QDialog(parent),
     myAudio(true)
 {
   Support::setWidgetProps(this, "ChatDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
 
-  const LicqUser* user = gUserManager.fetchUser(userId);
-  if (user != NULL)
-  {
-    myId = user->accountId().c_str();
-    myPpid = user->ppid();
-    gUserManager.DropUser(user);
-  }
+  myId = userId.accountId().c_str();
+  myPpid = userId.protocolId();
 
   sn = NULL;
 
@@ -356,8 +349,8 @@ ChatDlg::ChatDlg(const UserId& userId, QWidget* parent)
 
   unsigned char encoding = UserCodec::charsetForName(codec->name());
   //TODO in daemon
-  chatman = new CChatManager(gLicqDaemon,
-      myId.toULong(), fi.family().toLocal8Bit(), encoding, style,
+  chatman = new CChatManager(
+      myId.toULong(), fi.family().toLocal8Bit().data(), encoding, style,
       fi.pointSize(), fi.bold(), fi.italic(), fi.underline(), fi.strikeOut());
 
   sn = new QSocketNotifier(chatman->Pipe(), QSocketNotifier::Read);
@@ -376,7 +369,7 @@ ChatDlg::ChatDlg(const UserId& userId, QWidget* parent)
      chatman->ColorFg()[1], chatman->ColorFg()[2]));
   mleIRCRemote->setBackground(QColor(chatman->ColorBg()[0],
      chatman->ColorBg()[1], chatman->ColorBg()[2]));
-  chatname = QString::fromLocal8Bit(chatman->Name());
+  chatname = QString::fromLocal8Bit(chatman->name().c_str());
   lstUsers->addItem(chatname);
   lblLocal->setText(tr("Local - %1").arg(chatname));
 
@@ -466,7 +459,7 @@ void ChatDlg::sendFontInfo()
 
   unsigned char encoding = UserCodec::charsetForName(codec->name());
 
-  chatman->ChangeFontFamily(fi.family().toLocal8Bit(), encoding, style);
+  chatman->changeFontFamily(fi.family().toLocal8Bit().data(), encoding, style);
 }
 
 // -----------------------------------------------------------------------------
@@ -589,7 +582,7 @@ void ChatDlg::updateRemoteStyle()
         f.setStyleHint(QFont::AnyStyle);
         break;
       }
-      f.setFamily(iter->u->FontFamily());
+      f.setFamily(iter->u->fontFamily().c_str());
       f.setPointSize(iter->u->FontSize());
       f.setBold(iter->u->FontBold());
       f.setItalic(iter->u->FontItalic());
@@ -737,10 +730,10 @@ void ChatDlg::slot_chat()
 
       case CHAT_DISCONNECTION:
       {
-        QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->Name());
+        QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->name().c_str());
 
         if (n.isEmpty())
-          n = USERID_TOSTR(u->userId());
+          n = u->userId().toString().c_str();
         chatClose(u);
         InformUser(this, tr("%1 closed connection.").arg(n));
         break;
@@ -748,7 +741,7 @@ void ChatDlg::slot_chat()
 
       case CHAT_CONNECTION:
       {
-        QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->Name());
+        QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->name().c_str());
 
         // Add the user to the listbox
         lstUsers->addItem(n);
@@ -781,10 +774,10 @@ void ChatDlg::slot_chat()
 
       case CHAT_NEWLINE:
       {
-        QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->Name());
+        QString n = UserCodec::codecForCChatUser(u)->toUnicode(u->name().c_str());
 
         // add to IRC box
-        mleIRCRemote->append(n + QString::fromLatin1("> ") + UserCodec::codecForCChatUser(u)->toUnicode(e->Data()));
+        mleIRCRemote->append(n + QString::fromLatin1("> ") + UserCodec::codecForCChatUser(u)->toUnicode(e->data().c_str()));
         mleIRCRemote->GotoEnd();
         GetWindow(u)->appendNoNewLine("\n");
         GetWindow(u)->GotoEnd();
@@ -859,7 +852,7 @@ void ChatDlg::slot_chat()
             break;
           }
 
-          f.setFamily(u->FontFamily());
+          f.setFamily(u->fontFamily().c_str());
 
           GetWindow(u)->setFont(f);
         }
@@ -902,14 +895,14 @@ void ChatDlg::slot_chat()
 
       case CHAT_CHARACTER:
       {
-        GetWindow(u)->appendNoNewLine(UserCodec::codecForCChatUser(u)->toUnicode(e->Data()));
+        GetWindow(u)->appendNoNewLine(UserCodec::codecForCChatUser(u)->toUnicode(e->data().c_str()));
         break;
       }
 
       default:
       {
-        gLog.Warn("%sInternal Error: invalid command from chat manager (%d).\n",
-           L_ERRORxSTR, e->Command());
+        Licq::gLog.warning("Internal Error: invalid command from chat manager (%d)",
+           e->Command());
         break;
       }
     }
@@ -952,9 +945,9 @@ void ChatDlg::chatClose(CChatUser* u)
   else
   {
     // Remove the user from the list box
-    for (unsigned short i = 0; i < lstUsers->count(); i++)
+    for (int i = 0; i < lstUsers->count(); i++)
     {
-      if (lstUsers->item(i)->text() == u->Name())
+      if (lstUsers->item(i)->text() == u->name().c_str())
       {
         lstUsers->removeItemWidget(lstUsers->item(i));
         break;
@@ -1022,7 +1015,7 @@ void ChatDlg::UpdateRemotePane()
   setWindowTitle(tr("Licq - Chat %1").arg(ChatClients()));
 
   ChatUserWindowsList::iterator iter;
-  unsigned int i;
+  int i;
   for (i = 0, iter = chatUserWindows.begin(); iter != chatUserWindows.end();
        i++, iter++)
   {
@@ -1037,16 +1030,12 @@ void ChatDlg::UpdateRemotePane()
 
 QString ChatDlg::ChatClients()
 {
-  char* sz = chatman->ClientsStr();
-  QString n = sz;
-  delete [] sz;
-  return n;
+  return chatman->clientsString().c_str();
 }
 
 QString ChatDlg::ChatName()
 {
-  QString n = chatman->Name();
-  return n;
+  return chatman->name().c_str();
 }
 
 

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,19 +29,21 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_onevent.h>
+#include <licq/contactlist/owner.h>
+#include <licq/daemon.h>
+#include <licq/oneventmanager.h>
 
 #include "config/chat.h"
 #include "config/contactlist.h"
 #include "config/general.h"
-#include "core/mainwin.h"
-#include "widgets/filenameedit.h"
 #include "widgets/shortcutedit.h"
 
+#include "oneventbox.h"
 #include "settingsdlg.h"
 
 
+using Licq::OnEventData;
+using Licq::gOnEventManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Settings::Events */
 
@@ -92,6 +94,10 @@ QWidget* Settings::Events::createPageOnEvent(QWidget* parent)
   autoPopupLabel->setBuddy(myAutoPopupCombo);
   autoPopupLayout->addWidget(myAutoPopupCombo);
   myMsgActionsLayout->addLayout(autoPopupLayout, 3, 0);
+
+  myAutoUrgentCheck = new QCheckBox(tr("Auto-popup urgent only"));
+  myAutoUrgentCheck->setToolTip(tr("Only auto-popup urgent messages."));
+  myMsgActionsLayout->addWidget(myAutoUrgentCheck, 4, 0);
 
   myFlashTaskbarCheck = new QCheckBox(tr("Flash taskbar"));
   myFlashTaskbarCheck->setToolTip(tr("Flash the taskbar on incoming messages"));
@@ -149,145 +155,19 @@ QWidget* Settings::Events::createPageSounds(QWidget* parent)
   myPageSoundsLayout = new QVBoxLayout(w);
   myPageSoundsLayout->setContentsMargins(0, 0, 0, 0);
 
-  QHBoxLayout* mySndTopRowLayout = new QHBoxLayout();
+  myOnEventBox = new OnEventBox(true);
+  myPageSoundsLayout->addWidget(myOnEventBox);
 
-  myOnEventsCheck = new QCheckBox(tr("Sounds enabled"));
-  myOnEventsCheck->setToolTip(tr("Enable running of \"Command\" when the relevant event occurs."));
-  connect(myOnEventsCheck, SIGNAL(toggled(bool)), SLOT(setOnEventsEnabled(bool)));
-  mySndTopRowLayout->addWidget(myOnEventsCheck);
+  QGridLayout* soundsLayout = dynamic_cast<QGridLayout*>(myOnEventBox->layout());
+  int soundsRows = soundsLayout->rowCount();
 
-  QWidget* dummy = new QWidget();
-  dummy->setFixedSize(50, 1);
-  mySndTopRowLayout->addWidget(dummy);
-
-  mySndPlayerLabel = new QLabel(tr("Command:"));
-  mySndPlayerLabel->setToolTip("<p>" + tr("Command to execute when an event is received.<br>"
-      "It will be passed the relevant parameters from below.<br>"
-      "Parameters can contain the following expressions <br> "
-      "which will be replaced with the relevant information:") + "</p>" +
-      gMainWindow->usprintfHelp);
-  mySndTopRowLayout->addWidget(mySndPlayerLabel);
-
-  mySndPlayerEdit = new FileNameEdit();
-  mySndPlayerEdit->setToolTip(mySndPlayerLabel->toolTip());
-  mySndPlayerLabel->setBuddy(mySndPlayerEdit);
-  mySndTopRowLayout->addWidget(mySndPlayerEdit);
-
-
-  myEventParamsBox = new QGroupBox(tr("Parameters"));
-  myEventParamsLayout = new QGridLayout(myEventParamsBox);
-
-  mySndMsgLabel = new QLabel(tr("Message:"));
-  mySndMsgLabel->setToolTip(tr("Parameter for received messages"));
-  myEventParamsLayout->addWidget(mySndMsgLabel, 0, 0);
-  mySndMsgEdit = new FileNameEdit();
-  mySndMsgEdit->setToolTip(mySndMsgLabel->toolTip());
-  mySndMsgLabel->setBuddy(mySndMsgEdit);
-  myEventParamsLayout->addWidget(mySndMsgEdit, 0, 1);
-
-  mySndUrlLabel = new QLabel(tr("URL:"));
-  mySndUrlLabel->setToolTip(tr("Parameter for received URLs"));
-  myEventParamsLayout->addWidget(mySndUrlLabel, 1, 0);
-  mySndUrlEdit = new FileNameEdit();
-  mySndUrlEdit->setToolTip(mySndUrlLabel->toolTip());
-  mySndUrlLabel->setBuddy(mySndUrlEdit);
-  myEventParamsLayout->addWidget(mySndUrlEdit, 1, 1);
-
-  mySndChatLabel = new QLabel(tr("Chat request:"));
-  mySndChatLabel->setToolTip(tr("Parameter for received chat requests"));
-  myEventParamsLayout->addWidget(mySndChatLabel, 2, 0);
-  mySndChatEdit = new FileNameEdit();
-  mySndChatEdit->setToolTip(mySndChatLabel->toolTip());
-  mySndChatLabel->setBuddy(mySndChatEdit);
-  myEventParamsLayout->addWidget(mySndChatEdit, 2, 1);
-
-  mySndFileLabel = new QLabel(tr("File transfer:"));
-  mySndFileLabel->setToolTip(tr("Parameter for received file transfers"));
-  myEventParamsLayout->addWidget(mySndFileLabel, 3, 0);
-  mySndFileEdit = new FileNameEdit();
-  mySndFileEdit->setToolTip(mySndFileLabel->toolTip());
-  mySndFileLabel->setBuddy(mySndFileEdit);
-  myEventParamsLayout->addWidget(mySndFileEdit, 3, 1);
-
-  mySndNotifyLabel = new QLabel(tr("Online notify:"));
-  mySndNotifyLabel->setToolTip(tr("Parameter for online notification"));
-  myEventParamsLayout->addWidget(mySndNotifyLabel, 4, 0);
-  mySndNotifyEdit = new FileNameEdit();
-  mySndNotifyEdit->setToolTip(mySndNotifyLabel->toolTip());
-  mySndNotifyLabel->setBuddy(mySndNotifyEdit);
-  myEventParamsLayout->addWidget(mySndNotifyEdit, 4, 1);
-
-  mySndSysMsgLabel = new QLabel(tr("System msg:"));
-  mySndSysMsgLabel->setToolTip(tr("Parameter for received system messages"));
-  myEventParamsLayout->addWidget(mySndSysMsgLabel, 5, 0);
-  mySndSysMsgEdit = new FileNameEdit();
-  mySndSysMsgEdit->setToolTip(mySndSysMsgLabel->toolTip());
-  mySndSysMsgLabel->setBuddy(mySndSysMsgEdit);
-  myEventParamsLayout->addWidget(mySndSysMsgEdit, 5, 1);
-
-  mySndMsgSentLabel = new QLabel(tr("Message sent:"));
-  mySndMsgSentLabel->setToolTip(tr("Parameter for sent messages"));
-  myEventParamsLayout->addWidget(mySndMsgSentLabel, 6, 0);
-  mySndMsgSentEdit = new FileNameEdit();
-  mySndMsgSentEdit->setToolTip(mySndMsgSentLabel->toolTip());
-  mySndMsgSentLabel->setBuddy(mySndMsgSentEdit);
-  myEventParamsLayout->addWidget(mySndMsgSentEdit, 6, 1);
-
-
-  myAcceptEventsBox = new QGroupBox(tr("Enable Events"));
-  myAcceptEventsLayout = new QGridLayout(myAcceptEventsBox);
-
-  myOnEventAwayCheck = new QCheckBox(tr("Sounds when Away"));
-  myOnEventAwayCheck->setToolTip(tr("Perform OnEvent command in away mode"));
-  myAcceptEventsLayout->addWidget(myOnEventAwayCheck, 0, 0);
-
-  myOnEventNaCheck = new QCheckBox(tr("Sounds when N/A"), myAcceptEventsBox);
-  myOnEventNaCheck->setToolTip(tr("Perform OnEvent command in not available mode"));
-  myAcceptEventsLayout->addWidget(myOnEventNaCheck, 1, 0);
-
-  myOnEventOccupiedCheck = new QCheckBox(tr("Sounds when Occupied"), myAcceptEventsBox);
-  myOnEventOccupiedCheck->setToolTip(tr("Perform OnEvent command in occupied mode"));
-  myAcceptEventsLayout->addWidget(myOnEventOccupiedCheck, 2, 0);
-
-  myOnEventDndCheck = new QCheckBox(tr("Sounds when DND"), myAcceptEventsBox);
-  myOnEventDndCheck->setToolTip(tr("Perform OnEvent command in do not disturb mode"));
-  myAcceptEventsLayout->addWidget(myOnEventDndCheck, 3, 0);
-
-  myAlwaysOnlineNotifyCheck = new QCheckBox(tr("Online notify when logging on"), myAcceptEventsBox);
-  myAlwaysOnlineNotifyCheck->setToolTip(tr("Perform the online notify OnEvent "
-     "when logging on (this is different from how the Mirabilis client works)"));
-  myAcceptEventsLayout->addWidget(myAlwaysOnlineNotifyCheck, 0, 1);
-
-  myNoSoundInActiveChatCheck = new QCheckBox(tr("Disable sound for active window"), myAcceptEventsBox);
+  myNoSoundInActiveChatCheck = new QCheckBox(tr("Disable sound for active window"));
   myNoSoundInActiveChatCheck->setToolTip(tr("Don't perform OnEvent command if chat window for user is currently active."));
-  myAcceptEventsLayout->addWidget(myNoSoundInActiveChatCheck, 1, 1);
+  soundsLayout->addWidget(myNoSoundInActiveChatCheck, soundsRows, 1, 1, 3);
 
-  myPageSoundsLayout->addLayout(mySndTopRowLayout);
-  myPageSoundsLayout->addWidget(myEventParamsBox);
-  myPageSoundsLayout->addWidget(myAcceptEventsBox);
   myPageSoundsLayout->addStretch(1);
 
-  setOnEventsEnabled(myOnEventsCheck->isChecked());
-
   return w;
-}
-
-void Settings::Events::setOnEventsEnabled(bool enable)
-{
-  mySndPlayerEdit->setEnabled(enable);
-  mySndMsgEdit->setEnabled(enable);
-  mySndUrlEdit->setEnabled(enable);
-  mySndChatEdit->setEnabled(enable);
-  mySndFileEdit->setEnabled(enable);
-  mySndNotifyEdit->setEnabled(enable);
-  mySndSysMsgEdit->setEnabled(enable);
-  mySndMsgSentEdit->setEnabled(enable);
-  myOnEventAwayCheck->setEnabled(enable);
-  myOnEventNaCheck->setEnabled(enable);
-  myOnEventOccupiedCheck->setEnabled(enable);
-  myOnEventDndCheck->setEnabled(enable);
-  myAlwaysOnlineNotifyCheck->setEnabled(enable);
-  myNoSoundInActiveChatCheck->setEnabled(enable);
 }
 
 void Settings::Events::load()
@@ -305,39 +185,19 @@ void Settings::Events::load()
   myFlashAllCheck->setChecked(flash == Config::ContactList::FlashAll);
 
   myAutoPopupCombo->setCurrentIndex(chatConfig->autoPopup());
+  myAutoUrgentCheck->setChecked(chatConfig->autoPopupUrgentOnly());
   myAutoFocusCheck->setChecked(chatConfig->autoFocus());
   myFlashTaskbarCheck->setChecked(chatConfig->flashTaskbar());
   myNoSoundInActiveChatCheck->setChecked(chatConfig->noSoundInActiveChat());
 
-  myIgnoreNewUsersCheck->setChecked(gLicqDaemon->Ignore(IGNORE_NEWUSERS));
-  myIgnoreMassMsgCheck->setChecked(gLicqDaemon->Ignore(IGNORE_MASSMSG));
-  myIgnoreWebPanelCheck->setChecked(gLicqDaemon->Ignore(IGNORE_WEBPANEL));
-  myIgnoreEmailPagerCheck->setChecked(gLicqDaemon->Ignore(IGNORE_EMAILPAGER));
+  myIgnoreNewUsersCheck->setChecked(Licq::gDaemon.ignoreType(Licq::Daemon::IgnoreNewUsers));
+  myIgnoreMassMsgCheck->setChecked(Licq::gDaemon.ignoreType(Licq::Daemon::IgnoreMassMsg));
+  myIgnoreWebPanelCheck->setChecked(Licq::gDaemon.ignoreType(Licq::Daemon::IgnoreWebPanel));
+  myIgnoreEmailPagerCheck->setChecked(Licq::gDaemon.ignoreType(Licq::Daemon::IgnoreEmailPager));
 
-  COnEventManager* oem = gLicqDaemon->OnEventManager();
-  myOnEventsCheck->setChecked(oem->CommandType() != ON_EVENT_IGNORE);
-  oem->Lock();
-  mySndPlayerEdit->setFileName(oem->command().c_str());
-  mySndMsgEdit->setFileName(oem->parameter(ON_EVENT_MSG).c_str());
-  mySndUrlEdit->setFileName(oem->parameter(ON_EVENT_URL).c_str());
-  mySndChatEdit->setFileName(oem->parameter(ON_EVENT_CHAT).c_str());
-  mySndFileEdit->setFileName(oem->parameter(ON_EVENT_FILE).c_str());
-  mySndNotifyEdit->setFileName(oem->parameter(ON_EVENT_NOTIFY).c_str());
-  mySndSysMsgEdit->setFileName(oem->parameter(ON_EVENT_SYSMSG).c_str());
-  mySndMsgSentEdit->setFileName(oem->parameter(ON_EVENT_MSGSENT).c_str());
-  oem->Unlock();
-
-  //TODO make general for all plugins
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o != NULL)
-  {
-    myOnEventAwayCheck->setChecked(o->AcceptInAway());
-    myOnEventNaCheck->setChecked(o->AcceptInNA());
-    myOnEventOccupiedCheck->setChecked(o->AcceptInOccupied());
-    myOnEventDndCheck->setChecked(o->AcceptInDND());
-    gUserManager.DropOwner(o);
-  }
-  myAlwaysOnlineNotifyCheck->setChecked(gLicqDaemon->AlwaysOnlineNotify());
+  const OnEventData* eventData = gOnEventManager.lockGlobal();
+  myOnEventBox->load(eventData, NULL);
+  gOnEventManager.unlock(eventData);
 }
 
 void Settings::Events::apply()
@@ -361,41 +221,19 @@ void Settings::Events::apply()
     contactListConfig->setFlash(Config::ContactList::FlashNone);
 
   chatConfig->setAutoPopup(myAutoPopupCombo->currentIndex());
+  chatConfig->setAutoPopupUrgentOnly(myAutoUrgentCheck->isChecked());
   chatConfig->setAutoFocus(myAutoFocusCheck->isChecked());
   chatConfig->setFlashTaskbar(myFlashTaskbarCheck->isChecked());
   chatConfig->setNoSoundInActiveChat(myNoSoundInActiveChatCheck->isChecked());
 
-  gLicqDaemon->SetIgnore(IGNORE_NEWUSERS, myIgnoreNewUsersCheck->isChecked());
-  gLicqDaemon->SetIgnore(IGNORE_MASSMSG, myIgnoreMassMsgCheck->isChecked());
-  gLicqDaemon->SetIgnore(IGNORE_WEBPANEL, myIgnoreWebPanelCheck->isChecked());
-  gLicqDaemon->SetIgnore(IGNORE_EMAILPAGER, myIgnoreEmailPagerCheck->isChecked());
+  Licq::gDaemon.setIgnoreType(Licq::Daemon::IgnoreNewUsers, myIgnoreNewUsersCheck->isChecked());
+  Licq::gDaemon.setIgnoreType(Licq::Daemon::IgnoreMassMsg, myIgnoreMassMsgCheck->isChecked());
+  Licq::gDaemon.setIgnoreType(Licq::Daemon::IgnoreWebPanel, myIgnoreWebPanelCheck->isChecked());
+  Licq::gDaemon.setIgnoreType(Licq::Daemon::IgnoreEmailPager, myIgnoreEmailPagerCheck->isChecked());
 
-  COnEventManager* oem = gLicqDaemon->OnEventManager();
-  oem->SetCommandType(myOnEventsCheck->isChecked() ? ON_EVENT_RUN : ON_EVENT_IGNORE);
-
-  oem->setCommand(mySndPlayerEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_MSG, mySndMsgEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_URL, mySndUrlEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_CHAT, mySndChatEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_FILE, mySndFileEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_NOTIFY, mySndNotifyEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_SYSMSG, mySndSysMsgEdit->fileName().toLatin1().data());
-  oem->setParameter(ON_EVENT_MSGSENT, mySndMsgSentEdit->fileName().toLatin1().data());
-
-  //TODO Make general for all plugins
-  ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_W);
-  if (o)
-  {
-    o->SetEnableSave(false);
-    o->SetAcceptInAway(myOnEventAwayCheck->isChecked());
-    o->SetAcceptInNA(myOnEventNaCheck->isChecked());
-    o->SetAcceptInOccupied(myOnEventOccupiedCheck->isChecked());
-    o->SetAcceptInDND(myOnEventDndCheck->isChecked());
-    o->SetEnableSave(true);
-    o->SaveLicqInfo();
-    gUserManager.DropOwner(o);
-  }
-  gLicqDaemon->SetAlwaysOnlineNotify(myAlwaysOnlineNotifyCheck->isChecked());
+  OnEventData* eventData = gOnEventManager.lockGlobal();
+  myOnEventBox->apply(eventData);
+  gOnEventManager.unlock(eventData, true);
 
   chatConfig->blockUpdates(false);
   contactListConfig->blockUpdates(false);

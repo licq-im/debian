@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,18 +28,19 @@
 #include <QTextCodec>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/protocolmanager.h>
 
 #include "helpers/support.h"
 #include "helpers/usercodec.h"
 
 #include "widgets/mledit.h"
 
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::AuthUserDlg */
 
-AuthUserDlg::AuthUserDlg(const UserId& userId, bool grant, QWidget* parent)
+AuthUserDlg::AuthUserDlg(const Licq::UserId& userId, bool grant, QWidget* parent)
   : QDialog(parent),
     myUserId(userId),
     myGrant(grant)
@@ -53,7 +54,7 @@ AuthUserDlg::AuthUserDlg(const UserId& userId, bool grant, QWidget* parent)
 
   QLabel* lblUin = new QLabel();
   lblUin->setAlignment(Qt::AlignCenter);
-  if (!USERID_ISVALID(myUserId))
+  if (!myUserId.isValid())
   {
     lblUin->setText(tr("User Id:"));
     myUin = new QLineEdit();
@@ -67,13 +68,10 @@ AuthUserDlg::AuthUserDlg(const UserId& userId, bool grant, QWidget* parent)
   {
     myUin = NULL;
     toplay->addWidget(lblUin);
-    QString userName = LicqUser::getUserAccountId(myUserId).c_str();
-    const LicqUser* u = gUserManager.fetchUser(myUserId);
-    if (u != NULL)
-    {
+    QString userName = myUserId.accountId().c_str();
+    Licq::UserReadGuard u(myUserId);
+    if (u.isLocked())
        userName = QString("%1 (%2)").arg(QString::fromUtf8(u->GetAlias())).arg(u->accountId().c_str());
-       gUserManager.DropUser(u);
-    }
 
     lblUin->setText(tr("%1 authorization to %2")
         .arg(myGrant ? tr("Grant") : tr("Refuse"))
@@ -98,7 +96,7 @@ AuthUserDlg::AuthUserDlg(const UserId& userId, bool grant, QWidget* parent)
 
   toplay->addWidget(buttons);
 
-  if (!USERID_ISVALID(myUserId))
+  if (!myUserId.isValid())
     myUin->setFocus();
   else
     myResponse->setFocus();
@@ -111,16 +109,13 @@ void AuthUserDlg::ok()
   if (myUin != NULL && myUin->text().trimmed().isEmpty())
     return;
 
-  if (!USERID_ISVALID(myUserId))
-    myUserId = LicqUser::makeUserId(myUin->text().trimmed().toLatin1().data(), LICQ_PPID);
+  if (!myUserId.isValid())
+    myUserId = Licq::UserId(myUin->text().trimmed().toLatin1().data(), LICQ_PPID);
 
-  if (USERID_ISVALID(myUserId))
+  if (myUserId.isValid())
   {
     const QTextCodec* codec = UserCodec::codecForUserId(myUserId);
-    if (myGrant)
-      gLicqDaemon->authorizeGrant(myUserId, codec->fromUnicode(myResponse->toPlainText()).data());
-    else
-      gLicqDaemon->authorizeRefuse(myUserId, codec->fromUnicode(myResponse->toPlainText()).data());
+    gProtocolManager.authorizeReply(myUserId, myGrant, codec->fromUnicode(myResponse->toPlainText()).data());
     close();
   }
 }

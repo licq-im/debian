@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2003-2009 Licq developers
+ * Copyright (C) 2003-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,7 +41,7 @@
 #include <QRegExp>
 #include <QTextDocument>
 
-#include <licq_log.h>
+#include <licq/logging/log.h>
 
 
 using namespace LicqQtGui;
@@ -213,7 +213,7 @@ static QString fullFilename(const QString& dir, const QString& file)
   else if (QFile::exists(base + ".mng"))
     return base + ".mng";
 
-  gLog.Warn("%sUnknown file '%s'.\n", L_WARNxSTR, base.toLatin1().data());
+  Licq::gLog.warning("Unknown file '%s'", base.toLatin1().data());
   return QString::null;
 }
 
@@ -313,8 +313,9 @@ static bool parseXml(const QString& dir, QMap<QChar, QLinkedList<Emoticon> >* em
         }
         else
         {
-          gLog.Warn("%sElement '%s' in '%s' unknown.\n", L_WARNxSTR,
-                    string.tagName().toLatin1().data(), xmlfile.fileName().toLatin1().data());
+          Licq::gLog.warning("Element '%s' in '%s' unknown",
+              string.tagName().toLatin1().data(),
+              xmlfile.fileName().toLatin1().data());
         }
       }
     }

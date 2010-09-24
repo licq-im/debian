@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2001-2009 Licq developers
+ * Copyright (C) 2001-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,8 +23,9 @@
 #include <QApplication>
 #include <QTextCodec>
 
-#include <licq_user.h>
-#include <licq_chat.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/icqchat.h>
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserCodec */
@@ -82,7 +83,7 @@ UserCodec::encoding_t UserCodec::m_encodings[] = {
 
 const QTextCodec* UserCodec::defaultEncoding()
 {
-  const QTextCodec* codec = QTextCodec::codecForName(gUserManager.DefaultUserEncoding());
+  const QTextCodec* codec = QTextCodec::codecForName(Licq::gUserManager.defaultUserEncoding().c_str());
 
   if (codec != NULL)
     return codec;
@@ -90,9 +91,9 @@ const QTextCodec* UserCodec::defaultEncoding()
   return QTextCodec::codecForLocale();
 }
 
-const QTextCodec* UserCodec::codecForUser(const LicqUser* u)
+const QTextCodec* UserCodec::codecForUser(const Licq::User* u)
 {
-  const char* preferred_encoding = u->UserEncoding();
+  const char* preferred_encoding = u->userEncoding().c_str();
 
   if (preferred_encoding && *preferred_encoding)
   {
@@ -105,16 +106,13 @@ const QTextCodec* UserCodec::codecForUser(const LicqUser* u)
   return defaultEncoding();
 }
 
-const QTextCodec* UserCodec::codecForUserId(const UserId& userId)
+const QTextCodec* UserCodec::codecForUserId(const Licq::UserId& userId)
 {
   const QTextCodec* codec = defaultEncoding();
 
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  if (u != NULL)
-  {
-    codec = UserCodec::codecForUser(u);
-    gUserManager.DropUser(u);
-  }
+  Licq::UserReadGuard u(userId);
+  if (u.isLocked())
+    codec = UserCodec::codecForUser(*u);
 
   return codec;
 }

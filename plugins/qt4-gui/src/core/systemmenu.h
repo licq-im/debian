@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,8 @@
 
 #include <QMap>
 #include <QMenu>
+
+#include <licq/userid.h>
 
 class QActionGroup;
 
@@ -61,20 +63,6 @@ public:
   void updateGroups();
 
   /**
-   * Add menu entries for a new owner
-   *
-   * @param ppid Protocol id of the new owner
-   */
-  void addOwner(unsigned long ppid);
-
-  /**
-   * Remove an owner from the menu
-   *
-   * @param ppid Protocol id of the owner to remove
-   */
-  void removeOwner(unsigned long ppid);
-
-  /**
    * Get the status sub menu
    *
    * @return The status sub menu from the system menu
@@ -96,7 +84,7 @@ public:
    * @return True if invisibility is checked
    */
   bool getInvisibleStatus() const
-  { return myStatusInvisibleAction->isChecked(); }
+  { return myStatusInvisibleAction != NULL && myStatusInvisibleAction->isChecked(); }
 
   /**
    * Get user protocol invisibility status from the status menu
@@ -104,7 +92,22 @@ public:
    * @param ppid Protocol to get status for
    * @return True if protocol inivisibility is checked
    */
-  bool getInvisibleStatus(unsigned long ppid) const;
+  bool getInvisibleStatus(const Licq::UserId& userId) const;
+
+public slots:
+  /**
+   * Add menu entries for a new owner
+   *
+   * @param userId User id for the new owner
+   */
+  void addOwner(const Licq::UserId& userId);
+
+  /**
+   * Remove an owner from the menu
+   *
+   * @param userId User id of the owner to remove
+   */
+  void removeOwner(const Licq::UserId& userId);
 
 private slots:
   /**
@@ -130,9 +133,8 @@ private slots:
   void updateAllUsersInGroup();
   void saveAllUsers();
   void showOwnerManagerDlg();
-  void showSecurityDlg();
-  void showRandomChatGroupDlg();
   void showAddUserDlg();
+  void showAddGroupDlg();
   void showSearchUserDlg();
   void showAuthUserDlg();
   void showReqAuthDlg();
@@ -143,12 +145,18 @@ private slots:
   void showGPGKeyManager();
 
 private:
+  /**
+   * Show or hide ICQ specific entries in the system menu
+   *
+   * @param visible True if ICQ entries should be visible
+   */
+  void setIcqEntriesVisible(bool visible);
+
   // Actions on top menu
   QAction* mySetArAction;
   QAction* myLogWinAction;
   QAction* myMiniModeAction;
   QAction* myShowOfflineAction;
-  QAction* myThreadViewAction;
   QAction* myShowEmptyGroupsAction;
   QAction* myOptionsAction;
   QAction* myPluginManagerAction;
@@ -160,9 +168,11 @@ private:
   QAction* myAccountManagerAction;
 
   // Actions on user menu
+  QAction* myAddGroupAction;
   QAction* myUserSearchAction;
   QAction* myUserAutorizeAction;
   QAction* myUserReqAutorizeAction;
+  QAction* myIcqRandomChatAction;
   QAction* myUserPopupAllAction;
   QAction* myEditGroupsAction;
   QAction* myRedrawContactListAction;
@@ -173,6 +183,7 @@ private:
   QAction* myShowHeaderAction;
 
   // Actions on status menu
+  QAction* myIcqFollowMeAction;
   QAction* myStatusOnlineAction;
   QAction* myStatusAwayAction;
   QAction* myStatusNotAvailableAction;
@@ -198,8 +209,10 @@ private:
   QAction* myOwnerAdmSeparator;
   QAction* myGroupSeparator;
   QAction* myStatusSeparator;
+  QAction* myIcqFollowMeSeparator;
 
-  QMap<unsigned long, SystemMenuPrivate::OwnerData*> myOwnerData;
+  QMap<Licq::UserId, SystemMenuPrivate::OwnerData*> myOwnerData;
+  bool myHasIcqOwner;
 };
 
 namespace SystemMenuPrivate
@@ -216,9 +229,12 @@ public:
    * Constructor
    *
    * @param ppid Protocol id for this owner
+   * @param protoName Name of protocol to show in menus
+   * @param sendFunctions Send function capabilities for protocol
    * @param parent Parent widget
    */
-  OwnerData(unsigned long ppid, SystemMenu* parent);
+  OwnerData(unsigned long ppid, const QString& protoName,
+      unsigned long sendFunctions, SystemMenu* parent);
 
   /**
    * Destructor
@@ -252,17 +268,29 @@ public:
    * @return True if protocol inivisibility is checked
    */
   bool getInvisibleStatus() const
-  { return myStatusInvisibleAction->isChecked(); }
+  { return myStatusInvisibleAction != NULL && myStatusInvisibleAction->isChecked(); }
+
+  /**
+   * Get away message usage for protocol
+   *
+   * @return True if away messages are supported
+   */
+  bool useAwayMessage() const
+  { return myUseAwayMessage; }
 
 private slots:
   void aboutToShowStatusMenu();
   void viewInfo();
   void viewHistory();
+  void showSecurityDlg();
+  void showRandomChatGroupDlg();
   void setStatus(QAction* action);
   void toggleInvisibleStatus();
 
 private:
+  Licq::UserId myUserId;
   unsigned long myPpid;
+  bool myUseAwayMessage;
 
   QMenu* myStatusMenu;
   QMenu* myOwnerAdmMenu;

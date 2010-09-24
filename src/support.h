@@ -1,3 +1,22 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2000-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 /* support.h -- supporting functions for systems missing things we need. */
 
 #ifndef SUPPORT_H
@@ -7,9 +26,7 @@
 extern "C" {
 #endif
 
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -26,11 +43,7 @@ const unsigned short MAX_UIN_DIGITS  = 13;
 
 /* Basic support functions */
 
-void SetString(char **szDest, const char *szSource);
-
 char *ParseDigits(char *szDest, const char *szSource, unsigned int nLen);
-
-char *GetXmlTag(const char *szXmlSource, const char *szTagName);
 
 int UinString(char *_szBuf, size_t _nSize, unsigned long _nUin);
 
@@ -46,10 +59,6 @@ int scandir_alpha_r(const char *dir, struct dirent ***namelist,
 
 
 /* Cross-platform support functions */
-
-#ifndef HAVE_STRERROR
-char *strerror(int errnum);
-#endif
 
 int gethostbyname_r_portable(const char *, struct hostent *, char *, size_t);
 

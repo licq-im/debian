@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,12 +31,14 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
+#include <licq/contactlist/user.h>
+#include <licq/event.h>
+#include <licq/icqdefines.h>
+#include <licq/protocolmanager.h>
 
 #include "config/chat.h"
 
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 
 #include "dialogs/mmsenddlg.h"
@@ -45,12 +47,11 @@
 #include "widgets/infofield.h"
 #include "widgets/mledit.h"
 
-#include "usereventtabdlg.h"
-
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendUrlEvent */
 
-UserSendUrlEvent::UserSendUrlEvent(const UserId& userId, QWidget* parent)
+UserSendUrlEvent::UserSendUrlEvent(const Licq::UserId& userId, QWidget* parent)
   : UserSendCommon(UrlEvent, userId, parent, "UserSendUrlEvent")
 {
   myMainWidget->addWidget(myViewSplitter);
@@ -65,10 +66,6 @@ UserSendUrlEvent::UserSendUrlEvent(const UserId& userId, QWidget* parent)
   myUrlEdit->installEventFilter(this);
 
   myBaseTitle += tr(" - URL");
-
-  UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
-  if (tabDlg != NULL && tabDlg->tabIsSelected(this))
-    tabDlg->setWindowTitle(myBaseTitle);
 
   setWindowTitle(myBaseTitle);
   myEventTypeGroup->actions().at(UrlEvent)->setChecked(true);
@@ -105,17 +102,16 @@ void UserSendUrlEvent::setUrl(const QString& url, const QString& description)
   setText(description);
 }
 
-bool UserSendUrlEvent::sendDone(const LicqEvent* e)
+bool UserSendUrlEvent::sendDone(const Licq::Event* e)
 {
   if (e->Command() != ICQ_CMDxTCP_START)
     return true;
 
   bool showAwayDlg = false;
-  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
-  if (u != NULL)
   {
-    showAwayDlg = u->Away() && u->ShowAwayMsg();
-    gUserManager.DropUser(u);
+    Licq::UserReadGuard u(myUsers.front());
+    if (u.isLocked())
+      showAwayDlg = u->Away() && u->ShowAwayMsg();
   }
 
   if (showAwayDlg && Config::Chat::instance()->popupAutoResponse())
@@ -137,7 +133,7 @@ void UserSendUrlEvent::send()
   // Take care of typing notification now
   mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
+  gProtocolManager.sendTypingNotification(myUsers.front(), false, myConvoId);
 
   if (myUrlEdit->text().trimmed().isEmpty())
   {
@@ -151,7 +147,7 @@ void UserSendUrlEvent::send()
   if (myMassMessageCheck->isChecked())
   {
     MMSendDlg* m = new MMSendDlg(myMassMessageList, this);
-    connect(m, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
+    connect(m, SIGNAL(eventSent(const Licq::Event*)), SIGNAL(eventSent(const Licq::Event*)));
     int r = m->go_url(myUrlEdit->text(), myMessageEdit->toPlainText());
     delete m;
     if (r != QDialog::Accepted)
@@ -159,7 +155,7 @@ void UserSendUrlEvent::send()
   }
 
   unsigned long icqEventTag;
-  icqEventTag = gLicqDaemon->sendUrl(
+  icqEventTag = gProtocolManager.sendUrl(
       myUsers.front(),
       myUrlEdit->text().toLatin1().data(),
       myCodec->fromUnicode(myMessageEdit->toPlainText()).data(),

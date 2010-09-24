@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,10 @@
 
 #include "protocombobox.h"
 
-#include <licq_icqd.h>
+#include <boost/foreach.hpp>
+
+#include <licq/contactlist/usermanager.h>
+#include <licq/pluginmanager.h>
 
 #include "config/iconmanager.h"
 
@@ -42,35 +45,22 @@ ProtoComboBox::ProtoComboBox(bool skipExisting, QWidget* parent)
 void ProtoComboBox::fillComboBox(bool skipExisting)
 {
   QString id;
-  unsigned long ppid;
 
-  FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
+  Licq::ProtocolPluginsList protocols;
+  Licq::gPluginManager.getProtocolPluginsList(protocols);
+  BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
   {
-    ppid = (*_ppit)->PPID();
-    const ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_R);
-    if (o == NULL)
-      id = "0";
-    else
-    {
-      if (skipExisting)
-      {
-        gUserManager.DropOwner(o);
-        continue;
-      }
-      else
-      {
-        id = o->IdString();
-        gUserManager.DropOwner(o);
-      }
-    }
+    unsigned long ppid = protocol->getProtocolId();
+    Licq::UserId userId = Licq::gUserManager.ownerUserId(ppid);
+    if (userId.isValid() && skipExisting)
+      continue;
 
     addItem(
-        IconManager::instance()->iconForStatus(ICQ_STATUS_ONLINE, id, ppid), // icon
-        (*_ppit)->Name(), // protocol name
+        IconManager::instance()->iconForStatus(Licq::User::OnlineStatus, userId), // icon
+        protocol->getName(), // protocol name
         QString::number(ppid) // user data
         );
   }
-  FOR_EACH_PROTO_PLUGIN_END
 }
 
 unsigned long ProtoComboBox::currentPpid() const

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2003-2009 Licq developers
+ * Copyright (C) 2003-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::EditFileListDlg */
 
-EditFileListDlg::EditFileListDlg(ConstFileList* fileList, QWidget* parent)
+EditFileListDlg::EditFileListDlg(std::list<std::string>* fileList, QWidget* parent)
   : QDialog(parent),
     myFileList(fileList)
 {
@@ -76,12 +76,12 @@ EditFileListDlg::EditFileListDlg(ConstFileList* fileList, QWidget* parent)
 
 void EditFileListDlg::refreshList()
 {
-  ConstFileList::iterator it = myFileList->begin();
+  std::list<std::string>::iterator it = myFileList->begin();
 
   lstFiles->clear();
 
   for (; it != myFileList->end(); it++)
-    lstFiles->addItem(QString::fromLocal8Bit(*it));
+    lstFiles->addItem(QString::fromLocal8Bit(it->c_str()));
 }
 
 void EditFileListDlg::moveCurrentItem(bool up)
@@ -89,7 +89,7 @@ void EditFileListDlg::moveCurrentItem(bool up)
   int i = 0;
   int n = lstFiles->currentRow();
   int newRow = up ? n - 1 : n + 1;
-  ConstFileList::iterator it = myFileList->begin();
+  std::list<std::string>::iterator it = myFileList->begin();
 
   if ((up && n == 0) || (!up && n == lstFiles->count() - 1))
     return;
@@ -99,7 +99,7 @@ void EditFileListDlg::moveCurrentItem(bool up)
 
   if (i == n)
   {
-    const char* s = *it;
+    const std::string& s = *it;
 
     it = myFileList->erase(it);
     myFileList->insert(up ? --it : ++it, s);
@@ -130,14 +130,13 @@ void EditFileListDlg::remove()
 {
   int i = 0;
   int n = lstFiles->currentRow();
-  ConstFileList::iterator it = myFileList->begin();
+  std::list<std::string>::iterator it = myFileList->begin();
 
   for (; i != n && it != myFileList->end(); it++, i++)
     ;
 
   if (i == n)
   {
-    free((void*)*it);
     myFileList->erase(it);
     emit fileDeleted(myFileList->size());
   }

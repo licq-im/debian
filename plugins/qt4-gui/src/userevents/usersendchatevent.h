@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,7 @@ public:
    * @param userId User to open dialog for
    * @param parent Parent widget
    */
-  UserSendChatEvent(const UserId& userId, QWidget* parent = 0);
+  UserSendChatEvent(const Licq::UserId& userId, QWidget* parent = 0);
   virtual ~UserSendChatEvent();
 
 private:
@@ -49,7 +49,7 @@ private:
   QString myChatClients;
   unsigned short myChatPort;
 
-  virtual bool sendDone(const LicqEvent* e);
+  virtual bool sendDone(const Licq::Event* e);
   virtual void resetSettings();
 
 private slots:

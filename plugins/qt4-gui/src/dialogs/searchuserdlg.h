@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,8 +34,11 @@ class QLineEdit;
 class QPushButton;
 class QTreeWidget;
 
-class CSearchAck;
-class LicqEvent;
+namespace Licq
+{
+class Event;
+class SearchData;
+}
 
 namespace LicqQtGui
 {
@@ -87,14 +90,14 @@ private:
 
   QTreeWidget* foundView;
 
-  void searchFound(const CSearchAck* sa);
-  void searchDone(const CSearchAck* sa);
+  void searchFound(const Licq::SearchData* sa);
+  void searchDone(const Licq::SearchData* sa);
   void searchFailed();
 
 private slots:
   void startSearch();
   void resetSearch();
-  void searchResult(const LicqEvent* e);
+  void searchResult(const Licq::Event* e);
   void selectionChanged();
   void viewInfo();
   void addUser();

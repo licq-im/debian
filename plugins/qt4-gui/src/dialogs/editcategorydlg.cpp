@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2009 Licq developers
+ * Copyright (C) 2004-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,9 +26,8 @@
 #include <QLineEdit>
 #include <QTextCodec>
 
-#include <licq_interestcodes.h>
-#include <licq_organizationcodes.h>
-#include <licq_backgroundcodes.h>
+#include <licq/contactlist/owner.h>
+#include <licq/icqcodes.h>
 
 #include "helpers/usercodec.h"
 #include "helpers/support.h"
@@ -36,7 +35,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::EditCategoryDlg */
 
-EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, QWidget* parent)
+EditCategoryDlg::EditCategoryDlg(Licq::UserCat cat, const Licq::UserCategoryMap& category, QWidget* parent)
   : QDialog(parent),
     myUserCat(cat)
 {
@@ -45,24 +44,24 @@ EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, Q
 
   QString title = "Licq - Edit @ Category";
 
-  unsigned short tableSize, i = 0;
+  unsigned short tableSize;
 
   switch (myUserCat)
   {
-    case CAT_INTERESTS:
-      myNumCats = MAX_CATEGORIES;
+    case Licq::CAT_INTERESTS:
+      myNumCats = Licq::MAX_CATEGORIES;
       getEntry = GetInterestByIndex;
       tableSize = NUM_INTERESTS;
       title.replace("@", tr("Personal Interests"));
       break;
-    case CAT_ORGANIZATION:
-      myNumCats = MAX_CATEGORIES - 1;
+    case Licq::CAT_ORGANIZATION:
+      myNumCats = Licq::MAX_CATEGORIES - 1;
       getEntry = GetOrganizationByIndex;
       tableSize = NUM_ORGANIZATIONS;
       title.replace("@", tr("Organization, Affiliation, Group"));
       break;
-    case CAT_BACKGROUND:
-      myNumCats = MAX_CATEGORIES - 1;
+    case Licq::CAT_BACKGROUND:
+      myNumCats = Licq::MAX_CATEGORIES - 1;
       getEntry = GetBackgroundByIndex;
       tableSize = NUM_BACKGROUNDS;
       title.replace("@", tr("Past Background"));
@@ -76,7 +75,8 @@ EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, Q
 
   QGridLayout* top_lay = new QGridLayout(this);
 
-  UserCategoryMap::const_iterator it = category.begin();
+  int i = 0;
+  Licq::UserCategoryMap::const_iterator it = category.begin();
   for (; i < myNumCats ; i++)
   {
     myCats[i] = new QComboBox();
@@ -97,7 +97,7 @@ EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, Q
       descr = "";
     }
 
-    for (unsigned short j = 0; j < tableSize ; j++)
+    for (int j = 0; j < tableSize ; j++)
     {
       myCats[i]->addItem(getEntry(j)->szName);
       if (getEntry(j)->nCode == selection_id)
@@ -110,7 +110,7 @@ EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, Q
 
     myDescr[i] = new QLineEdit();
     myDescr[i]->setMinimumWidth(300);
-    myDescr[i]->setMaxLength(MAX_CATEGORY_SIZE);
+    myDescr[i]->setMaxLength(Licq::MAX_CATEGORY_SIZE);
     myDescr[i]->setText(descr);
     myDescr[i]->setEnabled(selection_id != 0);
     top_lay->addWidget(myDescr[i], i, 1);
@@ -131,21 +131,24 @@ EditCategoryDlg::EditCategoryDlg(UserCat cat, const UserCategoryMap& category, Q
 
 void EditCategoryDlg::ok()
 {
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o != NULL)
+  const QTextCodec* codec;
   {
-    const QTextCodec* codec = UserCodec::codecForUser(o);
-    gUserManager.DropOwner(o);
-
-    UserCategoryMap cat;
-    for (unsigned short i = 0; i < myNumCats; i++)
-    {
-      if (myCats[i]->currentIndex() != 0)
-        cat[getEntry(myCats[i]->currentIndex() - 1)->nCode] = codec->fromUnicode(myDescr[i]->text()).data();
-    }
-
-    emit updated(myUserCat, cat);
+    Licq::OwnerReadGuard o(LICQ_PPID);
+    if (o.isLocked())
+      codec = UserCodec::codecForUser(*o);
+    else
+      codec = UserCodec::defaultEncoding();
   }
+
+  Licq::UserCategoryMap cat;
+  for (unsigned short i = 0; i < myNumCats; i++)
+  {
+    if (myCats[i]->currentIndex() != 0)
+      cat[getEntry(myCats[i]->currentIndex() - 1)->nCode] = codec->fromUnicode(myDescr[i]->text()).data();
+  }
+
+  emit updated(myUserCat, cat);
+
   close();
 }
 

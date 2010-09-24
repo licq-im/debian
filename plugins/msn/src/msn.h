@@ -1,42 +1,42 @@
 /*
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*/
-
-// written by Jon Keating <jon@licq.org>
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2004-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #ifndef __MSN_H
 #define __MSN_H
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
 
 #include <list>
 #include <pthread.h>
 #include <string>
 #include <vector>
 
-#include "licq_events.h"
-#include "licq_icqd.h"
-#include "licq_socket.h"
+#include <licq/socketmanager.h>
+#include <licq/userid.h>
 
 #include "msnbuffer.h"
 #include "msnevent.h"
 
-#define MSN_PPID 0x4D534E5F
-#define L_MSNxSTR "[MSN] "
+namespace Licq
+{
+class Event;
+class PluginSignal;
+class ProtocolSignal;
+}
 
 const char CONTACT_LIST[] = "FL";
 const char ALLOW_LIST[] = "AL";
@@ -72,9 +72,8 @@ typedef std::list<SBuffer *> BufferList;
 struct SStartMessage
 {
   CMSNPacket *m_pPacket;
-  ICQEvent *m_pEvent;
-  LicqSignal *m_pSignal;
-  char *m_szUser;
+  Licq::Event* m_pEvent;
+  Licq::UserId userId;
   unsigned long m_nSeq;
   bool m_bConnecting,
        m_bDataConnection;
@@ -85,7 +84,7 @@ typedef std::list<SStartMessage*> StartList;
 class CMSN
 {
 public:
-  CMSN(CICQDaemon *, int);
+  CMSN(int);
   ~CMSN();
 
   void Run();
@@ -105,7 +104,12 @@ public:
   pthread_mutex_t mutex_ServerSocket; // Ugly, but whatever.
 
 private:
-  void ProcessSignal(CSignal *);
+  /**
+   * Write configuration to file
+   */
+  void saveConfig();
+
+  void ProcessSignal(Licq::ProtocolSignal* s);
   void ProcessPipe();
   void ProcessServerPacket(CMSNBuffer *);
   void ProcessNexusPacket(CMSNBuffer &);
@@ -114,9 +118,9 @@ private:
 
   // Network functions
   void SendPacket(CMSNPacket *);
-  void Send_SB_Packet(const std::string& user, CMSNPacket* p, int nSocket = -1,
+  void Send_SB_Packet(const Licq::UserId& userId, CMSNPacket* p, int nSocket = -1,
       bool bDelete = true);
-  void MSNLogon(const char *, int, unsigned long);
+  void MSNLogon(const char *, int, unsigned status);
   void MSNGetServer();
   void MSNAuthenticateRedirect(const std::string& host, const std::string& param);
   void MSNAuthenticate(char *);
@@ -125,25 +129,25 @@ private:
       const std::string& cookie, const std::string& user);
 
   void MSNSendInvitation(const char* _szUser, CMSNPacket* _pPacket);
-  void MSNSendMessage(const char* _szUser, const char* _szMsg,
+  void MSNSendMessage(unsigned long eventId, const Licq::UserId& userId, const std::string& message,
       pthread_t _tPlugin, unsigned long _nCID);
-  void MSNSendTypingNotification(const char* _szUser, unsigned long _nCID);
-  void MSNChangeStatus(unsigned long);
-  void MSNAddUser(const char* szUser);
-  void MSNRemoveUser(const char* szUser);
-  void MSNRenameUser(const char* szUser);
-  void MSNGrantAuth(const char* szUser);
-  void MSNUpdateUser(const char* szUser);
-  void MSNBlockUser(const char* szUser);
-  void MSNUnblockUser(const char* szUser);
-  void MSNGetDisplayPicture(const std::string& user, const std::string& msnObject);
+  void MSNSendTypingNotification(const Licq::UserId& userId, unsigned long convoId);
+  void MSNChangeStatus(unsigned status);
+  void MSNAddUser(const Licq::UserId& userId);
+  void MSNRemoveUser(const Licq::UserId& userId);
+  void MSNRenameUser(const Licq::UserId& userId);
+  void MSNGrantAuth(const Licq::UserId& userId);
+  void MSNUpdateUser(const std::string& alias);
+  void MSNBlockUser(const Licq::UserId& userId);
+  void MSNUnblockUser(const Licq::UserId& userId);
+  void MSNGetDisplayPicture(const Licq::UserId& userId, const std::string& msnObject);
 
   // Internal functions
   int HashValue(int n) { return n % 211; }
   void StorePacket(SBuffer *, int);
   void RemovePacket(const std::string& user, int socketId, int size = 0);
   SBuffer *RetrievePacket(const std::string& user, int socketId);
-  ICQEvent *RetrieveEvent(unsigned long);
+  Licq::Event* RetrieveEvent(unsigned long);
   void HandlePacket(int, CMSNBuffer &, const char *);
   unsigned long SocketToCID(int);
   static std::string Decode(const std::string& strIn);
@@ -162,15 +166,14 @@ private:
   void killConversation(int sock);
 
   // Interface to CICQDaemon
-  void pushPluginSignal(LicqSignal* p);
+  void pushPluginSignal(Licq::PluginSignal* p);
 
   // Config
   unsigned long m_nListVersion;
   std::string myServerAddress;
-  unsigned short myServerPort;
+  unsigned myServerPort;
 
   // Variables
-  CICQDaemon *m_pDaemon;
   bool m_bExit;
   int m_nPipe;
   int m_nServerSocket;
@@ -180,16 +183,16 @@ private:
              *m_pNexusBuff,
              *m_pSSLPacket;
   std::vector<BufferList> m_vlPacketBucket;
-  std::list<ICQEvent*> m_pEvents;
+  std::list<Licq::Event*> m_pEvents;
   std::list<CMSNDataEvent*> m_lMSNEvents;
   StartList m_lStart;
   bool m_bWaitingPingReply,
        m_bCanPing;
   
   // Server variables
-  unsigned long m_nStatus,
-                m_nOldStatus,
-                m_nSessionStart;
+  unsigned myStatus;
+  unsigned myOldStatus;
+  unsigned long m_nSessionStart;
   std::string m_strMSPAuth,
          m_strSID,
          m_strKV;
@@ -200,12 +203,12 @@ private:
                   mutex_Bucket;
     
   char *m_szUserName,
-       *m_szPassword,
        *m_szCookie;
+  std::string myPassword;
 
   friend class CMSNDataEvent;
 };
 
-extern CSocketManager gSocketMan;
+extern Licq::SocketManager gSocketMan;
 
 #endif // __MSN_H

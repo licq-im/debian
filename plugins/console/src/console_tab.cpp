@@ -1,6 +1,28 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1999-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 #include "console.h"
 
+#include <boost/foreach.hpp>
 #include <ctype.h>
+
+#include <licq/contactlist/usermanager.h>
 
 
 int StrMatchLen(const char *_sz1, const char *_sz2, unsigned short _nStartPos)
@@ -25,7 +47,7 @@ void CLicqConsole::TabCommand(char *_szPartialMatch,
   for (unsigned short i = 0; i < NUM_COMMANDS; i++)
   {
     char szTempCmd[20];
-    snprintf(szTempCmd, 20, "%c%s", m_szCommandChar[0], aCommands[i].szName);
+    snprintf(szTempCmd, 20, "%c%s", myCommandChar[0], aCommands[i].szName);
     if (strncasecmp(_szPartialMatch, szTempCmd, nLen) == 0)
     {
       if (szMatch == 0)
@@ -69,13 +91,14 @@ void CLicqConsole::TabUser(char *_szPartialMatch,
   if (szSubCmd == NULL)*/
   {
     nLen = strlen(_szPartialMatch);
-    FOR_EACH_USER_START(LOCK_R)
+
+    Licq::UserListGuard users;
+    BOOST_FOREACH(const Licq::User* pUser, **users)
     {
       // Ignored users and users not in the current group are unwanted
-      if ((!pUser->GetInGroup(m_nGroupType, m_nCurrentGroup) &&
-          (m_nGroupType != GROUPS_USER || m_nCurrentGroup != 0)) ||
-          (pUser->IgnoreList() && m_nGroupType != GROUPS_SYSTEM && m_nCurrentGroup != GROUP_IGNORE_LIST) )
-        FOR_EACH_USER_CONTINUE
+      if ((!userIsInGroup(pUser, myCurrentGroup) && myCurrentGroup != AllUsersGroupId) ||
+          (pUser->IgnoreList() && myCurrentGroup != IgnoreListGroupId) )
+        continue;
 
       if (nLen == 0 || strncasecmp(_szPartialMatch, pUser->GetAlias(), nLen) == 0)
       {
@@ -85,16 +108,15 @@ void CLicqConsole::TabUser(char *_szPartialMatch,
           szMatch[StrMatchLen(szMatch, pUser->GetAlias(), nLen)] = '\0';
         _sTabCompletion.vszPartialMatch.push_back(strdup(pUser->GetAlias()));
       }
-      else if (strncasecmp(_szPartialMatch, pUser->IdString(), nLen) == 0)
+      else if (strncasecmp(_szPartialMatch, pUser->accountId().c_str(), nLen) == 0)
       {
         if (szMatch == 0)
-          szMatch = strdup(pUser->IdString());
+          szMatch = strdup(pUser->accountId().c_str());
         else
-          szMatch[StrMatchLen(szMatch, pUser->IdString(), nLen)] = '\0';
-        _sTabCompletion.vszPartialMatch.push_back(strdup(pUser->IdString()));
+          szMatch[StrMatchLen(szMatch, pUser->accountId().c_str(), nLen)] = '\0';
+        _sTabCompletion.vszPartialMatch.push_back(strdup(pUser->accountId().c_str()));
       }
     }
-    FOR_EACH_USER_END
 
     if (nLen == 0)
     {

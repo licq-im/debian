@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@
 #include <QRadioButton>
 #include <QVBoxLayout>
 
-#include <licq_constants.h>
+#include <licq/daemon.h>
 
 #include "config/general.h"
 #include "core/gui-defines.h"
@@ -97,7 +97,7 @@ QWidget* Settings::General::createPageDocking(QWidget* parent)
 
   myDockThemeCombo = new QComboBox();
   // Set the currently available themes
-  QString szDockThemesDir = QString::fromLocal8Bit(SHARE_DIR) + QTGUI_DIR + DOCK_DIR;
+  QString szDockThemesDir = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR + DOCK_DIR;
   QDir d(szDockThemesDir);
   d.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   myDockThemeCombo->addItems(d.entryList());
@@ -236,7 +236,7 @@ void Settings::General::load()
   myDockDefaultRadio->setChecked(generalConfig->dockMode() == Config::General::DockDefault);
   myDockFortyEightCheck->setChecked(generalConfig->defaultIconFortyEight());
   myDockThemedRadio->setChecked(generalConfig->dockMode() == Config::General::DockThemed);
-  for (unsigned short i = 0; i < myDockThemeCombo->count(); ++i)
+  for (int i = 0; i < myDockThemeCombo->count(); ++i)
   {
     if (myDockThemeCombo->itemText(i) == generalConfig->themedIconTheme())
     {

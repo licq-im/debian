@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998 - 2009 Licq developers
+ * Copyright (C) 1998-2010 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -11,9 +11,7 @@
 #ifndef SUPPORT_H
 #define SUPPORT_H
 
-#ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
 
 #include <stdio.h>
 #include <unistd.h>
@@ -28,25 +26,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <pthread.h>
-#ifdef HAVE_ERRNO_H
 #include <errno.h>
-#endif
-extern int h_errno;
+#include <pthread.h>
 
 #include "support.h"
 
-
-void SetString(char **szDest, const char *szSource)
-{
-  if (szDest == NULL)
-    return;
-  if (*szDest != NULL) free (*szDest);
-  if (szSource == NULL)
-    *szDest = strdup("");
-  else
-    *szDest = strdup(szSource);
-}
 
 char *ParseDigits(char *szDest, const char *szSource, unsigned int nLen)
 {
@@ -64,50 +48,6 @@ char *ParseDigits(char *szDest, const char *szSource, unsigned int nLen)
     } else
       szSource++;
   }
-  *szCur = '\0';
-  
-  return szDest;
-}
-
-char *GetXmlTag(const char *szXmlSource, const char *szTagName)
-{
-  int n = 0, i;
-  char *szBegin, *szEnd, *szDest, *szCur, *szOpenTag, *szCloseTag;
-
-  szOpenTag = (char *)malloc(strlen(szTagName) + 3);
-  if (szOpenTag == NULL) return NULL;
-  szCloseTag = (char *)malloc(strlen(szTagName) + 4);
-  if (szCloseTag == NULL)
-  {
-    free(szOpenTag);
-    return NULL;
-  }
-
-  strcpy(szOpenTag, "<");
-  strcat(szOpenTag, szTagName);
-  strcat(szOpenTag, ">");
-  strcpy(szCloseTag, "</");
-  strcat(szCloseTag, szTagName);
-  strcat(szCloseTag, ">");
-  
-  szBegin = strstr(szXmlSource, szOpenTag);
-  szEnd = strstr(szXmlSource, szCloseTag);
-  free(szOpenTag);
-  free(szCloseTag);
-  if (szBegin == NULL) return NULL;
-  if (szEnd == NULL) return NULL;
-
-  while (*szBegin++ != '>');
-  szCur = szBegin;
-  
-  while ((*szCur) && (szCur++ != szEnd)) n++;
-
-  szDest = (char *)malloc(n + 1);
-  if (szDest == NULL) return NULL;
-
-  szCur = szDest;
-  for (i = 0; i < n; i++)
-    *szCur++ = *szBegin++;
   *szCur = '\0';
   
   return szDest;
@@ -268,29 +208,6 @@ int scandir_alpha_r(char *dirname, struct dirent *(*namelist[]),
 }
 
 
-/*=====STRERROR===============================================================*/
-
-#ifndef HAVE_STRERROR
-
-#ifdef HAVE_SYS_ERRLIST
-extern char *sys_errlist[];
-#endif
-
-char *strerror(int errnum)
-{
-#ifdef HAVE_SYS_ERRLIST
-	return sys_errlist[errnum];
-#else
-	static char buf[32];
-
-	sprintf(buf, "Unknown error: %u", errnum);
-
-	return buf;
-#endif
-}
-
-#endif	/* HAVE_STRERROR */
-
 int gethostbyname_r_portable(const char *szHostName, struct hostent *h, char *buf, size_t buflen)
 {
 // Linux
@@ -323,5 +240,28 @@ int gethostbyname_r_portable(const char *szHostName, struct hostent *h, char *bu
   return retval;
 #endif
 }
+
+#if defined(__APPLE__) && defined(__amd64__)
+#define LIBICONV_PLUG 1
+#include <iconv.h>
+// The following symbols are not defined on 64-bit OS X but are needed by
+// libintl. Taken in part from
+// http://opensource.apple.com/source/libiconv/libiconv-26/patches/unix03.patch
+iconv_t libiconv_open(const char* tocode, const char* fromcode)
+{
+  return iconv_open(tocode, fromcode);
+}
+
+size_t libiconv(iconv_t cd, const char** inbuf, size_t* inbytesleft,
+		char** outbuf, size_t* outbytesleft)
+{
+  return iconv(cd, (char **)inbuf, inbytesleft, outbuf, outbytesleft);
+}
+
+int libiconv_close(iconv_t cd)
+{
+  return iconv_close(cd);
+}
+#endif
 
 #endif	/* SUPPORT_H */

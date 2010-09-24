@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,11 +20,13 @@
 #ifndef FILEDLG_H
 #define FILEDLG_H
 
+#include <list>
+#include <string>
+
 #include <QTimer>
 #include <QWidget>
 
-#include <licq_filetransfer.h>
-#include <licq_types.h>
+#include <licq/userid.h>
 
 class CFileTransferManager;
 class QLabel;
@@ -47,10 +49,10 @@ public:
    * @param userId User to send files to
    * @param parent Parent widget
    */
-  FileDlg(const UserId& userId, QWidget* parent = 0);
+  FileDlg(const Licq::UserId& userId, QWidget* parent = 0);
   virtual ~FileDlg();
 
-  bool SendFiles(ConstFileList filelist, unsigned short nPort);
+  bool SendFiles(const std::list<std::string>& filelist, unsigned short nPort);
   bool ReceiveFiles();
 
   unsigned short LocalPort();
@@ -60,7 +62,7 @@ public:
    *
    * @return Id of user
    */
-  const UserId& userId() const { return myUserId; }
+  const Licq::UserId& userId() const { return myUserId; }
 
 private:
    QLabel* lblTransferFileName;
@@ -88,7 +90,7 @@ private:
 
    CFileTransferManager* ftman;
 
-  UserId myUserId;
+  Licq::UserId myUserId;
    QString myId;
    unsigned long m_nPPID;
    QSocketNotifier* sn;

@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008-2009 Licq developers
+ * Copyright (C) 2008-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
+
 #include <QCheckBox>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -32,15 +34,24 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/oneventmanager.h>
+#include <licq/pluginmanager.h>
+#include <licq/pluginsignal.h>
+#include <licq/protocolmanager.h>
 
+#include "contactlist/contactlist.h"
 #include "dialogs/awaymsgdlg.h"
+#include "settings/oneventbox.h"
 #include "widgets/mledit.h"
 
 #include "userdlg.h"
 
-
+using Licq::gProtocolManager;
+using Licq::User;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserPages::Settings */
 
@@ -56,6 +67,8 @@ UserPages::Settings::Settings(bool isOwner, UserDlg* parent)
       tr("Settings"));
   parent->addPage(UserDlg::StatusPage, createPageStatus(parent),
       tr("Status"), UserDlg::SettingsPage);
+  parent->addPage(UserDlg::OnEventPage, createPageOnEvent(parent),
+      tr("Sounds"), UserDlg::SettingsPage);
   parent->addPage(UserDlg::GroupsPage, createPageGroups(parent),
       tr("Groups"));
 }
@@ -100,7 +113,7 @@ QWidget* UserPages::Settings::createPageSettings(QWidget* parent)
   myUseGpgCheck = new QCheckBox(tr("Use GPG encryption"));
   myUseGpgCheck->setToolTip(tr("Use GPG encryption for messages with this contact."));
   mySettingsLayout->addWidget(myUseGpgCheck, 3, 1);
-  if (!gLicqDaemon->haveGpgSupport())
+  if (!Licq::gDaemon.haveGpgSupport())
     myUseGpgCheck->setVisible(false);
 
   myUseRealIpCheck = new QCheckBox(tr("Use real ip (LAN)"));
@@ -152,25 +165,25 @@ QWidget* UserPages::Settings::createPageStatus(QWidget* parent)
   mySysGroupBox = new QGroupBox(tr("System Groups"));
   mySysGroupLayout = new QVBoxLayout(mySysGroupBox);
 
-  mySystemGroupCheck[GROUP_ONLINE_NOTIFY] = new QCheckBox(tr("Online notify"));
-  mySystemGroupCheck[GROUP_ONLINE_NOTIFY]->setToolTip(tr("Notify when this contact comes online."));
-  mySysGroupLayout->addWidget(mySystemGroupCheck[GROUP_ONLINE_NOTIFY]);
+  myOnlineNotifyCheck = new QCheckBox(ContactListModel::systemGroupName(ContactListModel::OnlineNotifyGroupId));
+  myOnlineNotifyCheck->setToolTip(tr("Notify when this contact comes online."));
+  mySysGroupLayout->addWidget(myOnlineNotifyCheck);
 
-  mySystemGroupCheck[GROUP_VISIBLE_LIST] = new QCheckBox(tr("Visible List"));
-  mySystemGroupCheck[GROUP_VISIBLE_LIST]->setToolTip(tr("Contact will see you online even if you're invisible."));
-  mySysGroupLayout->addWidget(mySystemGroupCheck[GROUP_VISIBLE_LIST]);
+  myVisibleListCheck = new QCheckBox(ContactListModel::systemGroupName(ContactListModel::VisibleListGroupId));
+  myVisibleListCheck->setToolTip(tr("Contact will see you online even if you're invisible."));
+  mySysGroupLayout->addWidget(myVisibleListCheck);
 
-  mySystemGroupCheck[GROUP_INVISIBLE_LIST] = new QCheckBox(tr("Invisible List"));
-  mySystemGroupCheck[GROUP_INVISIBLE_LIST]->setToolTip(tr("Contact will always see you as offline."));
-  mySysGroupLayout->addWidget(mySystemGroupCheck[GROUP_INVISIBLE_LIST]);
+  myInvisibleListCheck = new QCheckBox(ContactListModel::systemGroupName(ContactListModel::InvisibleListGroupId));
+  myInvisibleListCheck->setToolTip(tr("Contact will always see you as offline."));
+  mySysGroupLayout->addWidget(myInvisibleListCheck);
 
-  mySystemGroupCheck[GROUP_IGNORE_LIST] = new QCheckBox(tr("Ignore List"));
-  mySystemGroupCheck[GROUP_IGNORE_LIST]->setToolTip(tr("Ignore any events from this contact."));
-  mySysGroupLayout->addWidget(mySystemGroupCheck[GROUP_IGNORE_LIST]);
+  myIgnoreListCheck = new QCheckBox(ContactListModel::systemGroupName(ContactListModel::IgnoreListGroupId));
+  myIgnoreListCheck->setToolTip(tr("Ignore any events from this contact."));
+  mySysGroupLayout->addWidget(myIgnoreListCheck);
 
-  mySystemGroupCheck[GROUP_NEW_USERS] = new QCheckBox(tr("New Users"));
-  mySystemGroupCheck[GROUP_NEW_USERS]->setToolTip(tr("Contact was recently added to the list."));
-  mySysGroupLayout->addWidget(mySystemGroupCheck[GROUP_NEW_USERS]);
+  myNewUserCheck = new QCheckBox(ContactListModel::systemGroupName(ContactListModel::NewUsersGroupId));
+  myNewUserCheck->setToolTip(tr("Contact was recently added to the list."));
+  mySysGroupLayout->addWidget(myNewUserCheck);
 
   mySysGroupLayout->addStretch(1);
 
@@ -203,6 +216,20 @@ QWidget* UserPages::Settings::createPageStatus(QWidget* parent)
   return w;
 }
 
+QWidget* UserPages::Settings::createPageOnEvent(QWidget* parent)
+{
+  QWidget* w = new QWidget(parent);
+  myPageOnEventLayout = new QVBoxLayout(w);
+  myPageOnEventLayout->setContentsMargins(0, 0, 0, 0);
+
+  myOnEventBox = new OnEventBox(false);
+
+  myPageOnEventLayout->addWidget(myOnEventBox);
+  myPageOnEventLayout->addStretch(1);
+
+  return w;
+}
+
 QWidget* UserPages::Settings::createPageGroups(QWidget* parent)
 {
   QWidget* w = new QWidget(parent);
@@ -228,7 +255,7 @@ QWidget* UserPages::Settings::createPageGroups(QWidget* parent)
   return w;
 }
 
-void UserPages::Settings::load(const LicqUser* user)
+void UserPages::Settings::load(const Licq::User* user)
 {
   if (myIsOwner)
     return;
@@ -243,18 +270,21 @@ void UserPages::Settings::load(const LicqUser* user)
   myUseGpgCheck->setChecked(user->UseGPG());
   myUseRealIpCheck->setChecked(user->SendRealIp());
 
-  unsigned short statusToUser = user->StatusToUser();
-  myStatusNoneRadio->setChecked(statusToUser == ICQ_STATUS_OFFLINE);
-  myStatusOnlineRadio->setChecked(statusToUser == ICQ_STATUS_ONLINE);
-  myStatusAwayRadio->setChecked(statusToUser == ICQ_STATUS_AWAY);
-  myStatusNaRadio->setChecked(statusToUser == ICQ_STATUS_NA);
-  myStatusOccupiedRadio->setChecked(statusToUser == ICQ_STATUS_OCCUPIED);
-  myStatusDndRadio->setChecked(statusToUser == ICQ_STATUS_DND);
+  unsigned statusToUser = user->statusToUser();
+  myStatusNoneRadio->setChecked(statusToUser == User::OfflineStatus);
+  myStatusOnlineRadio->setChecked(statusToUser == User::OnlineStatus);
+  myStatusAwayRadio->setChecked(statusToUser & User::AwayStatus);
+  myStatusNaRadio->setChecked(statusToUser & User::NotAvailableStatus);
+  myStatusOccupiedRadio->setChecked(statusToUser & User::OccupiedStatus);
+  myStatusDndRadio->setChecked(statusToUser & User::DoNotDisturbStatus);
 
-  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
-    mySystemGroupCheck[i]->setChecked(user->GetInGroup(GROUPS_SYSTEM, i));
+  myOnlineNotifyCheck->setChecked(user->OnlineNotify());
+  myVisibleListCheck->setChecked(user->VisibleList());
+  myInvisibleListCheck->setChecked(user->InvisibleList());
+  myIgnoreListCheck->setChecked(user->IgnoreList());
+  myNewUserCheck->setChecked(user->NewUser());
 
-  unsigned int ppid = user->PPID();
+  unsigned int ppid = user->protocolId();
   bool isIcq = (ppid == LICQ_PPID);
   myUseRealIpCheck->setEnabled(isIcq);
   myStatusNoneRadio->setEnabled(isIcq);
@@ -264,30 +294,23 @@ void UserPages::Settings::load(const LicqUser* user)
   myStatusOccupiedRadio->setEnabled(isIcq);
   myStatusDndRadio->setEnabled(isIcq);
 
-  unsigned long sendFuncs = 0xFFFFFFFF;
-  if (!isIcq)
-  {
-    FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
-    {
-      if ((*_ppit)->PPID() == ppid)
-      {
-        sendFuncs = (*_ppit)->SendFunctions();
-        break;
-      }
-    }
-    FOR_EACH_PROTO_PLUGIN_END
-  }
+  unsigned long sendFuncs = 0;
+  Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(ppid);
+  if (protocol.get() != NULL)
+    sendFuncs = protocol->getSendFunctions();
 
-  myAutoAcceptFileCheck->setEnabled(sendFuncs & PP_SEND_FILE);
-  myAutoAcceptChatCheck->setEnabled(sendFuncs & PP_SEND_CHAT);
-  myAutoSecureCheck->setEnabled(gLicqDaemon->CryptoEnabled() && (sendFuncs & PP_SEND_SECURE));
+  myAutoAcceptFileCheck->setEnabled(sendFuncs & Licq::ProtocolPlugin::CanSendFile);
+  myAutoAcceptChatCheck->setEnabled(sendFuncs & Licq::ProtocolPlugin::CanSendChat);
+  myAutoSecureCheck->setEnabled(Licq::gDaemon.haveCryptoSupport() && (sendFuncs & Licq::ProtocolPlugin::CanSendSecure));
 
   myGroupsTable->clearContents();
   myGroupsTable->setRowCount(0);
-  int serverGroup = (user->GetSID() ? gUserManager.GetGroupFromID(user->GetGSID()) : 0);
+  int serverGroup = (user->GetSID() ? Licq::gUserManager.GetGroupFromID(user->GetGSID()) : 0);
   int i = 0;
-  FOR_EACH_GROUP_START_SORTED(LOCK_R)
+  Licq::GroupListGuard groups;
+  BOOST_FOREACH(const Licq::Group* group, **groups)
   {
+    Licq::GroupReadGuard pGroup(group);
     QString name = QString::fromLocal8Bit(pGroup->name().c_str());
     int gid = pGroup->id();
 
@@ -310,18 +333,24 @@ void UserPages::Settings::load(const LicqUser* user)
     connect(serverRadio, SIGNAL(toggled(bool)), localCheck, SLOT(setDisabled(bool)));
     connect(serverRadio, SIGNAL(clicked(bool)), localCheck, SLOT(setChecked(bool)));
 
-    localCheck->setChecked(user->GetInGroup(GROUPS_USER, gid));
+    localCheck->setChecked(user->isInGroup(gid));
     serverRadio->setChecked(gid == serverGroup);
 
     ++i;
   }
-  FOR_EACH_GROUP_END
 
   myGroupsTable->resizeRowsToContents();
   myGroupsTable->resizeColumnsToContents();
+
+  // Get onevents data for user
+  Licq::OnEventData* effectiveData = Licq::gOnEventManager.getEffectiveUser(user);
+  const Licq::OnEventData* userData = Licq::gOnEventManager.lockUser(user->id());
+  myOnEventBox->load(effectiveData, userData);
+  Licq::gOnEventManager.unlock(userData);
+  Licq::gOnEventManager.dropEffective(effectiveData);
 }
 
-void UserPages::Settings::apply(LicqUser* user)
+void UserPages::Settings::apply(Licq::User* user)
 {
   if (myIsOwner)
     return;
@@ -337,41 +366,56 @@ void UserPages::Settings::apply(LicqUser* user)
   user->SetUseGPG(myUseGpgCheck->isChecked());
   user->SetSendRealIp(myUseRealIpCheck->isChecked());
 
+  // System groups wich doesn't require server update
+  user->SetOnlineNotify(myOnlineNotifyCheck->isChecked());
+  user->SetNewUser(myNewUserCheck->isChecked());
+
   // Set status to user
-  unsigned short statusToUser = ICQ_STATUS_OFFLINE;
+  unsigned statusToUser = User::OfflineStatus;
   if (myStatusOnlineRadio->isChecked())
-    statusToUser = ICQ_STATUS_ONLINE;
+    statusToUser = User::OnlineStatus;
   if (myStatusAwayRadio->isChecked())
-    statusToUser = ICQ_STATUS_AWAY;
+    statusToUser = User::AwayStatus | User::OnlineStatus;
   if (myStatusNaRadio->isChecked())
-    statusToUser = ICQ_STATUS_NA;
+    statusToUser = User::NotAvailableStatus | User::OnlineStatus;
   if (myStatusOccupiedRadio->isChecked())
-    statusToUser = ICQ_STATUS_OCCUPIED;
+    statusToUser = User::OccupiedStatus | User::OnlineStatus;
   if (myStatusDndRadio->isChecked())
-    statusToUser = ICQ_STATUS_DND;
-  user->SetStatusToUser(statusToUser);
+    statusToUser = User::DoNotDisturbStatus | User::OnlineStatus;
+  user->setStatusToUser(statusToUser);
 
   // Set auto response (empty string will disable custom auto response)
-  user->SetCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toLocal8Bit());
+  user->setCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toLocal8Bit().data());
+
+  // Save onevent settings
+  Licq::OnEventData* userData = Licq::gOnEventManager.lockUser(user->id(), true);
+  myOnEventBox->apply(userData);
+  Licq::gOnEventManager.unlock(userData, true);
 }
 
-void UserPages::Settings::apply2(const UserId& userId)
+void UserPages::Settings::apply2(const Licq::UserId& userId)
 {
   if (myIsOwner)
     return;
 
-  const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-  if (u == NULL)
-    return;
-
-  // Get current group memberships so we only set those that have actually changed
   int serverGroup = 0;
-  if (u->GetSID() != 0)
-    serverGroup = gUserManager.GetGroupFromID(u->GetGSID());
-  const UserGroupList& userGroups = u->GetGroups();
-  unsigned long systemGroups = u->GetSystemGroups();
+  Licq::UserGroupList userGroups;
+  bool visibleList;
+  bool invisibleList;
+  bool ignoreList;
+  {
+    Licq::UserReadGuard u(userId);
+    if (!u.isLocked())
+      return;
 
-  gUserManager.DropUser(u);
+   // Get current group memberships so we only set those that have actually changed
+    if (u->GetSID() != 0)
+      serverGroup = Licq::gUserManager.GetGroupFromID(u->GetGSID());
+    userGroups = u->GetGroups();
+    visibleList = u->VisibleList();
+    invisibleList = u->InvisibleList();
+    ignoreList = u->IgnoreList();
+  }
 
   // First set server group
   for (int i = 0; i < myGroupsTable->rowCount(); ++i)
@@ -381,7 +425,7 @@ void UserPages::Settings::apply2(const UserId& userId)
     if (dynamic_cast<QRadioButton*>(myGroupsTable->cellWidget(i, 2))->isChecked())
     {
       if (gid != serverGroup)
-        gUserManager.setUserInGroup(userId, GROUPS_USER, gid, true, true);
+        Licq::gUserManager.setUserInGroup(userId, gid, true, true);
     }
   }
 
@@ -392,23 +436,24 @@ void UserPages::Settings::apply2(const UserId& userId)
 
     bool inLocal = dynamic_cast<QCheckBox*>(myGroupsTable->cellWidget(i, 1))->isChecked();
     if ((userGroups.count(gid) > 0) != inLocal)
-      gUserManager.setUserInGroup(userId, GROUPS_USER, gid, inLocal, false);
+      Licq::gUserManager.setUserInGroup(userId, gid, inLocal, false);
   }
 
   // Set system groups
-  for (int i = 1; i < NUM_GROUPS_SYSTEM_ALL; ++i)
-  {
-    bool inGroup = mySystemGroupCheck[i]->isChecked();
-    if (((systemGroups & (1L << (i - 1))) != 0) != inGroup)
-      gUserManager.setUserInGroup(userId, GROUPS_SYSTEM, i, inGroup, true);
-  }
+  if (myVisibleListCheck->isChecked() != visibleList)
+    gProtocolManager.visibleListSet(userId, myVisibleListCheck->isChecked());
+  if (myInvisibleListCheck->isChecked() != invisibleList)
+    gProtocolManager.invisibleListSet(userId, myInvisibleListCheck->isChecked());
+  if (myIgnoreListCheck->isChecked() != ignoreList)
+    gProtocolManager.ignoreListSet(userId, myIgnoreListCheck->isChecked());
 }
 
-void UserPages::Settings::userUpdated(const LicqUser* user, unsigned long subSignal)
+void UserPages::Settings::userUpdated(const Licq::User* user, unsigned long subSignal)
 {
   switch (subSignal)
   {
-    case USER_GENERAL:
+    case Licq::PluginSignal::UserGroups:
+    case Licq::PluginSignal::UserSettings:
       load(user);
       break;
   }

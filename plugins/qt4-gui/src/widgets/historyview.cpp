@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,8 +24,11 @@
 #include <QRegExp>
 #include <QTextCodec>
 
-#include <licq_events.h>
-#include <licq_user.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/event.h>
+#include <licq/icqdefines.h>
+#include <licq/userevents.h>
 
 #include "config/chat.h"
 
@@ -59,7 +62,7 @@ QStringList HistoryView::getStyleNames(bool includeHistoryStyles)
   return styleList;
 }
 
-HistoryView::HistoryView(bool historyMode, const UserId& userId, QWidget* parent)
+HistoryView::HistoryView(bool historyMode, const Licq::UserId& userId, QWidget* parent)
   : MLView(parent),
     myUserId(userId)
 {
@@ -92,7 +95,7 @@ QSize HistoryView::sizeHint() const
   return QSize(400, 150);
 }
 
-void HistoryView::setHistoryConfig(unsigned short msgStyle,
+void HistoryView::setHistoryConfig(int msgStyle,
     const QString& dateFormat, bool extraSpacing, bool reverse)
 {
   myUseBuffer = true;
@@ -104,7 +107,7 @@ void HistoryView::setHistoryConfig(unsigned short msgStyle,
   myShowNotices = false;
 }
 
-void HistoryView::setChatConfig(unsigned short msgStyle, const QString& dateFormat,
+void HistoryView::setChatConfig(int msgStyle, const QString& dateFormat,
     bool extraSpacing, bool appendLineBreak, bool showNotices)
 {
   myUseBuffer = false;
@@ -150,7 +153,7 @@ void HistoryView::setReverse(bool reverse)
   myReverse = reverse;
 }
 
-void HistoryView::setOwner(const UserId& userId)
+void HistoryView::setOwner(const Licq::UserId& userId)
 {
   myUserId = userId;
 }
@@ -237,13 +240,13 @@ void HistoryView::internalAddMsg(QString s)
   }
 }
 
-void HistoryView::addMsg(const ICQEvent* event)
+void HistoryView::addMsg(const Licq::Event* event)
 {
-  if (event->userId() == myUserId && event->UserEvent() != NULL)
-    addMsg(event->UserEvent());
+  if (event->userId() == myUserId && event->userEvent() != NULL)
+    addMsg(event->userEvent());
 }
 
-void HistoryView::addMsg(direction dir, bool fromHistory,
+void HistoryView::addMsg(bool isReceiver, bool fromHistory,
   const QString& eventDescription, const QDateTime& date,
   bool isDirect, bool isMultiRec, bool isUrgent, bool isEncrypted,
   const QString& contactName, QString messageText, QString anchor)
@@ -253,14 +256,14 @@ void HistoryView::addMsg(direction dir, bool fromHistory,
 
   if (fromHistory)
   {
-    if (dir == D_RECEIVER)
+    if (isReceiver)
       color = myColorRcvHistory;
     else
       color = myColorSntHistory;
   }
   else
   {
-    if (dir == D_RECEIVER)
+    if (isReceiver)
       color = myColorRcv;
     else
       color = myColorSnt;
@@ -350,7 +353,7 @@ void HistoryView::addMsg(direction dir, bool fromHistory,
           .arg(anchor)
           .arg(color)
           .arg(eventDescription)
-          .arg(dir == D_RECEIVER ? tr("from") : tr("to"))
+          .arg(isReceiver ? tr("from") : tr("to"))
           .arg(contactName)
           .arg(dateString)
           .arg(flags);
@@ -380,7 +383,7 @@ void HistoryView::addMsg(direction dir, bool fromHistory,
   internalAddMsg(s);
 }
 
-void HistoryView::addMsg(const CUserEvent* event, const UserId& uid)
+void HistoryView::addMsg(const Licq::UserEvent* event, const Licq::UserId& uid)
 {
   QDateTime date;
   date.setTime_t(event->Time());
@@ -390,39 +393,37 @@ void HistoryView::addMsg(const CUserEvent* event, const UserId& uid)
   QString contactName;
   const QTextCodec* codec = NULL;
 
-  UserId userId = USERID_ISVALID(uid) ? uid : myUserId;
+  Licq::UserId userId = uid.isValid() ? uid : myUserId;
 
-  const LicqUser* u = gUserManager.fetchUser(userId);
   unsigned long myPpid = 0;
   QString myId;
-  if (u != NULL)
   {
-    myId = u->accountId().c_str();
-    myPpid = u->ppid();
-
-    codec = UserCodec::codecForUser(u);
-    if (event->Direction() == D_RECEIVER)
+    Licq::UserReadGuard u(userId);
+    if (u.isLocked())
     {
-      contactName = QString::fromUtf8(u->GetAlias());
-      if (myPpid == LICQ_PPID)
-        for (int x = 0; x < myId.length(); ++x)
-          if (!myId.at(x).isDigit())
-          {
-            bUseHTML = true;
-            break;
-          }
+      myId = u->accountId().c_str();
+      myPpid = u->ppid();
+
+      codec = UserCodec::codecForUser(*u);
+      if (event->isReceiver())
+      {
+        contactName = QString::fromUtf8(u->GetAlias());
+        if (myPpid == LICQ_PPID)
+          for (int x = 0; x < myId.length(); ++x)
+            if (!myId.at(x).isDigit())
+            {
+              bUseHTML = true;
+              break;
+            }
+      }
     }
-    gUserManager.DropUser(u);
   }
 
-  if (event->Direction() != D_RECEIVER)
+  if (!event->isReceiver())
   {
-    const ICQOwner* o = gUserManager.FetchOwner(myPpid, LOCK_R);
-    if (o != NULL)
-    {
+    Licq::OwnerReadGuard o(myPpid);
+    if (o.isLocked())
       contactName = QString::fromUtf8(o->GetAlias());
-      gUserManager.DropOwner(o);
-    }
   }
 
   // Fallback, in case we couldn't fetch User.
@@ -431,11 +432,11 @@ void HistoryView::addMsg(const CUserEvent* event, const UserId& uid)
 
   QString messageText;
   if (event->SubCommand() == ICQ_CMDxSUB_SMS)
-    messageText = QString::fromUtf8(event->Text());
+    messageText = QString::fromUtf8(event->text().c_str());
   else
-    messageText = codec->toUnicode(event->Text());
+    messageText = codec->toUnicode(event->text().c_str());
 
-  addMsg(event->Direction(), false,
+  addMsg(event->isReceiver(), false,
          (event->SubCommand() == ICQ_CMDxSUB_MSG ? QString("") : (EventDescription(event) + " ")),
          date,
          event->IsDirect(),
@@ -446,7 +447,7 @@ void HistoryView::addMsg(const CUserEvent* event, const UserId& uid)
          MLView::toRichText(messageText, true, bUseHTML));
   GotoEnd();
 
-  if (event->Direction() == D_RECEIVER &&
+  if (event->isReceiver() &&
       (event->SubCommand() == ICQ_CMDxSUB_MSG ||
        event->SubCommand() == ICQ_CMDxSUB_URL))
     emit messageAdded();

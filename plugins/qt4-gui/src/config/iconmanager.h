@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,8 +28,8 @@
 #include <QPair>
 #include <QPixmap>
 
-#include <licq_icq.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/userid.h>
 
 #include "core/gui-defines.h"
 
@@ -105,23 +105,12 @@ public:
     PSTNIcon,
   };
 
-  enum StatusIconType
-  {
-    OnlineStatusIcon = ICQ_STATUS_ONLINE,
-    OfflineStatusIcon = ICQ_STATUS_OFFLINE,
-    AwayStatusIcon = ICQ_STATUS_AWAY,
-    DoNotDisturbStatusIcon = ICQ_STATUS_DND,
-    OccupiedStatusIcon = ICQ_STATUS_OCCUPIED,
-    NotAvailableStatusIcon = ICQ_STATUS_NA,
-    FreeForChatStatusIcon = ICQ_STATUS_FREEFORCHAT,
-    PrivateStatusIcon = ICQ_STATUS_FxPRIVATE,
-  };
-
   enum ProtocolType
   {
     ProtocolIcq = LICQ_PPID,
-    ProtocolMsn = MSN_PPID,
     ProtocolAim,
+    ProtocolMsn = MSN_PPID,
+    ProtocolXmpp = JABBER_PPID,
   };
 
   /**
@@ -169,12 +158,22 @@ public:
   /**
    * Get icon for a protocol status
    *
-   * @param fullStatus Status to get icon for, should be full to include invisible flag
-   * @param id Contact id, used to differentiate between ICQ and AIM
-   * @param ppid Id of protocol to use icon set for
+   * @param status Status to get icon for
+   * @param userId Contact id, used to get protocol to get icon for
+   * @param allowInvisible True to allow invisible regardles if extended icons are used
    * @return The requested icon if loaded, otherwise a null pixmap
    */
-  const QPixmap& iconForStatus(unsigned long fullStatus, const QString& id = "0", unsigned long ppid = LICQ_PPID);
+  const QPixmap& iconForStatus(unsigned status, const Licq::UserId& userId = Licq::UserId(),
+      bool allowInvisible = false);
+
+  /**
+   * Get icon for a user
+   *
+   * @param user An already locked object of LicqUser type
+   * @return The requested icon if loaded, otherwise a null pixmap
+   */
+  const QPixmap& iconForUser(const Licq::User* user)
+  { return iconForStatus(user->status(), user->id()); }
 
   /**
    * Get icon for an event type
@@ -234,7 +233,7 @@ private:
   QMap<IconType, QPixmap> myIconMap;
 
   // Map of status icons for different protocols
-  QMap<QPair<ProtocolType, StatusIconType>, QPixmap> myStatusIconMap;
+  QMap<QPair<ProtocolType, unsigned>, QPixmap> myStatusIconMap;
 
   // Null icon that can be returned as default
   QPixmap myEmptyIcon;

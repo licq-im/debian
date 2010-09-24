@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2009 Licq developers
+ * Copyright (C) 2004-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,11 @@
 class QPushButton;
 class QTreeWidget;
 class QTreeWidgetItem;
+
+namespace Licq
+{
+class UserId;
+}
 
 namespace LicqQtGui
 {
@@ -65,10 +70,9 @@ private slots:
    * Registration dialog has finished
    *
    * @param success True if a new account was created
-   * @param newId Contact id of new account
-   * @param newPpid Protocal id of new account
+   * @param userId Id of new account
    */
-  void registerDone(bool success, const QString& newId, unsigned long newPpid);
+  void registerDone(bool success, const Licq::UserId& userId);
 
   /**
    * Edit currently selected account

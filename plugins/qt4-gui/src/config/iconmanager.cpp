@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,13 @@
 
 #include "config.h"
 
-#include <licq_file.h>
-#include <licq_log.h>
+#include <cctype>
+
+#include <licq/daemon.h>
+#include <licq/icqdefines.h>
+#include <licq/inifile.h>
+#include <licq/logging/log.h>
+#include <licq/contactlist/user.h>
 
 #include "config/contactlist.h"
 
@@ -71,6 +76,7 @@
 #include "xpm/phonebook/pstn.xpm"
 #include "xpm/phonebook/sms.xpm"
 
+using Licq::User;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::IconManager */
 
@@ -85,36 +91,36 @@ IconManager::IconManager(const QString& iconSet, const QString& extendedIconSet,
   : QObject(parent)
 {
   if (!loadIcons(iconSet))
-    gLog.Warn("%sUnable to load icons %s.\n", L_WARNxSTR, iconSet.toLocal8Bit().data());
+    Licq::gLog.warning("Unable to load icons %s", iconSet.toLocal8Bit().data());
 
   if (!loadExtendedIcons(extendedIconSet))
-    gLog.Warn("%sUnable to load extended icons %s.\n", L_WARNxSTR, extendedIconSet.toLocal8Bit().data());
+    Licq::gLog.warning("Unable to load extended icons %s", extendedIconSet.toLocal8Bit().data());
 }
 
 bool IconManager::loadIcons(const QString& iconSet)
 {
-  CIniFile fIconsConf;
-
   QString iconListName = iconSet + ".icons";
   QString subdir = QString(QTGUI_DIR) + ICONS_DIR + iconSet + "/";
-  QString iconPath = QString::fromLocal8Bit(BASE_DIR) + subdir;
-  if (!fIconsConf.LoadFile((iconPath + iconListName).toLocal8Bit()))
+  QString iconPath = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subdir;
+  Licq::IniFile iconsConf((iconPath + iconListName).toLocal8Bit().data());
+  if (!iconsConf.loadFile())
   {
-    iconPath = QString::fromLocal8Bit(SHARE_DIR) + subdir;
-    if (!fIconsConf.LoadFile((iconPath + iconListName).toLocal8Bit()))
+    iconPath = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subdir;
+    iconsConf.setFilename((iconPath + iconListName).toLocal8Bit().data());
+    if (!iconsConf.loadFile())
       return false;
   }
 
-  fIconsConf.SetSection("icons");
+  iconsConf.setSection("icons");
 
-  char filename[MAX_FILENAME_LEN];
+  std::string filename;
 
   // Note: With Qt 4.6 the QPixmap cannot be reused without clearing it
   //       between loads or icons will be mixed up.
   QPixmap p;
 
 #define LOAD_ICON(name, icon) \
-    if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    if (iconsConf.get(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename.c_str()))) \
     { \
       myIconMap.insert(icon, p); \
       p = QPixmap(); \
@@ -123,7 +129,7 @@ bool IconManager::loadIcons(const QString& iconSet)
       myIconMap.remove(icon);
 
 #define LOAD2_ICON(name, icon, deficon) \
-    if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    if (iconsConf.get(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename.c_str()))) \
     { \
       myIconMap.insert(icon, p); \
       p = QPixmap(); \
@@ -132,35 +138,45 @@ bool IconManager::loadIcons(const QString& iconSet)
       myIconMap.insert(icon, deficon);
 
 #define LOAD_STATUSICON(name, protocol, icon) \
-    if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    if (iconsConf.get(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename.c_str()))) \
     { \
-      myStatusIconMap.insert(QPair<ProtocolType, StatusIconType>(protocol, icon), p); \
+      myStatusIconMap.insert(QPair<ProtocolType, unsigned>(protocol, icon), p); \
       p = QPixmap(); \
     } \
     else \
-      myStatusIconMap.remove(QPair<ProtocolType, StatusIconType>(protocol, icon));
+      myStatusIconMap.remove(QPair<ProtocolType, unsigned>(protocol, icon));
 
   // ICQ/Default status icons
-  LOAD_STATUSICON("Online",     ProtocolIcq, OnlineStatusIcon)
-  LOAD_STATUSICON("FFC",        ProtocolIcq, FreeForChatStatusIcon)
-  LOAD_STATUSICON("Offline",    ProtocolIcq, OfflineStatusIcon)
-  LOAD_STATUSICON("Away",       ProtocolIcq, AwayStatusIcon)
-  LOAD_STATUSICON("NA",         ProtocolIcq, NotAvailableStatusIcon)
-  LOAD_STATUSICON("Occupied",   ProtocolIcq, OccupiedStatusIcon)
-  LOAD_STATUSICON("DND",        ProtocolIcq, DoNotDisturbStatusIcon)
-  LOAD_STATUSICON("Private",    ProtocolIcq, PrivateStatusIcon)
+  LOAD_STATUSICON("Online",     ProtocolIcq, User::OnlineStatus)
+  LOAD_STATUSICON("FFC",        ProtocolIcq, User::FreeForChatStatus)
+  LOAD_STATUSICON("Offline",    ProtocolIcq, User::OfflineStatus)
+  LOAD_STATUSICON("Away",       ProtocolIcq, User::AwayStatus)
+  LOAD_STATUSICON("NA",         ProtocolIcq, User::NotAvailableStatus)
+  LOAD_STATUSICON("Occupied",   ProtocolIcq, User::OccupiedStatus)
+  LOAD_STATUSICON("DND",        ProtocolIcq, User::DoNotDisturbStatus)
+  LOAD_STATUSICON("Private",    ProtocolIcq, User::InvisibleStatus)
+  LOAD_STATUSICON("Idle",       ProtocolIcq, User::IdleStatus)
 
   // AIM status icons
-  LOAD_STATUSICON("AIMOnline",  ProtocolAim, OnlineStatusIcon)
-  LOAD_STATUSICON("AIMOffline", ProtocolAim, OfflineStatusIcon)
-  LOAD_STATUSICON("AIMAway",    ProtocolAim, AwayStatusIcon)
+  LOAD_STATUSICON("AIMOnline",  ProtocolAim, User::OnlineStatus)
+  LOAD_STATUSICON("AIMOffline", ProtocolAim, User::OfflineStatus)
+  LOAD_STATUSICON("AIMAway",    ProtocolAim, User::AwayStatus)
 
   // MSN status icons
-  LOAD_STATUSICON("MSNOnline",  ProtocolMsn, OnlineStatusIcon)
-  LOAD_STATUSICON("MSNOffline", ProtocolMsn, OfflineStatusIcon)
-  LOAD_STATUSICON("MSNAway",    ProtocolMsn, AwayStatusIcon)
-  LOAD_STATUSICON("MSNOccupied",ProtocolMsn, OccupiedStatusIcon)
-  LOAD_STATUSICON("MSNPrivate", ProtocolMsn, PrivateStatusIcon)
+  LOAD_STATUSICON("MSNOnline",  ProtocolMsn, User::OnlineStatus)
+  LOAD_STATUSICON("MSNOffline", ProtocolMsn, User::OfflineStatus)
+  LOAD_STATUSICON("MSNAway",    ProtocolMsn, User::AwayStatus)
+  LOAD_STATUSICON("MSNOccupied",ProtocolMsn, User::OccupiedStatus)
+  LOAD_STATUSICON("MSNPrivate", ProtocolMsn, User::InvisibleStatus)
+  LOAD_STATUSICON("MSNIdle",    ProtocolMsn, User::IdleStatus)
+
+  // XMPP status icons
+  LOAD_STATUSICON("XMPPOnline",	ProtocolXmpp, User::OnlineStatus)
+  LOAD_STATUSICON("XMPPFFC",	ProtocolXmpp, User::FreeForChatStatus)
+  LOAD_STATUSICON("XMPPOffline",ProtocolXmpp, User::OfflineStatus)
+  LOAD_STATUSICON("XMPPAway",	ProtocolXmpp, User::AwayStatus)
+  LOAD_STATUSICON("XMPPNA",	ProtocolXmpp, User::NotAvailableStatus)
+  LOAD_STATUSICON("XMPPDND",	ProtocolXmpp, User::DoNotDisturbStatus)
 
   // Message icons
   LOAD_ICON("Message",          StandardMessageIcon);
@@ -218,26 +234,26 @@ bool IconManager::loadIcons(const QString& iconSet)
 
 bool IconManager::loadExtendedIcons(const QString& iconSet)
 {
-  CIniFile fIconsConf;
-
   QString iconListName = iconSet + ".icons";
   QString subdir = QString(QTGUI_DIR) + EXTICONS_DIR + iconSet + "/";
-  QString iconPath = QString::fromLocal8Bit(BASE_DIR) + subdir;
-  if (!fIconsConf.LoadFile((iconPath + iconListName).toLocal8Bit()))
+  QString iconPath = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subdir;
+  Licq::IniFile iconsConf((iconPath + iconListName).toLocal8Bit().data());
+  if (!iconsConf.loadFile())
   {
-    iconPath = QString::fromLocal8Bit(SHARE_DIR) + subdir;
-    if (!fIconsConf.LoadFile((iconPath + iconListName).toLocal8Bit()))
+    iconPath = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subdir;
+    iconsConf.setFilename((iconPath + iconListName).toLocal8Bit().data());
+    if (!iconsConf.loadFile())
       return false;
   }
 
-  fIconsConf.SetSection("icons");
+  iconsConf.setSection("icons");
 
-  char filename[MAX_FILENAME_LEN];
+  std::string filename;
 
   QPixmap p;
 
 #define LOAD_ICON(name, icon, deficon) \
-    if (fIconsConf.ReadStr(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename))) \
+    if (iconsConf.get(name, filename) && p.load(iconPath + QString::fromLocal8Bit(filename.c_str()))) \
     { \
       myIconMap.insert(icon, p); \
       p = QPixmap(); \
@@ -279,65 +295,40 @@ const QPixmap& IconManager::getIcon(IconType icon)
   return myEmptyIcon;
 }
 
-const QPixmap& IconManager::iconForStatus(unsigned long fullStatus, const QString& id, unsigned long ppid)
+const QPixmap& IconManager::iconForStatus(unsigned status, const Licq::UserId& userId, bool allowInvisible)
 {
-  bool isAim = (ppid == LICQ_PPID) && !id.isEmpty() && (!id[0].isDigit());
+  ProtocolType protocol = static_cast<ProtocolType>(userId.protocolId());
+  if (protocol == ProtocolIcq && userId.accountId().size() > 0 && !isdigit(userId.accountId()[0]))
+    protocol = ProtocolAim;
 
-  ProtocolType protocol = (isAim ? ProtocolAim : static_cast<ProtocolType>(ppid));
-  StatusIconType statusIcon = OnlineStatusIcon;
+  if (Config::ContactList::instance()->showExtendedIcons() && !allowInvisible)
+    // Extended icons shows if user is invisible so skip it here
+    status &= ~User::InvisibleStatus;
 
-  // cut off the flags, since we should not mind about them
-  fullStatus &= ~ICQ_STATUS_FxFLAGS;
+  // Make sure we don't have multiple flags in status word
+  status = User::singleStatus(status);
 
-  if (fullStatus != ICQ_STATUS_OFFLINE &&
-      (fullStatus & ICQ_STATUS_FxPRIVATE) &&
-      !Config::ContactList::instance()->showExtendedIcons())
-    statusIcon = PrivateStatusIcon;
+  if (myStatusIconMap.contains(QPair<ProtocolType, unsigned>(protocol, status)))
+    return myStatusIconMap[QPair<ProtocolType, unsigned>(protocol, status)];
 
-  else if (fullStatus == ICQ_STATUS_OFFLINE)
-    statusIcon = OfflineStatusIcon;
+  // Use Occupied icon if Do Not Disturb icon is missing
+  if (status & User::DoNotDisturbStatus && myStatusIconMap.contains(QPair<ProtocolType, unsigned>(protocol, User::OccupiedStatus)))
+    return myStatusIconMap[QPair<ProtocolType, unsigned>(protocol, User::OccupiedStatus)];
 
-  else
-  {
-    if (protocol == ProtocolMsn)
-    {
-      if (fullStatus & (ICQ_STATUS_DND | ICQ_STATUS_OCCUPIED))
-        statusIcon = OccupiedStatusIcon;
+  // Use Away icon if other away type icons are missing
+  if (status & User::AwayStatuses && myStatusIconMap.contains(QPair<ProtocolType, unsigned>(protocol, User::AwayStatus)))
+    return myStatusIconMap[QPair<ProtocolType, unsigned>(protocol, User::AwayStatus)];
 
-      else if (fullStatus & (ICQ_STATUS_NA | ICQ_STATUS_AWAY))
-        statusIcon = AwayStatusIcon;
-    }
-    else if (protocol == ProtocolAim)
-    {
-      if (fullStatus & (ICQ_STATUS_DND | ICQ_STATUS_OCCUPIED | ICQ_STATUS_NA | ICQ_STATUS_AWAY))
-        statusIcon = AwayStatusIcon;
-    }
-    else
-    {
-      if (fullStatus & ICQ_STATUS_DND)
-        statusIcon = DoNotDisturbStatusIcon;
-
-      else if (fullStatus & ICQ_STATUS_OCCUPIED)
-        statusIcon = OccupiedStatusIcon;
-
-      else if (fullStatus & ICQ_STATUS_NA)
-        statusIcon = NotAvailableStatusIcon;
-
-      else if (fullStatus & ICQ_STATUS_AWAY)
-        statusIcon = AwayStatusIcon;
-
-      else if ((fullStatus & ICQ_STATUS_FREEFORCHAT) &&
-          myStatusIconMap.contains(
-            QPair<ProtocolType, StatusIconType>(ProtocolIcq, FreeForChatStatusIcon)))
-        statusIcon = FreeForChatStatusIcon;
-    }
-  }
-
-  if (myStatusIconMap.contains(QPair<ProtocolType, StatusIconType>(protocol, statusIcon)))
-    return myStatusIconMap[QPair<ProtocolType, StatusIconType>(protocol, statusIcon)];
+  // Use Online icon if nothing else exist
+  if (myStatusIconMap.contains(QPair<ProtocolType, unsigned>(protocol, User::OnlineStatus)))
+    return myStatusIconMap[QPair<ProtocolType, unsigned>(protocol, User::OnlineStatus)];
 
   // No protocol specific icon existed so use default (same as ICQ)
-  return myStatusIconMap[QPair<ProtocolType, StatusIconType>(ProtocolIcq, statusIcon)];
+  if (myStatusIconMap.contains(QPair<ProtocolType, unsigned>(ProtocolIcq, status)))
+    return myStatusIconMap[QPair<ProtocolType, unsigned>(ProtocolIcq, status)];
+
+  // Icon is missing in default as well, use default online
+  return myStatusIconMap[QPair<ProtocolType, unsigned>(ProtocolIcq, User::OnlineStatus)];
 }
 
 const QPixmap& IconManager::iconForEvent(unsigned short subCommand)

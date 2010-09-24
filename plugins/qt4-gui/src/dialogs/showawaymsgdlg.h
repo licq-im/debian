@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,11 +22,14 @@
 
 #include <QDialog>
 
-#include <licq_types.h>
+#include <licq/userid.h>
 
 class QCheckBox;
 
-class LicqEvent;
+namespace Licq
+{
+class Event;
+}
 
 namespace LicqQtGui
 {
@@ -43,17 +46,17 @@ public:
    * @param fetch True if away response should be fetch, false to use cached message
    * @param parent Parent widget
    */
-  ShowAwayMsgDlg(const UserId& userId, bool fetch = false, QWidget* parent = 0);
+  ShowAwayMsgDlg(const Licq::UserId& userId, bool fetch = false, QWidget* parent = 0);
   ~ShowAwayMsgDlg();
 
 private:
-  UserId myUserId;
+  Licq::UserId myUserId;
   unsigned long icqEventTag;
   MLEdit* mleAwayMsg;
   QCheckBox* chkShowAgain;
 
 private slots:
-  void doneEvent(const LicqEvent* e);
+  void doneEvent(const Licq::Event* e);
 };
 
 } // namespace LicqQtGui

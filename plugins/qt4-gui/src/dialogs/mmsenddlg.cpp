@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,12 +36,14 @@
 #include <QTextCodec>
 #include <QVBoxLayout>
 
-#include <licq_events.h>
-#include <licq_icqd.h>
-#include <licq_translate.h>
-#include <licq_user.h>
+#include <licq/contactlist/user.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/icq.h>
+#include <licq/icqdefines.h>
+#include <licq/protocolmanager.h>
+#include <licq/translator.h>
 
-#include "core/licqgui.h"
 #include "core/signalmanager.h"
 
 #include "helpers/support.h"
@@ -49,6 +51,8 @@
 
 #include "views/mmuserview.h"
 
+using Licq::StringList;
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::MMSendDlg */
 
@@ -75,8 +79,8 @@ MMSendDlg::MMSendDlg(MMUserView* _mmv, QWidget* p)
   v->addWidget(buttons);
 
   connect(btnCancel, SIGNAL(clicked()), SLOT(slot_cancel()));
-  connect(LicqGui::instance()->signalManager(),
-      SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(slot_done(const LicqEvent*)));
+  connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
+      SLOT(slot_done(const Licq::Event*)));
 
   barSend->setMaximum(mmv->contacts().size());
   barSend->setValue(0);
@@ -124,12 +128,12 @@ int MMSendDlg::go_contact(StringList& users)
   return result();
 }
 
-void MMSendDlg::slot_done(const LicqEvent* e)
+void MMSendDlg::slot_done(const Licq::Event* e)
 {
   if ( !e->Equals(icqEventTag) )
     return;
 
-  bool isOk = (e != NULL ? (e->Result() == EVENT_ACKED) : (icqEventTag == 0));
+  bool isOk = (e != NULL ? (e->Result() == Licq::Event::ResultAcked) : (icqEventTag == 0));
 
   icqEventTag = 0;
 
@@ -143,9 +147,6 @@ void MMSendDlg::slot_done(const LicqEvent* e)
   if (e != NULL)
   {
     // Let other dialogs know a message was sent
-    // TODO: This will currently only work with ICQ protocol since we don't yet
-    //       have an event available here for other protocols that we can
-    //       forward.
     emit eventSent(e);
   }
 
@@ -164,30 +165,31 @@ void MMSendDlg::SendNext()
     return;
   }
 
-  UserId userId = *mmv->contacts().begin();
+  Licq::UserId userId = *mmv->contacts().begin();
 
-  if (!USERID_ISVALID(userId))
+  if (!userId.isValid())
     return;
 
   switch (m_nEventType)
   {
     case ICQ_CMDxSUB_MSG:
     {
-      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-      if (u == NULL) return;
-      const QTextCodec* codec = UserCodec::codecForUser(u);
-      grpSending->setTitle(tr("Sending mass message to %1...").arg(QString::fromUtf8(u->GetAlias())));
-      gUserManager.DropUser(u);
+      const QTextCodec* codec;
+      {
+        Licq::UserReadGuard u(userId);
+        if (!u.isLocked())
+          return;
+        codec = UserCodec::codecForUser(*u);
+        grpSending->setTitle(tr("Sending mass message to %1...").arg(QString::fromUtf8(u->GetAlias())));
+      }
 
       // create initial strings (implicit copying, no allocation impact :)
-      char* tmp = gTranslator.NToRN(codec->fromUnicode(s1));
-      QByteArray wholeMessageRaw(tmp);
-      delete [] tmp;
+      QByteArray wholeMessageRaw(Licq::gTranslator.returnToDos(codec->fromUnicode(s1).data()).c_str());
       int wholeMessagePos = 0;
 
       bool needsSplitting = false;
       // If we send through server (= have message limit), and we've crossed the limit
-      if ((wholeMessageRaw.length() - wholeMessagePos) > MAX_MESSAGE_SIZE)
+      if ((wholeMessageRaw.length() - wholeMessagePos) > CICQDaemon::MaxMessageSize)
       {
         needsSplitting = true;
       }
@@ -204,13 +206,10 @@ void MMSendDlg::SendNext()
           // really know how spaces are represented in its encoding), so
           // we take the maximum length, then convert back to a Unicode string
           // and then search for Unicode whitespaces.
-          messageRaw = wholeMessageRaw.mid(wholeMessagePos, MAX_MESSAGE_SIZE);
-          tmp = gTranslator.RNToN(messageRaw);
-          messageRaw = tmp;
-          delete [] tmp;
+          messageRaw = Licq::gTranslator.returnToUnix(wholeMessageRaw.mid(wholeMessagePos, CICQDaemon::MaxMessageSize).data()).c_str();
           message = codec->toUnicode(messageRaw);
 
-          if ((wholeMessageRaw.length() - wholeMessagePos) > MAX_MESSAGE_SIZE)
+          if ((wholeMessageRaw.length() - wholeMessagePos) > CICQDaemon::MaxMessageSize)
           {
             // We try to find the optimal place to cut
             // (according to our narrow-minded Latin1 idea of optimal :)
@@ -232,38 +231,39 @@ void MMSendDlg::SendNext()
           messageRaw = codec->fromUnicode(s1);
         }
 
-        icqEventTag = gLicqDaemon->sendMessage(userId, messageRaw.data(),
+        icqEventTag = gProtocolManager.sendMessage(userId, messageRaw.data(),
             true, ICQ_TCPxMSG_NORMAL, true);
 
-        tmp = gTranslator.NToRN(messageRaw);
-        wholeMessagePos += strlen(tmp);
-        delete [] tmp;
+        wholeMessagePos += Licq::gTranslator.returnToDos(messageRaw.data()).size();
       }
 
       break;
     }
     case ICQ_CMDxSUB_URL:
     {
-      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-      if (u == NULL) return;
-      grpSending->setTitle(tr("Sending mass URL to %1...").arg(QString::fromUtf8(u->GetAlias())));
-      const QTextCodec* codec = UserCodec::codecForUser(u);
-      gUserManager.DropUser(u);
+      const QTextCodec* codec;
+      {
+        Licq::UserReadGuard u(userId);
+        if (!u.isLocked())
+          return;
+        codec = UserCodec::codecForUser(*u);
+        grpSending->setTitle(tr("Sending mass URL to %1...").arg(QString::fromUtf8(u->GetAlias())));
+      }
 
-      icqEventTag = gLicqDaemon->sendUrl(userId, s2.toLatin1().data(),
+      icqEventTag = gProtocolManager.sendUrl(userId, s2.toLatin1().data(),
           codec->fromUnicode(s1).data(), true, ICQ_TCPxMSG_NORMAL, true);
       break;
     }
     case ICQ_CMDxSUB_CONTACTxLIST:
     {
-      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-      if (u == NULL) return;
-      grpSending->setTitle(tr("Sending mass list to %1...").arg(QString::fromUtf8(u->GetAlias())));
-      QString myId = u->accountId().c_str();
-      gUserManager.DropUser(u);
+      {
+        Licq::UserReadGuard u(userId);
+        if (!u.isLocked())
+          return;
+        grpSending->setTitle(tr("Sending mass list to %1...").arg(QString::fromUtf8(u->GetAlias())));
+      }
 
-      icqEventTag = gLicqDaemon->icqSendContactList(
-          myId.toLatin1(), *myUsers, false, ICQ_TCPxMSG_NORMAL);
+      icqEventTag = gLicqDaemon->icqSendContactList(userId, *myUsers, false, ICQ_TCPxMSG_NORMAL);
       break;
     }
   }
@@ -275,7 +275,7 @@ MMSendDlg::~MMSendDlg()
 {
   if (icqEventTag != 0)
   {
-    gLicqDaemon->CancelEvent(icqEventTag);
+    Licq::gDaemon.cancelEvent(icqEventTag);
     icqEventTag = 0;
   }
 }
@@ -284,10 +284,10 @@ void MMSendDlg::slot_cancel()
 {
   if (icqEventTag != 0)
   {
-    gLicqDaemon->CancelEvent(icqEventTag);
+    Licq::gDaemon.cancelEvent(icqEventTag);
     icqEventTag = 0;
   }
-  //disconnect(sigman, SIGNAL(doneUserFcn(const LicqEvent*)), SLOT(slot_done(const LicqEvent*)));
+  //disconnect(sigman, SIGNAL(doneUserFcn(const Licq::Event*)), SLOT(slot_done(const Licq::Event*)));
 
   reject();
 }

@@ -1,13 +1,39 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1999-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 #include "console.h"
 
+#include <boost/foreach.hpp>
 #include <cstring>
 #include <ctime>
 
-#include <licq_countrycodes.h>
-#include <licq_languagecodes.h>
-#include <licq_filetransfer.h>
+#include <licq/contactlist/group.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/icqcodes.h>
+#include <licq/icqfiletransfer.h>
+#include <licq/socket.h> // For ip_ntoa
+#include <licq/userevents.h>
 
 using namespace std;
+using Licq::User;
 
 //======Utilities============================================================
 char *EncodeFileSize(unsigned long nSize)
@@ -133,14 +159,14 @@ void CLicqConsole::PrintStatus()
   werase(winStatus->Win());
 
   unsigned short nNumOwnerEvents = 0;
-  ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  if (o)
+
   {
-    nNumOwnerEvents = o->NewMessages();
-    gUserManager.DropOwner(o);
+    Licq::OwnerReadGuard o(LICQ_PPID);
+    if (o.isLocked())
+      nNumOwnerEvents = o->NewMessages();
   }
 
-  unsigned short nNumUserEvents = LicqUser::getNumUserEvents() - nNumOwnerEvents;
+  unsigned short nNumUserEvents = Licq::User::getNumUserEvents() - nNumOwnerEvents;
   if (nNumOwnerEvents > 0)
     sprintf (szMsgStr, "System Message");
   else if (nNumUserEvents > 0)
@@ -148,36 +174,33 @@ void CLicqConsole::PrintStatus()
   else
     strcpy(szMsgStr, "No Messages");
 
-  if (USERID_ISVALID(winMain->sLastContact))
+  if (winMain->sLastContact.isValid())
   {
-    const LicqUser* u = gUserManager.fetchUser(winMain->sLastContact);
-    if (u == NULL)
+    Licq::UserReadGuard u(winMain->sLastContact);
+    if (!u.isLocked())
       szLastUser = strdup("<Removed>");
     else
-    {
       szLastUser = strdup(u->GetAlias());
-      gUserManager.DropUser(u);
-    }
   }
   else
     szLastUser = strdup("<None>");
 
-  o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
   wbkgdset(winStatus->Win(), COLOR_PAIR(COLOR_WHITE));
   mvwhline(winStatus->Win(), 0, 0, ACS_HLINE, COLS);
   //mvwaddch(winStatus->Win(), 0, COLS - USER_WIN_WIDTH - 1, ACS_BTEE);
   wmove(winStatus->Win(), 1, 0);
   wbkgdset(winStatus->Win(), COLOR_PAIR(32));
-  if (o)
+
   {
-    winStatus->wprintf("%C%A[ %C%s %C(%C%s%C) - S: %C%s %C- G: %C%s %C- M: %C%s %C- L: %C%s %C]", 29,
+    Licq::OwnerReadGuard o(LICQ_PPID);
+    if (o.isLocked())
+      winStatus->wprintf("%C%A[ %C%s %C(%C%s%C) - S: %C%s %C- G: %C%s %C- M: %C%s %C- L: %C%s %C]", 29,
                        A_BOLD, 5,  o->GetAlias(), 29,
-                       5, o->IdString(), 29,
-                       53, o->StatusStr(), 29,
+        5, o->accountId().c_str(), 29,
+        53, o->statusString().c_str(), 29,
                        53, CurrentGroupName(), 29,
                        53, szMsgStr, 29, 53,
                        szLastUser, 29);
-    gUserManager.DropOwner(o);
   }
 
   wclrtoeol(winStatus->Win());
@@ -205,23 +228,25 @@ void CLicqConsole::PrintGroups()
   waddch(winMain->Win(), ACS_RTEE);
   waddch(winMain->Win(), '\n');
 
-  FOR_EACH_GROUP_START_SORTED(LOCK_R)
   {
-    PrintBoxLeft();
-    winMain->wprintf("%A%C%3d. %-19s",
-        m_cColorGroupList->nAttr,
-        m_cColorGroupList->nColor, j, pGroup->name().c_str());
-    PrintBoxRight(26);
-    ++j;
+    Licq::GroupListGuard groups;
+    BOOST_FOREACH(const Licq::Group* group, **groups)
+    {
+      PrintBoxLeft();
+      winMain->wprintf("%A%C%3d. %-19s",
+          m_cColorGroupList->nAttr,
+          m_cColorGroupList->nColor, j, group->name().c_str());
+      PrintBoxRight(26);
+      ++j;
+    }
   }
-  FOR_EACH_GROUP_END
 
   waddch(winMain->Win(), ACS_LTEE);
   for (k = 0; k < 24; k++) waddch(winMain->Win(), ACS_HLINE);
   waddch(winMain->Win(), ACS_RTEE);
   waddch(winMain->Win(), '\n');
 
-  for (unsigned short i = 1; i <= NUM_GROUPS_SYSTEM; i++)
+  for (int i = 1; i <= NumSystemGroups; i++)
   {
     PrintBoxLeft();
     winMain->wprintf("%A%C*%2d. %-19s",
@@ -254,7 +279,7 @@ void CLicqConsole::PrintVariable(unsigned short nVar)
     break;
 
   case STRING:
-    winMain->wprintf("\"%s\"\n", (char *)aVariables[nVar].pData);
+    winMain->wprintf("\"%s\"\n", ((string*)aVariables[nVar].pData)->c_str());
     break;
 
   case COLOR:
@@ -271,7 +296,7 @@ void CLicqConsole::PrintVariable(unsigned short nVar)
 void CLicqConsole::CreateUserList()
 {
   unsigned short i = 0;
-  char *szTmp = 0;
+  string sz;
   struct SUser *s = NULL;
   list <SUser *>::iterator it;
 
@@ -285,70 +310,65 @@ void CLicqConsole::CreateUserList()
 #undef clear
   m_lUsers.clear();
 
-  FOR_EACH_USER_START(LOCK_R)
+  Licq::UserListGuard users;
+  BOOST_FOREACH(const Licq::User* pUser, **users)
   {
     // Only show users on the current group and not on the ignore list
-    if ((!pUser->GetInGroup(m_nGroupType, m_nCurrentGroup) &&
-        (m_nGroupType != GROUPS_USER || m_nCurrentGroup != 0)) ||
-        (pUser->IgnoreList() && m_nGroupType != GROUPS_SYSTEM && m_nCurrentGroup != GROUP_IGNORE_LIST) )
-      FOR_EACH_USER_CONTINUE
+    if ((!userIsInGroup(pUser, myCurrentGroup) && myCurrentGroup != AllUsersGroupId) ||
+        (pUser->IgnoreList() && myCurrentGroup != IgnoreListGroupId) )
+      continue;
 
-    if (!m_bShowOffline && pUser->StatusOffline() )
-    {
-      FOR_EACH_USER_CONTINUE;
-    }
+    if (!m_bShowOffline && !pUser->isOnline())
+      continue;
 
     s = new SUser;
     sprintf(s->szKey, "%05u%010lu", pUser->Status(), pUser->Touched() ^ 0xFFFFFFFF);
     s->userId = pUser->id();
-    s->bOffline = pUser->StatusOffline();
+    s->bOffline = !pUser->isOnline();
 
-    unsigned short nStatus = pUser->Status();
+    unsigned status = pUser->status();
 
-    if(pUser->StatusInvisible())
+    if (status & User::InvisibleStatus)
     {
-      szTmp = pUser->usprintf(m_szOtherOnlineFormat);
+      sz = pUser->usprintf(myOtherOnlineFormat);
       s->color = m_cColorOnline;
     }
-
-    else if(nStatus == ICQ_STATUS_OFFLINE)
+    else if (status == User::OfflineStatus)
     {
-      szTmp = pUser->usprintf(m_szOfflineFormat);
+      sz = pUser->usprintf(myOfflineFormat);
       s->color = m_cColorOffline;
     }
-    else if(nStatus == ICQ_STATUS_DND || nStatus == ICQ_STATUS_OCCUPIED ||
-            nStatus == ICQ_STATUS_NA || nStatus == ICQ_STATUS_AWAY)
+    else if (status & User::AwayStatuses)
     {
-      szTmp = pUser->usprintf(m_szAwayFormat);
+      sz = pUser->usprintf(myAwayFormat);
       s->color = m_cColorAway;
     }
-    else if(nStatus == ICQ_STATUS_FREEFORCHAT)
+    else if (status & User::FreeForChatStatus)
     {
-      szTmp = pUser->usprintf(m_szOtherOnlineFormat);
+      sz = pUser->usprintf(myOtherOnlineFormat);
       s->color = m_cColorOnline;
     }
-    else if(nStatus == ICQ_STATUS_ONLINE)
+    else
     {
-      szTmp = pUser->usprintf(m_szOnlineFormat);
+      sz = pUser->usprintf(myOnlineFormat);
       s->color = m_cColorOnline;
     }
 
-    if (pUser->NewUser() && !(m_nGroupType == GROUPS_SYSTEM && m_nCurrentGroup == GROUP_NEW_USERS))
+    if (pUser->NewUser() && myCurrentGroup != NewUsersGroupId)
       s->color = m_cColorNew;
 
     // Create the line to printout now
     if (pUser->NewMessages() > 0)
     {
-      s->szLine = new char[strlen(szTmp) + 19];
-      snprintf(s->szLine, strlen(szTmp) + 19, "</%d></K>%s<!K><!%d>", s->color->nColor - 6, szTmp ? szTmp : "", s->color->nColor - 6);
-      s->szLine[strlen(szTmp) + 18] = '\0';
+      s->szLine = new char[sz.size() + 19];
+      snprintf(s->szLine, sz.size() + 19, "</%d></K>%s<!K><!%d>", s->color->nColor - 6, sz.c_str(), s->color->nColor - 6);
+      s->szLine[sz.size() + 18] = '\0';
     } else {
-      s->szLine = new char[strlen(szTmp) + 11];
-      snprintf(s->szLine, strlen(szTmp) + 11, "</%d>%s<!%d>", s->color->nColor, szTmp ? szTmp : "", s->color->nColor);
-      s->szLine[strlen(szTmp) + 10] = '\0';
+      s->szLine = new char[sz.size() + 11];
+      snprintf(s->szLine, sz.size() + 11, "</%d>%s<!%d>", s->color->nColor, sz.c_str(), s->color->nColor);
+      s->szLine[sz.size() + 10] = '\0';
     }
-    free(szTmp);
-    
+
     // Insert into the list
     bool found = false;
     for (it = m_lUsers.begin(); it != m_lUsers.end(); it++)
@@ -365,8 +385,6 @@ void CLicqConsole::CreateUserList()
 
     i++;
   }
-  FOR_EACH_USER_END
-
 }
 
 /*---------------------------------------------------------------------------
@@ -438,12 +456,11 @@ void CLicqConsole::UserListHighlight(chtype type, chtype input)
   {
     if ((*it)->pos == (cdkUserList->currentItem + down))
     {
-      const LicqUser* u = gUserManager.fetchUser((*it)->userId);
-      if (u && u->NewMessages())
+      Licq::UserReadGuard u((*it)->userId);
+      if (u.isLocked() && u->NewMessages() > 0)
         setCDKScrollHighlight(cdkUserList, COLOR_PAIR((*it)->color->nColor - 6) | type);
       else
         setCDKScrollHighlight(cdkUserList, COLOR_PAIR((*it)->color->nColor) | type);
-      gUserManager.DropUser(u);
       break;
     }
   }
@@ -491,7 +508,7 @@ void CLicqConsole::PrintHelp()
   for (unsigned short i = 0; i < NUM_COMMANDS; i++)
   {
     waddch(winMain->Win(), ACS_VLINE);
-    winMain->wprintf(aCommands[i].szHelp, m_szCommandChar[0]);
+    winMain->wprintf(aCommands[i].szHelp, myCommandChar[0]);
     PrintBoxRight(48);
   }
 
@@ -534,10 +551,10 @@ void CLicqConsole::PrintHelp()
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintHistory
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintHistory(HistoryList &lHistory, unsigned short nStart,
+void CLicqConsole::PrintHistory(Licq::HistoryList& lHistory, unsigned short nStart,
                                 unsigned short nEnd, const char *szFrom)
 {
-  HistoryListIter it = lHistory.begin();
+  Licq::HistoryList::iterator it = lHistory.begin();
   unsigned short n = 0;
   for (n = 0; n < nStart && it != lHistory.end(); n++, it++) ;
   while (n <= nEnd && it != lHistory.end())
@@ -550,11 +567,11 @@ void CLicqConsole::PrintHistory(HistoryList &lHistory, unsigned short nStart,
     char *szTime = ctime(&t);
     szTime[16] = '\0';
     winMain->wprintf("%A%C[%d of %d] %s %s %s (%s) [%c%c%c]:\n%Z%s\n", A_BOLD,
-                     COLOR_WHITE, n + 1, lHistory.size(), (*it)->Description(),
-                     (*it)->Direction() == D_RECEIVER ? "from" : "to", szFrom,
+        COLOR_WHITE, n + 1, lHistory.size(), (*it)->description().c_str(),
+        (*it)->isReceiver() ? "from" : "to", szFrom,
                      szTime, (*it)->IsDirect() ? 'D' : '-',
                      (*it)->IsMultiRec() ? 'M' : '-', (*it)->IsUrgent() ? 'U' : '-',
-                     A_BOLD, (*it)->Text());
+        A_BOLD, (*it)->text().c_str());
 
     n++;
     it++;
@@ -571,17 +588,17 @@ void CLicqConsole::PrintHistory(HistoryList &lHistory, unsigned short nStart,
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_General
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_General(const UserId& userId)
+void CLicqConsole::PrintInfo_General(const Licq::UserId& userId)
 {
   // Print the users info to the main window
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  if (u == NULL) return;
+  Licq::UserReadGuard u(userId);
+  if (!u.isLocked())
+    return;
 
   // Some IP, Real IP and last seen stuff
   char buf[32];
-  char szPort[32];
   char szRealIp[32];
-  strcpy(szRealIp, ip_ntoa(u->RealIp(), buf));
+  strcpy(szRealIp, Licq::ip_ntoa(u->RealIp(), buf));
   time_t nLast = u->LastOnline();
   time_t nOnSince = u->OnlineSince();
 
@@ -592,11 +609,11 @@ void CLicqConsole::PrintInfo_General(const UserId& userId)
   wattroff(winMain->Win(), A_BOLD);
 
   winMain->wprintf("%s %A(%Z%s%A) General Info - %Z%s\n", u->GetAlias(), A_BOLD,
-                   A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
+      A_BOLD, u->accountId().c_str(), A_BOLD, A_BOLD, u->statusString().c_str());
 
   winMain->wprintf("%C%AName: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getFullName().c_str());
   winMain->wprintf("%C%AIp: %Z%s:%s\n", COLOR_WHITE, A_BOLD, A_BOLD,
-                   u->IpStr(buf), u->PortStr(szPort));
+      u->ipToString().c_str(), u->portToString().c_str());
   winMain->wprintf("%C%AReal Ip: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD,
                    szRealIp);
   winMain->wprintf("%C%AEmail 1: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Email1").c_str());
@@ -626,7 +643,7 @@ void CLicqConsole::PrintInfo_General(const UserId& userId)
                    u->GetTimezone() % 2 ? "30" : "00");
   winMain->wprintf("%C%ALast Seen: %Z%s", COLOR_WHITE, A_BOLD, A_BOLD,
     ctime(&nLast));
-  if (!u->StatusOffline())
+  if (u->isOnline())
   {
     winMain->wprintf("%C%AOnline Since: %Z%s", COLOR_WHITE, A_BOLD, A_BOLD,
       (nOnSince ? ctime(&nOnSince) : "Unknown"));
@@ -638,19 +655,18 @@ void CLicqConsole::PrintInfo_General(const UserId& userId)
   waddch(winMain->Win(), '\n');
   winMain->RefreshWin();
   wattroff(winMain->Win(), A_BOLD);
-
-  gUserManager.DropUser(u);
 }
 
 
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_More
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_More(const UserId& userId)
+void CLicqConsole::PrintInfo_More(const Licq::UserId& userId)
 {
   // Print the users info to the main window
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  if (u == NULL) return;
+  Licq::UserReadGuard u(userId);
+  if (!u.isLocked())
+    return;
 
   wattron(winMain->Win(), A_BOLD);
   for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
@@ -659,15 +675,15 @@ void CLicqConsole::PrintInfo_More(const UserId& userId)
   wattroff(winMain->Win(), A_BOLD);
 
   winMain->wprintf("%s %A(%Z%s%A) More Info - %Z%s\n", u->GetAlias(), A_BOLD,
-                   A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
+      A_BOLD, u->accountId().c_str(), A_BOLD, A_BOLD, u->statusString().c_str());
 
   unsigned int age = u->getUserInfoUint("Age");
-  if (age == AGE_UNSPECIFIED)
+  if (age == Licq::User::AgeUnspecified)
     winMain->wprintf("%C%AAge: %ZUnspecified\n", COLOR_WHITE, A_BOLD, A_BOLD);
   else
     winMain->wprintf("%C%AAge: %Z%d\n", COLOR_WHITE, A_BOLD, A_BOLD, age);
   unsigned int gender = u->getUserInfoUint("Gender");
-  winMain->wprintf("%C%AGender: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, gender == GENDER_MALE ? "Male" : gender == GENDER_FEMALE ? "Female" : "Unspecified");
+  winMain->wprintf("%C%AGender: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, gender == Licq::User::GenderMale ? "Male" : gender == Licq::User::GenderFemale ? "Female" : "Unspecified");
   winMain->wprintf("%C%AHomepage: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("Homepage").c_str());
   winMain->wprintf("%C%ABirthday: %Z%d/%d/%d\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoUint("BirthDay"), u->getUserInfoUint("BirthMonth"), u->getUserInfoUint("BirthYear"));
   for (unsigned short i = 0; i < 3; i++)
@@ -683,8 +699,6 @@ void CLicqConsole::PrintInfo_More(const UserId& userId)
       winMain->wprintf("%C%s\n", COLOR_WHITE, l->szName);
   }
 
-  gUserManager.DropUser(u);
-
   wattron(winMain->Win(), A_BOLD);
   for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
     waddch(winMain->Win(), ACS_HLINE);
@@ -697,11 +711,12 @@ void CLicqConsole::PrintInfo_More(const UserId& userId)
 /*---------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_Work
  *-------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_Work(const UserId& userId)
+void CLicqConsole::PrintInfo_Work(const Licq::UserId& userId)
 {
   // Print the users info to the main window
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  if (u == NULL) return;
+  Licq::UserReadGuard u(userId);
+  if (!u.isLocked())
+    return;
 
   wattron(winMain->Win(), A_BOLD);
   for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
@@ -710,7 +725,7 @@ void CLicqConsole::PrintInfo_Work(const UserId& userId)
   wattroff(winMain->Win(), A_BOLD);
 
   winMain->wprintf("%s %A(%Z%s%A) Work Info - %Z%s\n", u->GetAlias(), A_BOLD,
-                   A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
+      A_BOLD, u->accountId().c_str(), A_BOLD, A_BOLD, u->statusString().c_str());
 
   winMain->wprintf("%C%ACompany Name: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyName").c_str());
   winMain->wprintf("%C%ACompany Department: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyDepartment").c_str());
@@ -735,8 +750,6 @@ void CLicqConsole::PrintInfo_Work(const UserId& userId)
   }
   winMain->wprintf("%C%ACompany Homepage: %Z%s\n", COLOR_WHITE, A_BOLD, A_BOLD, u->getUserInfoString("CompanyHomepage").c_str());
 
-  gUserManager.DropUser(u);
-
   wattron(winMain->Win(), A_BOLD);
   for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
     waddch(winMain->Win(), ACS_HLINE);
@@ -748,11 +761,12 @@ void CLicqConsole::PrintInfo_Work(const UserId& userId)
 /*----------------------------------------------------------------------------
  * CLicqConsole::PrintInfo_About
  *--------------------------------------------------------------------------*/
-void CLicqConsole::PrintInfo_About(const UserId& userId)
+void CLicqConsole::PrintInfo_About(const Licq::UserId& userId)
 {
   // Print the user's about info to the main window
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  if (u == NULL)  return;
+  Licq::UserReadGuard u(userId);
+  if (!u.isLocked())
+    return;
 
   wattron(winMain->Win(), A_BOLD);
   for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
@@ -761,11 +775,9 @@ void CLicqConsole::PrintInfo_About(const UserId& userId)
   wattroff(winMain->Win(), A_BOLD);
 
   winMain->wprintf("%s %A(%Z%s%A) About Info - %Z%s\n", u->GetAlias(), A_BOLD,
-                    A_BOLD, u->IdString(), A_BOLD, A_BOLD, u->StatusStr());
+      A_BOLD, u->accountId().c_str(), A_BOLD, A_BOLD, u->statusString().c_str());
 
   winMain->wprintf("%s\n", u->getUserInfoString("About").c_str());
-
-  gUserManager.DropUser(u);
 
   wattron(winMain->Win(), A_BOLD);
   for (unsigned short i = 0; i < winMain->Cols() - 10; i++)
@@ -781,22 +793,20 @@ void CLicqConsole::PrintInfo_About(const UserId& userId)
 void CLicqConsole::PrintFileStat(CFileTransferManager *ftman)
 {
   // Get the user's name
-  UserId userId = LicqUser::makeUserId(ftman->Id(), LICQ_PPID);
-  const LicqUser* u = gUserManager.fetchUser(userId);
-
-  // Make the title
   char szTitle[30];
-  ftman->Direction() == D_RECEIVER ? strcpy(szTitle, "File from ") :
-    strcpy(szTitle, "File to ");
-  strcat(szTitle, u->GetAlias());
+  {
+    Licq::UserReadGuard u(ftman->userId());
 
-  gUserManager.DropUser(u);
+    // Make the title
+    strcpy(szTitle, (ftman->isReceiver() ? "File from " : "File to "));
+    strcat(szTitle, u->GetAlias());
+  }
 
   // Current file name and Current File # slash Total Batch Files
   PrintBoxTop(szTitle, COLOR_WHITE, 48);
   waddch(winMain->Win(), ACS_VLINE);
   winMain->wprintf("%ACurrent File: %Z", A_BOLD, A_BOLD);
-  winMain->wprintf(const_cast<char *>(ftman->FileName()));
+  winMain->wprintf(ftman->fileName().c_str());
   PrintBoxRight(48);
  
   // Current progress, current file xferred slash total current file size
@@ -857,7 +867,7 @@ void CLicqConsole::PrintMacros()
     winMain->wprintf("%A%C%-10s %Z->%A %-19s",
         A_BOLD,
         COLOR_WHITE,
-        (*iter)->szMacro, A_BOLD, A_BOLD, (*iter)->szCommand);
+        (*iter)->macro.c_str(), A_BOLD, A_BOLD, (*iter)->command.c_str());
     PrintBoxRight(40);
   }
 

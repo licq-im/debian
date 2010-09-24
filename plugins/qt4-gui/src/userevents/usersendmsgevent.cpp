@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,13 +27,15 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <licq_icqd.h>
-#include <licq_translate.h>
+#include <licq/contactlist/user.h>
+#include <licq/icq.h>
+#include <licq/icqdefines.h>
+#include <licq/protocolmanager.h>
+#include <licq/translator.h>
 
 #include "config/chat.h"
 
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 
 #include "dialogs/mmsenddlg.h"
@@ -41,13 +43,11 @@
 
 #include "widgets/mledit.h"
 
-#include "usereventcommon.h"
-#include "usereventtabdlg.h"
-
+using Licq::gProtocolManager;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserSendMsgEvent */
 
-UserSendMsgEvent::UserSendMsgEvent(const UserId& userId, QWidget* parent)
+UserSendMsgEvent::UserSendMsgEvent(const Licq::UserId& userId, QWidget* parent)
   : UserSendCommon(MessageEvent, userId, parent, "UserSendMsgEvent")
 {
   myMainWidget->addWidget(myViewSplitter);
@@ -56,10 +56,6 @@ UserSendMsgEvent::UserSendMsgEvent(const UserId& userId, QWidget* parent)
     myMessageEdit->setMinimumHeight(150);
 
   myBaseTitle += tr(" - Message");
-
-  UserEventTabDlg* tabDlg = LicqGui::instance()->userEventTabDlg();
-  if (tabDlg != NULL && tabDlg->tabIsSelected(this))
-    tabDlg->setWindowTitle(myBaseTitle);
 
   setWindowTitle(myBaseTitle);
   myEventTypeGroup->actions().at(MessageEvent)->setChecked(true);
@@ -70,16 +66,15 @@ UserSendMsgEvent::~UserSendMsgEvent()
   // Empty
 }
 
-bool UserSendMsgEvent::sendDone(const LicqEvent* /* e */)
+bool UserSendMsgEvent::sendDone(const Licq::Event* /* e */)
 {
   myMessageEdit->setText(QString::null);
 
   bool showAwayDlg = false;
-  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
-  if (u != NULL)
   {
-    showAwayDlg = u->Away() && u->ShowAwayMsg();
-    gUserManager.DropUser(u);
+    Licq::UserReadGuard u(myUsers.front());
+    if (u.isLocked())
+      showAwayDlg = u->Away() && u->ShowAwayMsg();
   }
 
   if (showAwayDlg && Config::Chat::instance()->popupAutoResponse())
@@ -105,7 +100,7 @@ void UserSendMsgEvent::send()
   if (mySendTypingTimer->isActive())
     mySendTypingTimer->stop();
   connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gLicqDaemon->sendTypingNotification(myUsers.front(), false, myConvoId);
+  gProtocolManager.sendTypingNotification(myUsers.front(), false, myConvoId);
 
   // do nothing if a command is already being processed
   unsigned long icqEventTag = 0;
@@ -126,23 +121,20 @@ void UserSendMsgEvent::send()
   if (!checkSecure())
     return;
 
-  const LicqUser* u = gUserManager.fetchUser(myUsers.front());
   bool userOffline = true;
-  if (u != NULL)
   {
-    userOffline = u->StatusOffline();
-    gUserManager.DropUser(u);
+    Licq::UserReadGuard u(myUsers.front());
+    if (u.isLocked())
+      userOffline = !u->isOnline();
   }
 
   // create initial strings (implicit copying, no allocation impact :)
-  char* tmp = gTranslator.NToRN(myCodec->fromUnicode(myMessageEdit->toPlainText()));
-  QByteArray wholeMessageRaw(tmp);
-  delete [] tmp;
+  QByteArray wholeMessageRaw(Licq::gTranslator.returnToDos(myCodec->fromUnicode(myMessageEdit->toPlainText()).data()).c_str());
   int wholeMessagePos = 0;
 
   bool needsSplitting = false;
   // If we send through server (= have message limit), and we've crossed the limit
-  unsigned short maxSize = userOffline ? MAX_OFFLINE_MESSAGE_SIZE : MAX_MESSAGE_SIZE;
+  unsigned short maxSize = userOffline ? CICQDaemon::MaxOfflineMessageSize : CICQDaemon::MaxMessageSize;
   if (mySendServerCheck->isChecked() && ((wholeMessageRaw.length() - wholeMessagePos) > maxSize))
     needsSplitting = true;
 
@@ -158,10 +150,7 @@ void UserSendMsgEvent::send()
       // really know how spaces are represented in its encoding), so
       // we take the maximum length, then convert back to a Unicode string
       // and then search for Unicode whitespaces.
-      messageRaw = wholeMessageRaw.mid(wholeMessagePos, maxSize);
-      tmp = gTranslator.RNToN(messageRaw);
-      messageRaw = tmp;
-      delete [] tmp;
+      messageRaw = Licq::gTranslator.returnToUnix(wholeMessageRaw.mid(wholeMessagePos, maxSize).data()).c_str();
       message = myCodec->toUnicode(messageRaw);
 
       if (wholeMessageRaw.length() - wholeMessagePos > maxSize)
@@ -190,11 +179,11 @@ void UserSendMsgEvent::send()
     if (myMassMessageCheck->isChecked())
     {
       MMSendDlg* m = new MMSendDlg(myMassMessageList, this);
-      connect(m, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
+      connect(m, SIGNAL(eventSent(const Licq::Event*)), SIGNAL(eventSent(const Licq::Event*)));
       m->go_message(message);
     }
 
-    icqEventTag = gLicqDaemon->sendMessage(
+    icqEventTag = gProtocolManager.sendMessage(
         myUsers.front(),
         messageRaw.data(),
         mySendServerCheck->isChecked(),
@@ -202,12 +191,10 @@ void UserSendMsgEvent::send()
         myMassMessageCheck->isChecked(),
         &myIcqColor,
         myConvoId);
-    if (LicqUser::getUserProtocolId(myUsers.front()) == LICQ_PPID)
+    if (icqEventTag != 0)
       myEventTag.push_back(icqEventTag);
 
-    tmp = gTranslator.NToRN(messageRaw);
-    wholeMessagePos += strlen(tmp);
-    delete [] tmp;
+    wholeMessagePos += Licq::gTranslator.returnToDos(messageRaw.data()).size();
   }
 
   UserSendCommon::send();

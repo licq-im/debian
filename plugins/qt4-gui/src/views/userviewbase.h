@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,9 +23,12 @@
 
 #include <QTreeView>
 
-#include <licq_types.h>
-
 class QAbstractProxyModel;
+
+namespace Licq
+{
+class UserId;
+}
 
 namespace LicqQtGui
 {
@@ -85,7 +88,7 @@ signals:
    *
    * @param userId User id of contact
    */
-  void userDoubleClicked(const UserId& userId);
+  void userDoubleClicked(const Licq::UserId& userId);
 
 protected slots:
   /**

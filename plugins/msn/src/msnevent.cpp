@@ -1,15 +1,39 @@
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2005-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
 #include "msn.h"
 #include "msnevent.h"
 
-#include "licq_constants.h"
-#include "licq_log.h"
+#include <licq/logging/log.h>
 
+#include <cstring>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <licq/contactlist/user.h>
+#include <licq/pluginsignal.h>
+
 using namespace std;
+using Licq::UserId;
+using Licq::gLog;
 
 CMSNDataEvent::CMSNDataEvent(CMSN *p)
 {
@@ -32,20 +56,20 @@ CMSNDataEvent::CMSNDataEvent(CMSN *p)
 }
 
 CMSNDataEvent::CMSNDataEvent(unsigned long _nEvent, unsigned long _nSessionId,
-			     unsigned long _nBaseId, const string &_strId,
+    unsigned long _nBaseId, const Licq::UserId& userId,
 			     const string &_strFromId, const string &_strCallId,
                              CMSN *p)
 {
   m_pMSN = p;
   m_nSocketDesc = -1;
   m_nEvent = _nEvent;
-  m_strId = _strId;
+  m_strId = userId.accountId();
   m_eState = STATE_WAITING_ACK;
   m_nFileDesc = -1;
-  m_strFileName = BASE_DIR;
-  m_strFileName += "/";
-  m_strFileName += USER_DIR;
-  m_strFileName += "/" +_strId + ".pic";
+  {
+    Licq::UserReadGuard u(userId);
+    m_strFileName = u->pictureFileName();
+  }
   m_nFilePos = 0;
   m_nBytesTransferred = 0;
   m_nStartTime = 0;
@@ -61,7 +85,7 @@ CMSNDataEvent::~CMSNDataEvent()
 {
   if (m_nSocketDesc)
   {
-    INetSocket *s = gSocketMan.FetchSocket(m_nSocketDesc);
+    Licq::INetSocket* s = gSocketMan.FetchSocket(m_nSocketDesc);
     gSocketMan.DropSocket(s);
     gSocketMan.CloseSocket(m_nSocketDesc);
   }
@@ -99,7 +123,7 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
       {
 	if (nFlag == 0x00000002)
 	{
-	  gLog.Info("%sDisplay Picture: Ack received\n", L_MSNxSTR);
+	  gLog.info("Display Picture: Ack received");
 	}
 	else if (nFlag == 0)
 	{
@@ -112,7 +136,8 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
 	    int nToRead = strstr(p->getDataPosRead(), "\r\n")+2-p->getDataPosRead();
 	    if (nToRead > 128)
 	    {
-	      gLog.Warn("%sDisplay Picture: Received unusually long status line, aborting\n", L_WARNxSTR);
+	      gLog.warning("Display Picture: Received unusually long status "
+                           "line, aborting");
 	      // close connection
 	      return -1;
 	    }
@@ -120,7 +145,8 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
 	    string strStatus(szStatusLine);
 	    if (strStatus != "MSNSLP/1.0 200 OK\r\n")
 	    {
-	      gLog.Error("%sDisplay Picture: Encountered an error before the session id was received: %s", L_ERRORxSTR, szStatusLine);
+	      gLog.error("Display Picture: Encountered an error before the "
+                         "session id was received: %s", szStatusLine);
 	      // close connection
 	      return -1;
 	    }
@@ -137,12 +163,12 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
 	    }
 	  }
 
-	  gLog.Info("%sDisplay Picture: Session Id received (%ld)\n",
-		    L_MSNxSTR, m_nSessionId);
+	  gLog.info("Display Picture: Session Id received (%ld)",
+		    m_nSessionId);
 	  CMSNPacket *pAck = new CPS_MSNP2PAck(m_strId.c_str(), m_nSessionId,
 					       m_nBaseId-3, nIdentifier, nAckId,
 					       nDataSize[1], nDataSize[0]);
-	  m_pMSN->Send_SB_Packet(m_strId, pAck, m_nSocketDesc);
+          m_pMSN->Send_SB_Packet(UserId(m_strId, MSN_PPID), pAck, m_nSocketDesc);
 	  m_eState = STATE_GOT_SID;
 	}
       }
@@ -156,17 +182,16 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
       CMSNPacket *pAck = new CPS_MSNP2PAck(m_strId.c_str(), m_nSessionId,
 					   m_nBaseId-2, nIdentifier, nAckId,
 					   nDataSize[1], nDataSize[0]);
-      m_pMSN->Send_SB_Packet(m_strId, pAck, m_nSocketDesc);
+      m_pMSN->Send_SB_Packet(UserId(m_strId, MSN_PPID), pAck, m_nSocketDesc);
       m_eState = STATE_RECV_DATA;
 
-      gLog.Info("%sDisplay Picture: Got data start message (%ld)\n",
-		L_MSNxSTR, m_nSessionId);
+      gLog.info("Display Picture: Got data start message (%ld)",
+		m_nSessionId);
 
       m_nFileDesc = open(m_strFileName.c_str(), O_WRONLY | O_CREAT, 00600);
       if (!m_nFileDesc)
       {
-	gLog.Error("%sUnable to create a file in your licq directory, check disk space.\n",
-		   L_ERRORxSTR);
+	gLog.error("Unable to create a file in your licq directory, check disk space");
 	return -1;
       }
 
@@ -180,56 +205,58 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
       {
 	m_nDataSize[0] = nDataSize[0];
 	m_nDataSize[1] = nDataSize[1];
-	gLog.Info("%sDisplay Picture: Expecting file of size %ld (Id: %ld).\n",
-		  L_MSNxSTR, m_nDataSize[0], m_nSessionId);
+	gLog.info("Display Picture: Expecting file of size %ld (Id: %ld)",
+                  m_nDataSize[0], m_nSessionId);
       }
 
       if (nFlag != 0x00000020)
       {
-        gLog.Info("%sDisplay Picture: Skipping packet without 0x20 flag.\n", L_MSNxSTR);
+        gLog.info("Display Picture: Skipping packet without 0x20 flag");
         break;
       }
 
       ssize_t nWrote = write(m_nFileDesc, p->getDataPosRead(), nLen);
       if (nWrote != (ssize_t)nLen)
       {
-	gLog.Error("%sDisplay Picture: Tried to write %ld, but wrote %ld (Id: %ld).\n",
-		   L_MSNxSTR, nLen, (long)nWrote, m_nSessionId);
+	gLog.error("Display Picture: Tried to write %ld, but wrote %ld (Id: %ld)",
+		   nLen, (long)nWrote, m_nSessionId);
       }
 
       m_nBytesTransferred += nLen;
 
-      gLog.Info("%sDisplay Picture: Wrote %ld of %ld bytes.\n",
-          L_MSNxSTR, m_nBytesTransferred, m_nDataSize[0]);
+      gLog.info("Display Picture: Wrote %ld of %ld bytes",
+                m_nBytesTransferred, m_nDataSize[0]);
 
       if (m_nBytesTransferred >= m_nDataSize[0])
       {
 	if (m_nBytesTransferred == m_nDataSize[0])
 	{
-	  gLog.Info("%sDisplay Picture: Successfully completed (%s).\n",
-		    L_MSNxSTR, m_strFileName.c_str());
+	  gLog.info("Display Picture: Successfully completed (%s)",
+                    m_strFileName.c_str());
 	}
 	else
 	{
-	  gLog.Error("%sDisplay Picture: Too much data received, ending transfer.\n",
-		     L_MSNxSTR);
+	  gLog.error("Display Picture: Too much data received, ending transfer");
 	}
 	close(m_nFileDesc);
 	m_nFileDesc = -1;
 	m_eState = STATE_FINISHED;
-	ICQUser *u = gUserManager.FetchUser(m_strId.c_str(), MSN_PPID, LOCK_W);
-	if (u)
-	{
-	  u->SetPicturePresent(true);
-	  gUserManager.DropUser(u);
-          m_pMSN->pushPluginSignal(new LicqSignal(SIGNAL_UPDATExUSER, USER_PICTURE, u->id()));
+
+        {
+          Licq::UserWriteGuard u(UserId(m_strId, MSN_PPID));
+          if (u.isLocked())
+          {
+            u->SetPicturePresent(true);
+            m_pMSN->pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+                Licq::PluginSignal::UserPicture, u->id()));
+          }
         }
 
 	// Ack that we got the data
 	CMSNPacket *pAck = new CPS_MSNP2PAck(m_strId.c_str(), m_nSessionId,
 					     m_nBaseId-1, nIdentifier, nAckId,
 					     nDataSize[1], nDataSize[0]);
-	m_pMSN->Send_SB_Packet(m_strId, pAck, m_nSocketDesc);
+        m_pMSN->Send_SB_Packet(UserId(m_strId, MSN_PPID), pAck, m_nSocketDesc);
 
         // Send a bye command
         CMSNPacket *pBye = new CPS_MSNP2PBye(m_strId.c_str(),
@@ -237,7 +264,7 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
 					     m_strCallId.c_str(),
 	  				     m_nBaseId, nAckId,
 					     nDataSize[1], nDataSize[0]);
-        m_pMSN->Send_SB_Packet(m_strId, pBye, m_nSocketDesc);        
+        m_pMSN->Send_SB_Packet(UserId(m_strId, MSN_PPID), pBye, m_nSocketDesc);
 	return 0;
       }
 
@@ -247,7 +274,7 @@ int CMSNDataEvent::ProcessPacket(CMSNBuffer *p)
     case STATE_FINISHED:
     {
       // Don't have to send anything back, just return and close the socket.
-      gLog.Info("%s Display Picture: closing connection with %s\n", L_MSNxSTR,
+      gLog.info("Display Picture: closing connection with %s",
                 m_strId.c_str());
       return 10;
       break;

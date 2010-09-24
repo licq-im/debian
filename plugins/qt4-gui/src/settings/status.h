@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include <config.h>
 
+#include <map>
 #include <QObject>
 
 class QCheckBox;
@@ -77,14 +78,13 @@ private:
   // Widgets for status settings
   QGroupBox* myGeneralBox;
   QVBoxLayout* myGeneralLayout;
-  QCheckBox* myDelayStatusChangeCheck;
   QVBoxLayout* myPageStatusLayout;
   QGroupBox* myAutoLogonBox;
   QGroupBox* myAutoAwayBox;
-  QVBoxLayout* myAutoLogonLayout;
+  QGridLayout* myAutoLogonLayout;
   QGridLayout* myAutoAwayLayout;
-  QComboBox* myAutoLogonCombo;
-  QCheckBox* myAutoLogonInvisibleCheck;
+  std::map<unsigned long, QComboBox*> myAutoLogonCombo;
+  std::map<unsigned long, QCheckBox*> myAutoLogonInvisibleCheck;
   QLabel* myAutoAwayLabel;
   QLabel* myAutoNaLabel;
   QLabel* myAutoOfflineLabel;

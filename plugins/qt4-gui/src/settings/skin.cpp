@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,20 +31,21 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq_log.h>
-#include <licq_constants.h>
+#include <licq/daemon.h>
+#include <licq/inifile.h>
+#include <licq/logging/log.h>
 
 #include "config/iconmanager.h"
 #include "config/emoticons.h"
 #include "config/skin.h"
 
+#include "contactlist/contactlist.h"
+
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 
 #include "dialogs/editfiledlg.h"
 
-#include "helpers/licqstrings.h"
 #include "helpers/support.h"
 
 #include "widgets/skinnablebutton.h"
@@ -203,13 +204,13 @@ QWidget* Settings::Skin::createPageSkin(QWidget* parent)
 void Settings::Skin::load()
 {
   // Load up the available packs
-  QDir skinsPath(QString::fromLocal8Bit(SHARE_DIR) + QTGUI_DIR + SKINS_DIR);
-  QDir skinsUserPath(QString::fromLocal8Bit(BASE_DIR) + QTGUI_DIR + SKINS_DIR);
+  QDir skinsPath(QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR + SKINS_DIR);
+  QDir skinsUserPath(QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + QTGUI_DIR + SKINS_DIR);
   skinsPath.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   skinsUserPath.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   if (skinsPath.count() == 0 && skinsUserPath.count() == 0)
   {
-    gLog.Error("%sError reading %s directory.\n", L_ERRORxSTR, skinsPath.path().toLatin1().data());
+    Licq::gLog.error("Error reading %s directory", skinsPath.path().toLatin1().data());
     mySkinCombo->addItem(tr("Error"));
     mySkinCombo->setEnabled(false);
   }
@@ -264,13 +265,13 @@ void Settings::Skin::load()
 void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo,
     const QString& current, const QString& exampleIcon)
 {
-  QDir iconsPath(QString::fromLocal8Bit(SHARE_DIR) + QTGUI_DIR + subdir);
-  QDir iconsUserPath(QString::fromLocal8Bit(BASE_DIR) + QTGUI_DIR + subdir);
+  QDir iconsPath(QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR + subdir);
+  QDir iconsUserPath(QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + QTGUI_DIR + subdir);
   iconsPath.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   iconsUserPath.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   if (iconsPath.count() == 0 && iconsUserPath.count() == 0)
   {
-    gLog.Error("%sError reading %s directory.\n", L_ERRORxSTR, iconsPath.path().toLatin1().data());
+    Licq::gLog.error("Error reading %s directory", iconsPath.path().toLatin1().data());
     iconCombo->addItem(tr("Error"));
     iconCombo->setEnabled(false);
   }
@@ -281,9 +282,8 @@ void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo
     {
       iconsPath.cd(iconset);
       QString iconsFile = QString("%1/%2.icons").arg(iconsPath.path()).arg(iconset);
-      char sFileName[MAX_FILENAME_LEN] = "";
-      CIniFile fIconsConf;
-      if (!fIconsConf.LoadFile(iconsFile.toLatin1()))
+      Licq::IniFile iconsConf(iconsFile.toLocal8Bit().data());
+      if (!iconsConf.loadFile())
       {
         WarnUser(dynamic_cast<SettingsDlg*>(parent()),
             tr("Unable to open icons file\n%1\nIconset '%2' has been disabled.")
@@ -292,9 +292,10 @@ void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo
         iconsPath.cdUp();
         continue;
       }
-      fIconsConf.SetSection("icons");
-      fIconsConf.ReadStr(exampleIcon.toAscii().data(), sFileName, "");
-      QString pmFile = QString("%1/%2").arg(iconsPath.path()).arg(sFileName);
+      iconsConf.setSection("icons", false);
+      std::string filename;
+      iconsConf.get(exampleIcon.toAscii().data(), filename, "");
+      QString pmFile = QString("%1/%2").arg(iconsPath.path()).arg(filename.c_str());
       iconCombo->addItem(QPixmap(pmFile), iconset);
       if (iconset == current)
         iconCombo->setCurrentIndex(iconCombo->count() - 1);
@@ -306,18 +307,18 @@ void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo
     {
       iconsUserPath.cd(iconset);
       QString iconsFile = QString("%1/%2.icons").arg(iconsUserPath.path()).arg(iconset);
-      char sFileName[MAX_FILENAME_LEN] = "";
-      CIniFile fIconsConf;
-      if (!fIconsConf.LoadFile(iconsFile.toLatin1()))
+      Licq::IniFile iconsConf(iconsFile.toLocal8Bit().data());
+      if (iconsConf.loadFile())
       {
         WarnUser(dynamic_cast<SettingsDlg*>(parent()),
             tr("Unable to open icons file\n%1\nIconset '%2' has been disabled.").arg(iconsFile).arg(iconset));
         iconsUserPath.cdUp();
         continue;
       }
-      fIconsConf.SetSection("icons");
-      fIconsConf.ReadStr(exampleIcon.toAscii().data(), sFileName, "");
-      QString pmFile = QString("%1/%2").arg(iconsUserPath.path()).arg(sFileName);
+      iconsConf.setSection("icons", false);
+      std::string filename;
+      iconsConf.get(exampleIcon.toAscii().data(), filename, "");
+      QString pmFile = QString("%1/%2").arg(iconsUserPath.path()).arg(filename.c_str());
       // Check for duplicates
       int num = iconCombo->count();
       bool dup = false;
@@ -362,11 +363,11 @@ void Settings::Skin::editSkin()
 {
   if (mySkinCombo->currentText().isEmpty()) return;
   QString f;
-  f.sprintf("%s%s%s%s/%s.skin", BASE_DIR, QTGUI_DIR, SKINS_DIR,
+  f.sprintf("%s%s%s%s/%s.skin", Licq::gDaemon.baseDir().c_str(), QTGUI_DIR, SKINS_DIR,
             QFile::encodeName(mySkinCombo->currentText()).data(),
             QFile::encodeName(mySkinCombo->currentText()).data());
   if (!QFile(f).exists())
-    f.sprintf("%s%s%s%s/%s.skin", SHARE_DIR, QTGUI_DIR, SKINS_DIR,
+    f.sprintf("%s%s%s%s/%s.skin", Licq::gDaemon.shareDir().c_str(), QTGUI_DIR, SKINS_DIR,
               QFile::encodeName(mySkinCombo->currentText()).data(),
               QFile::encodeName(mySkinCombo->currentText()).data());
   new EditFileDlg(f);
@@ -391,24 +392,26 @@ IconList Settings::Skin::loadIcons(const QString& iconSet, const QString& subdir
     const QStringList& iconNames)
 {
   IconList icons;
-  QString subpath = QTGUI_DIR + subdir + iconSet + "/" + iconSet + ".icons";
-  QString iconsFile = QString::fromLocal8Bit(BASE_DIR) + subpath;
-  char sFileName[MAX_FILENAME_LEN] = "";
-  CIniFile fIconsConf;
-  if (!fIconsConf.LoadFile(iconsFile.toLatin1()))
+  QString iconListName = iconSet + ".icons";
+  QString subpath = QString(QTGUI_DIR) + subdir + iconSet + "/";
+  QString iconsPath = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subpath;
+  Licq::IniFile iconsFile((iconsPath + iconListName).toLocal8Bit().data());
+  if (!iconsFile.loadFile())
   {
-    iconsFile = QString::fromLocal8Bit(SHARE_DIR) + subpath;
-    if (!fIconsConf.LoadFile(iconsFile.toLatin1()))
+    iconsPath = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subpath;
+    iconsFile.setFilename((iconsPath + iconListName).toLocal8Bit().data());
+    if (!iconsFile.loadFile())
     {
-      WarnUser(dynamic_cast<SettingsDlg*>(parent()), tr("Unable to open icons file\n%1").arg(iconsFile));
+      WarnUser(dynamic_cast<SettingsDlg*>(parent()), tr("Unable to open icons file\n%1").arg(iconsPath + iconListName));
       return icons;
     }
   }
-  fIconsConf.SetSection("icons");
+  iconsFile.setSection("icons", false);
   foreach (const QString& iconName, iconNames)
   {
-    fIconsConf.ReadStr(iconName.toAscii().data(), sFileName, "");
-    QString pmFile = iconsFile.left(iconsFile.length()-iconSet.length()-6) + QString::fromAscii(sFileName);
+    std::string filename;
+    iconsFile.get(iconName.toAscii().data(), filename, "");
+    QString pmFile = iconsPath + QString::fromAscii(filename.c_str());
     QPixmap pm(pmFile);
     if (! pm.isNull())
       icons.append(pm);
@@ -464,8 +467,8 @@ void SkinBrowserPreviewArea::setPixmapList(const IconList& iconList)
 void SkinBrowserPreviewArea::paintEvent(QPaintEvent* /* event */)
 {
   QPainter p(this);
-  unsigned short int X = 0;
-  unsigned short int Y = 0;
+  int X = 0;
+  int Y = 0;
   foreach (const QPixmap& icon, myIconList)
   {
     p.drawPixmap(X, Y, icon, 0, 0, 16, 16);
@@ -509,7 +512,7 @@ QPixmap Settings::Skin::renderSkin(const QString& skinName)
   // Group Combo Box
   cmbUserGroups = new SkinnableComboBox(skin->cmbGroups, &w);
   cmbUserGroups->setGeometry(skin->cmbGroups.borderToRect(&w));
-  cmbUserGroups->addItem(LicqStrings::getSystemGroupName(GROUP_ALL_USERS));
+  cmbUserGroups->addItem(ContactListModel::systemGroupName(ContactListModel::AllUsersGroupId));
 
   // The Menu Button
   if (!skin->frame.hasMenuBar)
@@ -530,16 +533,16 @@ QPixmap Settings::Skin::renderSkin(const QString& skinName)
   // Message Label
   lblMsg = new SkinnableLabel(skin->lblMsg, NULL, &w);
   lblMsg->setGeometry(skin->lblMsg.borderToRect(&w));
-  lblMsg->setText(LicqStrings::getSystemGroupName(GROUP_NEW_USERS));
+  lblMsg->setText(ContactListModel::systemGroupName(ContactListModel::NewUsersGroupId));
 
   // Status Label
   lblStatus = new SkinnableLabel(skin->lblStatus, NULL, &w);
   lblStatus->setGeometry(skin->lblStatus.borderToRect(&w));
-  lblStatus->setText(LicqStrings::getStatus(ICQ_STATUS_ONLINE, false));
-  lblStatus->setPrependPixmap(IconManager::instance()->iconForStatus(ICQ_STATUS_ONLINE));
+  lblStatus->setText(Licq::User::statusToString(Licq::User::OnlineStatus).c_str());
+  lblStatus->setPrependPixmap(IconManager::instance()->iconForStatus(Licq::User::OnlineStatus));
 
   // Userview
-  UserView userView(LicqGui::instance()->contactList(), &w);
+  UserView userView(gGuiContactList, &w);
   userView.setGeometry(skin->frame.border.left, skin->frame.border.top,
                         w.width() - skin->frameWidth(), w.height() - skin->frameHeight());
 

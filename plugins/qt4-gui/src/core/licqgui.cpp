@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,9 @@
 
 #include "config.h"
 
+#include <boost/foreach.hpp>
 #include <list>
+#include <map>
 #include <stdio.h> // for snprintf
 #include <unistd.h> // for getopt
 
@@ -35,6 +37,7 @@
 #include <QMimeData>
 #include <QSessionManager>
 #include <QStyle>
+#include <QTextCodec>
 #include <QTranslator>
 #include <QUrl>
 
@@ -68,12 +71,18 @@ extern "C"
 
 #endif /* defined(Q_WS_X11) */
 
-#include <licq_events.h>
-#include <licq_file.h>
-#include <licq_icq.h>
-#include <licq_icqd.h>
-#include <licq_sar.h>
-#include <licq_user.h>
+#include <licq/inifile.h>
+#include <licq/logging/log.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/icqdefines.h>
+#include <licq/pluginmanager.h>
+#include <licq/pluginsignal.h>
+#include <licq/protocolmanager.h>
+#include <licq/sarmanager.h>
+#include <licq/userevents.h>
 
 #include "config/chat.h"
 #include "config/contactlist.h"
@@ -95,6 +104,7 @@ extern "C"
 #endif
 
 #include "helpers/support.h"
+#include "helpers/usercodec.h"
 
 #include "userdlg/userdlg.h"
 
@@ -123,6 +133,12 @@ extern "C"
 using namespace std;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::LicqGui */
+using Licq::SarManager;
+using Licq::User;
+using Licq::gLog;
+using Licq::gSarManager;
+using Licq::gPluginManager;
+using Licq::gProtocolManager;
 
 #if defined(USE_SCRNSAVER)
 static XErrorHandler old_handler = 0;
@@ -141,7 +157,7 @@ static int licq_xerrhandler(Display* dpy, XErrorEvent* err)
 #endif /* defined(USE_SCRNSAVER) */
 
 
-LicqGui* LicqGui::myInstance = NULL;
+LicqGui* LicqQtGui::gLicqGui = NULL;
 
 LicqGui::LicqGui(int& argc, char** argv) :
 #ifdef USE_KDE
@@ -154,7 +170,8 @@ LicqGui::LicqGui(int& argc, char** argv) :
   myUserEventTabDlg(NULL),
   grabKeysym(0)
 {
-  myInstance = this;
+  assert(gLicqGui == NULL);
+  gLicqGui = this;
 
   int i = 1;
 
@@ -220,15 +237,15 @@ LicqGui::LicqGui(int& argc, char** argv) :
   QString locale = QLocale::system().name();
 #endif
   // Try to load a translation
-  gLog.Info("%sAttempting to load Qt4 and Licq Qt4-GUI translations for %s locale.\n",
-      L_INITxSTR, qPrintable(locale));
+  gLog.info("Attempting to load Qt4 and Licq " DISPLAY_PLUGIN_NAME " translations for %s locale",
+      qPrintable(locale));
 
   QTranslator* qtTranslator = new QTranslator(this);
   qtTranslator->load("qt_" + locale, QLibraryInfo::location(QLibraryInfo::TranslationsPath));
   installTranslator(qtTranslator);
 
   QTranslator* licqTranslator = new QTranslator(this);
-  licqTranslator->load(locale, QString(SHARE_DIR) + QTGUI_DIR + "locale");
+  licqTranslator->load(locale, QString(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR + "locale");
   installTranslator(licqTranslator);
 }
 
@@ -246,88 +263,67 @@ LicqGui::~LicqGui()
 
 void LicqGui::loadGuiConfig()
 {
-  char szTemp[MAX_FILENAME_LEN];
-
-  gLog.Info("%s%s configuration.\n", L_INITxSTR, PLUGIN_NAME);
-  snprintf(szTemp, MAX_FILENAME_LEN, "%s%s", BASE_DIR, QTGUI_CONFIGFILE);
-  szTemp[MAX_FILENAME_LEN - 1] = '\0';
-  CIniFile licqConf;
-  if (!licqConf.LoadFile(szTemp))
+  gLog.info("Loading %s configuration", PLUGIN_NAME);
+  Licq::IniFile guiConf(QTGUI_CONFIGFILE);
+  if (!guiConf.loadFile())
   {
-    // File doesn't exist so define sections and write them now
-    // so saving won't generate warnings later
-    licqConf.SetFlags(INI_FxALLOWxCREATE);
-    licqConf.ReloadFile();
-    licqConf.CreateSection("appearance");
-    licqConf.CreateSection("functions");
-    licqConf.CreateSection("startup");
-    licqConf.CreateSection("locale");
-    licqConf.CreateSection("floaties");
-    licqConf.CreateSection("geometry");
-    licqConf.CreateSection("extensions");
-    licqConf.CreateSection("shortcuts");
-    licqConf.FlushFile();
-
-    // Now try to load the old config file, set the original config file back
-    // in case of error or if user doesn't want to load it.
-    snprintf(szTemp, MAX_FILENAME_LEN, "%s%s", BASE_DIR, "licq_qt-gui.conf");
-    szTemp[MAX_FILENAME_LEN - 1] = '\0';
-    licqConf.SetFlags(0);
-    if (!licqConf.LoadFile(szTemp) ||
+    // No config file, try to load the old config file
+    guiConf.setFilename("licq_qt-gui.conf");
+    if (!guiConf.loadFile() ||
         !QueryYesNo(NULL,
           tr("There was an error loading the default configuration file.\n"
             "Would you like to try loading the old one?")))
     {
-      snprintf(szTemp, MAX_FILENAME_LEN, "%s%s", BASE_DIR, QTGUI_CONFIGFILE);
-      szTemp[MAX_FILENAME_LEN - 1] = '\0';
-      licqConf.LoadFile(szTemp);
+      // No old file either, or user didn't want to load it, revert to newer file
+      guiConf.setFilename(QTGUI_CONFIGFILE);
     }
   }
 
   // Let configuration classes load their settings
-  Config::General::instance()->loadConfiguration(licqConf);
-  Config::Chat::instance()->loadConfiguration(licqConf);
-  Config::ContactList::instance()->loadConfiguration(licqConf);
-  Config::Shortcuts::instance()->loadConfiguration(licqConf);
+  Config::General::instance()->loadConfiguration(guiConf);
+  Config::Chat::instance()->loadConfiguration(guiConf);
+  Config::ContactList::instance()->loadConfiguration(guiConf);
+  Config::Shortcuts::instance()->loadConfiguration(guiConf);
 
   // Load icons
-  licqConf.SetSection("appearance");
+  guiConf.setSection("appearance");
+  std::string s;
 
   if (myIcons.isEmpty())
   {
-    licqConf.ReadStr("Icons", szTemp, "ami");
-    myIcons = szTemp;
+    guiConf.get("Icons", s, "ami");
+    myIcons = s.c_str();
   }
   if (myExtendedIcons.isEmpty())
   {
-    licqConf.ReadStr("ExtendedIcons", szTemp, "basic");
-    myExtendedIcons = szTemp;
+    guiConf.get("ExtendedIcons", s, "basic");
+    myExtendedIcons = s.c_str();
   }
   IconManager::createInstance(myIcons, myExtendedIcons, this);
 
   // Load Emoticons
-  licqConf.ReadStr("Emoticons", szTemp, Emoticons::DEFAULT_THEME.toLatin1());
+  guiConf.get("Emoticons", s, Emoticons::DEFAULT_THEME.toLatin1().data());
   QStringList emoticonsDirs;
-  emoticonsDirs += QString::fromLocal8Bit(SHARE_DIR) + QTGUI_DIR + EMOTICONS_DIR;
-  emoticonsDirs += QString::fromLocal8Bit(BASE_DIR) + QTGUI_DIR + EMOTICONS_DIR;
+  emoticonsDirs += QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR + EMOTICONS_DIR;
+  emoticonsDirs += QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + QTGUI_DIR + EMOTICONS_DIR;
 #ifdef USE_KDE
   // emoticons resource added in KDE 3.4
   emoticonsDirs += KGlobal::dirs()->findDirs("emoticons", "");
 #endif
   Emoticons::self()->setBasedirs(emoticonsDirs);
-  if (!Emoticons::self()->setTheme(Emoticons::translateThemeName(szTemp)))
-    gLog.Error("%sLoading emoticons theme '%s'\n", L_ERRORxSTR, szTemp);
+  if (!Emoticons::self()->setTheme(Emoticons::translateThemeName(s.c_str())))
+    gLog.error("Failed to load emoticons theme '%s'", s.c_str());
 
   // Load skin
   if (mySkin.isEmpty())
   {
-    licqConf.ReadStr("Skin", szTemp, "basic");
-    mySkin = szTemp;
+    guiConf.get("Skin", s, "basic-ncb");
+    mySkin = s.c_str();
   }
   bool skinFrameTransparent;
-  licqConf.ReadBool("Transparent", skinFrameTransparent, false);
-  unsigned short skinFrameStyle;
-  licqConf.ReadNum("FrameStyle", skinFrameStyle, 51);
+  guiConf.get("Transparent", skinFrameTransparent, false);
+  unsigned skinFrameStyle;
+  guiConf.get("FrameStyle", skinFrameStyle, 51);
 
   Config::Skin::createInstance(mySkin, this);
   Config::Skin::active()->setFrameStyle(skinFrameStyle);
@@ -336,35 +332,34 @@ void LicqGui::loadGuiConfig()
 
 void LicqGui::loadFloatiesConfig()
 {
-  char szTemp[MAX_FILENAME_LEN];
-  snprintf(szTemp, MAX_FILENAME_LEN, "%s%s", BASE_DIR, QTGUI_CONFIGFILE);
-  szTemp[MAX_FILENAME_LEN - 1] = '\0';
-  CIniFile licqConf;
-  licqConf.LoadFile(szTemp);
+  Licq::IniFile guiConf(QTGUI_CONFIGFILE);
+  if (!guiConf.loadFile())
+    return;
 
+  std::string s;
   char key[16];
-  unsigned short nFloaties = 0, xPosF, yPosF, wValF;
-  licqConf.SetSection("floaties");
-  licqConf.ReadNum("Num", nFloaties, 0);
-  for (unsigned short i = 0; i < nFloaties; i++)
+  int nFloaties = 0, xPosF, yPosF, wValF;
+  guiConf.setSection("floaties");
+  guiConf.get("Num", nFloaties, 0);
+  for (int i = 0; i < nFloaties; i++)
   {
     sprintf(key, "Floaty%d.Ppid", i);
     unsigned long ppid;
-    licqConf.ReadNum(key, ppid, LICQ_PPID);
+    guiConf.get(key, ppid, LICQ_PPID);
     sprintf(key, "Floaty%d.Uin", i);
-    licqConf.ReadStr(key, szTemp, "");
-    if (szTemp[0] == '\0')
+    guiConf.get(key, s, "");
+    if (s.empty())
       continue;
-    UserId userId = LicqUser::makeUserId(szTemp, ppid);
+    Licq::UserId userId(s, ppid);
 
     sprintf(key, "Floaty%d.X", i);
-    licqConf.ReadNum(key, xPosF, 0);
+    guiConf.get(key, xPosF, 0);
     sprintf(key, "Floaty%d.Y", i);
-    licqConf.ReadNum(key, yPosF, 0);
+    guiConf.get(key, yPosF, 0);
     sprintf(key, "Floaty%d.W", i);
-    licqConf.ReadNum(key, wValF, 80);
+    guiConf.get(key, wValF, 80);
 
-    if (USERID_ISVALID(userId))
+    if (userId.isValid())
       createFloaty(userId, xPosF, yPosF, wValF);
   }
 }
@@ -372,58 +367,51 @@ void LicqGui::loadFloatiesConfig()
 void LicqGui::saveConfig()
 {
   // Tell the daemon to save its options
-  myLicqDaemon->SaveConf();
+  Licq::gDaemon.SaveConf();
 
   // Save all our options
-  char filename[MAX_FILENAME_LEN];
-  snprintf(filename, MAX_FILENAME_LEN, "%s%s", BASE_DIR, QTGUI_CONFIGFILE);
-  filename[MAX_FILENAME_LEN - 1] = '\0';
-  CIniFile licqConf(INI_FxERROR | INI_FxALLOWxCREATE);
+  Licq::IniFile guiConf(QTGUI_CONFIGFILE);
+  guiConf.loadFile();
 
-  if (!licqConf.LoadFile(filename))
-    return;
+  Config::General::instance()->saveConfiguration(guiConf);
+  Config::Chat::instance()->saveConfiguration(guiConf);
+  Config::ContactList::instance()->saveConfiguration(guiConf);
+  Config::Shortcuts::instance()->saveConfiguration(guiConf);
 
-  Config::General::instance()->saveConfiguration(licqConf);
-  Config::Chat::instance()->saveConfiguration(licqConf);
-  Config::ContactList::instance()->saveConfiguration(licqConf);
-  Config::Shortcuts::instance()->saveConfiguration(licqConf);
+  guiConf.setSection("appearance");
+  guiConf.set("Skin", Config::Skin::active()->skinName().toLocal8Bit());
+  guiConf.set("Icons", IconManager::instance()->iconSet().toLocal8Bit());
+  guiConf.set("ExtendedIcons", IconManager::instance()->extendedIconSet().toLocal8Bit());
+  guiConf.set("Emoticons", Emoticons::untranslateThemeName(Emoticons::self()->theme()).toLatin1());
 
-  licqConf.SetSection("appearance");
-  licqConf.WriteStr("Skin", Config::Skin::active()->skinName().toLocal8Bit());
-  licqConf.WriteStr("Icons", IconManager::instance()->iconSet().toLocal8Bit());
-  licqConf.WriteStr("ExtendedIcons", IconManager::instance()->extendedIconSet().toLocal8Bit());
-  licqConf.WriteStr("Emoticons", Emoticons::untranslateThemeName(Emoticons::self()->theme()).toLatin1());
-
-  licqConf.WriteBool("Transparent", Config::Skin::active()->frame.transparent);
-  licqConf.WriteNum("FrameStyle", Config::Skin::active()->frame.frameStyle);
+  guiConf.set("Transparent", Config::Skin::active()->frame.transparent);
+  guiConf.set("FrameStyle", Config::Skin::active()->frame.frameStyle);
 
   char key[32];
-  licqConf.SetSection("floaties");
-  licqConf.WriteNum("Num", (unsigned short)FloatyView::floaties.size());
-  for (unsigned short i = 0; i < FloatyView::floaties.size(); i++)
+  guiConf.setSection("floaties");
+  guiConf.set("Num", FloatyView::floaties.size());
+  for (int i = 0; i < FloatyView::floaties.size(); i++)
   {
     FloatyView* iter = FloatyView::floaties.at(i);
     sprintf(key, "Floaty%d.Ppid", i);
-    licqConf.WriteNum(key, LicqUser::getUserProtocolId(iter->userId()));
+    guiConf.set(key, iter->userId().protocolId());
     sprintf(key, "Floaty%d.Uin", i);
-    licqConf.writeString(key, LicqUser::getUserAccountId(iter->userId()));
+    guiConf.set(key, iter->userId().accountId());
     sprintf(key, "Floaty%d.X", i);
-    licqConf.WriteNum(key, (unsigned short)(iter->x() > 0 ? iter->x() : 0));
+    guiConf.set(key, (iter->x() > 0 ? iter->x() : 0));
     sprintf(key, "Floaty%d.Y", i);
-    licqConf.WriteNum(key, (unsigned short)(iter->y() > 0 ? iter->y() : 0));
+    guiConf.set(key, (iter->y() > 0 ? iter->y() : 0));
     sprintf(key, "Floaty%d.W", i);
-    licqConf.WriteNum(key, (unsigned short)iter->width());
+    guiConf.set(key, iter->width());
   }
 
-  licqConf.FlushFile();
+  guiConf.writeFile();
 }
 
-int LicqGui::Run(CICQDaemon* daemon)
+int LicqGui::Run()
 {
-  myLicqDaemon = daemon;
-
   // Register with the daemon, we want to receive all signals
-  int pipe = daemon->RegisterPlugin(SIGNAL_ALL);
+  int pipe = gPluginManager.registerGeneralPlugin(Licq::PluginSignal::SignalAll);
 
   // Create the configuration handlers
   Config::General::createInstance(this);
@@ -440,38 +428,42 @@ int LicqGui::Run(CICQDaemon* daemon)
   mySignalManager = new SignalManager(pipe);
   myLogWindow = new LogWindow;
 
-  gLog.AddService(new CLogService_Plugin(myLogWindow, L_MOST));
+  using Licq::Log;
+  myLogWindow->pluginLogSink()->setLogLevel(Log::Unknown, true);
+  myLogWindow->pluginLogSink()->setLogLevel(Log::Info, true);
+  myLogWindow->pluginLogSink()->setLogLevel(Log::Warning, true);
+  myLogWindow->pluginLogSink()->setLogLevel(Log::Error, true);
 
   // Check for qt-gui directory in current base dir
-  if (!QDir(QString("%1/%2").arg(BASE_DIR).arg(QTGUI_DIR)).exists())
+  if (!QDir(QString("%1%2").arg(Licq::gDaemon.baseDir().c_str()).arg(QTGUI_DIR)).exists())
   {
     QDir d;
-    d.mkdir(QString("%1/%2").arg(BASE_DIR).arg(QTGUI_DIR));
+    d.mkdir(QString("%1%2").arg(Licq::gDaemon.baseDir().c_str()).arg(QTGUI_DIR));
   }
 
   loadGuiConfig();
 
   // Contact list model
   myContactList = new ContactListModel(this);
-  connect(mySignalManager, SIGNAL(updatedList(unsigned long, int, const UserId&)),
-      myContactList, SLOT(listUpdated(unsigned long, int, const UserId&)));
-  connect(mySignalManager, SIGNAL(updatedUser(const UserId&, unsigned long, int, unsigned long)),
-      myContactList, SLOT(userUpdated(const UserId&, unsigned long, int)));
+  connect(mySignalManager, SIGNAL(updatedList(unsigned long, int, const Licq::UserId&)),
+      myContactList, SLOT(listUpdated(unsigned long, int, const Licq::UserId&)));
+  connect(mySignalManager, SIGNAL(updatedUser(const Licq::UserId&, unsigned long, int, unsigned long)),
+      myContactList, SLOT(userUpdated(const Licq::UserId&, unsigned long, int)));
 
-  connect(mySignalManager, SIGNAL(updatedList(unsigned long, int, const UserId&)),
-      SLOT(listUpdated(unsigned long, int, const UserId&)));
-  connect(mySignalManager, SIGNAL(updatedUser(const UserId&, unsigned long, int, unsigned long)),
-      SLOT(userUpdated(const UserId&, unsigned long, int, unsigned long)));
-  connect(mySignalManager, SIGNAL(socket(const UserId&, unsigned long)),
-      SLOT(convoSet(const UserId&, unsigned long)));
-  connect(mySignalManager, SIGNAL(convoJoin(const UserId&, unsigned long, unsigned long)),
-      SLOT(convoJoin(const UserId&, unsigned long, unsigned long)));
-  connect(mySignalManager, SIGNAL(convoLeave(const UserId&, unsigned long, unsigned long)),
-      SLOT(convoLeave(const UserId&, unsigned long, unsigned long)));
-  connect(mySignalManager, SIGNAL(ui_message(const UserId&)),
-      SLOT(showMessageDialog(const UserId&)));
-  connect(mySignalManager, SIGNAL(ui_viewevent(const UserId&)),
-      SLOT(showNextEvent(const UserId&)));
+  connect(mySignalManager, SIGNAL(updatedList(unsigned long, int, const Licq::UserId&)),
+      SLOT(listUpdated(unsigned long, int, const Licq::UserId&)));
+  connect(mySignalManager, SIGNAL(updatedUser(const Licq::UserId&, unsigned long, int, unsigned long)),
+      SLOT(userUpdated(const Licq::UserId&, unsigned long, int, unsigned long)));
+  connect(mySignalManager, SIGNAL(socket(const Licq::UserId&, unsigned long)),
+      SLOT(convoSet(const Licq::UserId&, unsigned long)));
+  connect(mySignalManager, SIGNAL(convoJoin(const Licq::UserId&, unsigned long, unsigned long)),
+      SLOT(convoJoin(const Licq::UserId&, unsigned long, unsigned long)));
+  connect(mySignalManager, SIGNAL(convoLeave(const Licq::UserId&, unsigned long, unsigned long)),
+      SLOT(convoLeave(const Licq::UserId&, unsigned long, unsigned long)));
+  connect(mySignalManager, SIGNAL(ui_message(const Licq::UserId&)),
+      SLOT(showMessageDialog(const Licq::UserId&)));
+  connect(mySignalManager, SIGNAL(ui_viewevent(const Licq::UserId&)),
+      SLOT(showNextEvent(const Licq::UserId&)));
 
   myUserMenu = new UserMenu();
   myGroupMenu = new GroupMenu();
@@ -495,30 +487,11 @@ int LicqGui::Run(CICQDaemon* daemon)
   myAutoAwayTimer.start(10000);  // start the inactivity timer for auto away
   connect(&myAutoAwayTimer, SIGNAL(timeout()), SLOT(autoAway()));
 
-  // automatically logon if requested in conf file
-  unsigned short autoLogon = Config::General::instance()->autoLogon();
-  if (autoLogon > 0)
-  {
-    bool invisible = (autoLogon >= 10);
-    switch (autoLogon % 10)
-    {
-      case 0: break;
-      case 1: changeStatus(ICQ_STATUS_ONLINE, invisible); break;
-      case 2: changeStatus(ICQ_STATUS_AWAY, invisible); break;
-      case 3: changeStatus(ICQ_STATUS_NA, invisible); break;
-      case 4: changeStatus(ICQ_STATUS_OCCUPIED, invisible); break;
-      case 5: changeStatus(ICQ_STATUS_DND, invisible); break;
-      case 6: changeStatus(ICQ_STATUS_FREEFORCHAT, invisible); break;
-      default: gLog.Warn("%sInvalid auto online id: %d.\n", L_WARNxSTR, autoLogon);
-    }
-  }
-
   int r = exec();
 
-  daemon->UnregisterPlugin();
+  gPluginManager.unregisterGeneralPlugin();
 
-  gLog.Info("%sShutting down gui.\n", L_ENDxSTR);
-  gLog.ModifyService(S_PLUGIN, 0);
+  gLog.info("Shutting down gui");
 
   return r;
 }
@@ -591,7 +564,7 @@ void LicqGui::grabKey(const QString& key)
 
   if (grabKeysym == 0)
   {
-    gLog.Error("%sUnknown popup key: %s\n", L_INITxSTR, key.toLatin1().data());
+    gLog.error("Unknown popup key: %s", key.toLatin1().data());
     return;
   }
 
@@ -601,78 +574,95 @@ void LicqGui::grabKey(const QString& key)
 }
 #endif /* defined(Q_WS_X11) */
 
-void LicqGui::changeStatus(unsigned long status, bool invisible)
+void LicqGui::changeStatus(unsigned status, bool invisible, const QString& autoMessage)
 {
-  FOR_EACH_PROTO_PLUGIN_START(myLicqDaemon)
+  // Get a list of owners first since we can't call changeStatus with list locked
+  list<Licq::UserId> owners;
   {
-    unsigned long ppid = (*_ppit)->PPID();
-
-    // Keep invisible mode on protocols when changing global status
-    bool protoInvisible = invisible;
-    if (status != ICQ_STATUS_FxPRIVATE && myMainWindow->systemMenu()->getInvisibleStatus(ppid))
-      protoInvisible = true;
-
-    changeStatus(status, ppid, protoInvisible);
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* o, **ownerList)
+      owners.push_back(o->id());
   }
-  FOR_EACH_PROTO_PLUGIN_END
+
+  BOOST_FOREACH(const Licq::UserId& userId, owners)
+    changeStatus(status, userId, invisible, autoMessage);
 }
 
-void LicqGui::changeStatus(unsigned long status, unsigned long ppid, bool invisible)
+void LicqGui::changeStatus(unsigned status, const Licq::UserId& userId, bool invisible, const QString& autoMessage)
 {
-  const ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_R);
-  if (o == NULL)
-    return;
+  unsigned oldStatus;
 
-  if (status == ICQ_STATUS_FxPRIVATE)
   {
-    if (o->StatusOffline())
-    {
-      gUserManager.DropOwner(o);
+    Licq::OwnerReadGuard o(userId);
+    if (!o.isLocked())
       return;
-    }
 
-    status = o->StatusFull();
-
-    if (invisible)
-      status |= ICQ_STATUS_FxPRIVATE;
-    else
-      status &= (~ICQ_STATUS_FxPRIVATE);
+    oldStatus = o->status();
   }
-  else if(status != ICQ_STATUS_OFFLINE)
+
+  if (status == User::InvisibleStatus)
   {
-    if (o->StatusInvisible() || invisible)
-      status |= ICQ_STATUS_FxPRIVATE;
+    // Don't try to toggle invisible if we're offline
+    if (oldStatus == User::OfflineStatus)
+      return;
+
+    // Just set invisible status, keep the rest
+    status = oldStatus;
+    if (invisible)
+      status |= User::InvisibleStatus;
+    else
+      status &= ~User::InvisibleStatus;
+  }
+  else if (status != User::OfflineStatus)
+  {
+    // Normal status change, keep flags
+    status |= User::OnlineStatus;
+    if (invisible || oldStatus & User::InvisibleStatus)
+      status |= User::InvisibleStatus;
+    if (oldStatus & User::IdleStatus)
+      status |= User::IdleStatus;
+
+    if (oldStatus == User::OfflineStatus)
+    {
+      // When going online, keep oldinvisible flag from status menu
+      if (myMainWindow->systemMenu()->getInvisibleStatus(userId))
+        status |= User::InvisibleStatus;
+    }
   }
 
-  UserId ownerId = o->id();
-  gUserManager.DropOwner(o);
-
-  myLicqDaemon->protoSetStatus(ownerId, status);
+  const QTextCodec* codec = UserCodec::defaultEncoding();
+  gProtocolManager.setStatus(userId, status,
+      (autoMessage.isNull() ? gProtocolManager.KeepAutoResponse : codec->fromUnicode(autoMessage).data()));
 }
 
-bool LicqGui::removeUserFromList(const UserId& userId, QWidget* parent)
+bool LicqGui::removeUserFromList(const Licq::UserId& userId, QWidget* parent)
 {
   if (parent == NULL)
     parent = myMainWindow;
 
-  const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-  if (u == NULL)
-    return true;
-  QString warning(tr("Are you sure you want to remove\n%1 (%2)\nfrom your contact list?")
-      .arg(QString::fromUtf8(u->GetAlias()))
-      .arg(u->IdString()));
-  gUserManager.DropUser(u);
-  if (QueryYesNo(parent, warning))
+  QString warning;
+  bool notInList;
   {
-    gUserManager.removeUser(userId);
+    Licq::UserReadGuard u(userId);
+    if (!u.isLocked())
+      return true;
+    notInList = u->NotInList();
+    warning = tr("Are you sure you want to remove\n%1 (%2)\nfrom your contact list?")
+        .arg(QString::fromUtf8(u->GetAlias()))
+        .arg(u->accountId().c_str());
+  }
+
+  if (notInList || QueryYesNo(parent, warning))
+  {
+    Licq::gUserManager.removeUser(userId);
     return true;
   }
   return false;
 }
 
-void LicqGui::showInfoDialog(int /* fcn */, const UserId& userId, bool toggle, bool updateNow)
+void LicqGui::showInfoDialog(int /* fcn */, const Licq::UserId& userId, bool toggle, bool updateNow)
 {
-  if (!USERID_ISVALID(userId))
+  if (!userId.isValid())
     return;
 
   UserDlg* f = NULL;
@@ -717,9 +707,9 @@ void LicqGui::showInfoDialog(int /* fcn */, const UserId& userId, bool toggle, b
     f->retrieveSettings();
 }
 
-UserViewEvent* LicqGui::showViewEventDialog(const UserId& userId)
+UserViewEvent* LicqGui::showViewEventDialog(const Licq::UserId& userId)
 {
-  if (!USERID_ISVALID(userId))
+  if (!userId.isValid())
     return NULL;
 
   for (int i = 0; i < myUserViewList.size(); ++i)
@@ -728,11 +718,16 @@ UserViewEvent* LicqGui::showViewEventDialog(const UserId& userId)
     if (e->userId() == userId)
     {
       e->show();
-      if (Config::Chat::instance()->autoFocus() &&
-          (!qApp->activeWindow() || !qApp->activeWindow()->inherits("UserEventCommon")))
+      if (Config::Chat::instance()->autoFocus())
       {
-        e->raise();
-        e->activateWindow();
+        // Don't change focus if another message window is already active
+        const QWidget* activeWin = QApplication::activeWindow();
+        if (activeWin == NULL || ((qobject_cast<const UserEventCommon*>(activeWin)) == NULL &&
+            (qobject_cast<const UserEventTabDlg*>(activeWin)) == NULL))
+        {
+          e->raise();
+          e->activateWindow();
+        }
       }
       return e;
     }
@@ -742,46 +737,33 @@ UserViewEvent* LicqGui::showViewEventDialog(const UserId& userId)
 
   e->show();
   userEventFinished(userId);
-  connect(e, SIGNAL(finished(const UserId&)), SLOT(userEventFinished(const UserId&)));
+  connect(e, SIGNAL(finished(const Licq::UserId&)), SLOT(userEventFinished(const Licq::UserId&)));
   myUserViewList.append(e);
 
   return e;
 }
 
-UserEventCommon* LicqGui::showEventDialog(int fcn, const UserId& userId, int convoId, bool autoPopup)
+UserEventCommon* LicqGui::showEventDialog(int fcn, const Licq::UserId& userId, int convoId, bool autoPopup)
 {
-  if (!USERID_ISVALID(userId))
+  if (!userId.isValid())
     return NULL;
 
-  LicqUser* user = gUserManager.fetchUser(userId);
-  if (user == NULL)
-    return NULL;
-  QString id = user->accountId().c_str();
-  unsigned long ppid = user->ppid();
-  gUserManager.DropUser(user);
+  QString id = userId.accountId().c_str();
+  unsigned long ppid = userId.protocolId();
 
   // Find out what's supported for this protocol
-  unsigned long sendFuncs = 0xFFFFFFFF;
-  if (ppid != LICQ_PPID)
-  {
-    FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
-    {
-      if ((*_ppit)->PPID() == ppid)
-      {
-        sendFuncs = (*_ppit)->SendFunctions();
-        break;
-      }
-    }
-    FOR_EACH_PROTO_PLUGIN_END
-  }
+  unsigned long sendFuncs = 0;
+  Licq::ProtocolPlugin::Ptr protocol = gPluginManager.getProtocolPlugin(ppid);
+  if (protocol.get() != NULL)
+    sendFuncs = protocol->getSendFunctions();
 
   // Check if the protocol for this contact support the function we want to open
-  if ((fcn == MessageEvent && !(sendFuncs & PP_SEND_MSG)) ||
-      (fcn == UrlEvent && !(sendFuncs & PP_SEND_URL)) ||
-      (fcn == ChatEvent && !(sendFuncs & PP_SEND_CHAT)) ||
-      (fcn == FileEvent && !(sendFuncs & PP_SEND_FILE )) ||
-      (fcn == ContactEvent && !(sendFuncs & PP_SEND_CONTACT)) ||
-      (fcn == SmsEvent && !(sendFuncs & PP_SEND_SMS)))
+  if ((fcn == MessageEvent && !(sendFuncs & Licq::ProtocolPlugin::CanSendMsg)) ||
+      (fcn == UrlEvent && !(sendFuncs & Licq::ProtocolPlugin::CanSendUrl)) ||
+      (fcn == ChatEvent && !(sendFuncs & Licq::ProtocolPlugin::CanSendChat)) ||
+      (fcn == FileEvent && !(sendFuncs & Licq::ProtocolPlugin::CanSendFile )) ||
+      (fcn == ContactEvent && !(sendFuncs & Licq::ProtocolPlugin::CanSendContact)) ||
+      (fcn == SmsEvent && !(sendFuncs & Licq::ProtocolPlugin::CanSendSms)))
     return NULL;
 
 
@@ -841,7 +823,6 @@ UserEventCommon* LicqGui::showEventDialog(int fcn, const UserId& userId, int con
     }
   }
 
-  bool newtabw = false;
   QWidget* parent = NULL;
   if (Config::Chat::instance()->tabbedChatting())
   {
@@ -850,7 +831,6 @@ UserEventCommon* LicqGui::showEventDialog(int fcn, const UserId& userId, int con
       // create the tab dialog if it does not exist
       myUserEventTabDlg = new UserEventTabDlg(0, "UserEventTabbedDialog");
       connect(myUserEventTabDlg, SIGNAL(signal_done()), SLOT(userEventTabDlgDone()));
-      newtabw = true;
     }
     parent = myUserEventTabDlg;
   }
@@ -884,7 +864,7 @@ UserEventCommon* LicqGui::showEventDialog(int fcn, const UserId& userId, int con
       break;
 
     default:
-      gLog.Warn("%sunknown callFunction() fcn: %d\n", L_WARNxSTR, fcn);
+      gLog.warning("Unknown callFunction() fcn: %d", fcn);
   }
   if (e == NULL) return NULL;
 
@@ -914,32 +894,32 @@ UserEventCommon* LicqGui::showEventDialog(int fcn, const UserId& userId, int con
 
   // Since daemon doesn't notify us when an event is sent we need to take care of it ourselfs
   // Get signals from event dialog and forward it to anyone who needs it
-  connect(e, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
+  connect(e, SIGNAL(eventSent(const Licq::Event*)), SIGNAL(eventSent(const Licq::Event*)));
 
   // there might be more than one send window open
   // make sure we only remember one, or it will get complicated
   sendEventFinished(userId);
-  connect(e, SIGNAL(finished(const UserId&)), SLOT(sendEventFinished(const UserId&)));
+  connect(e, SIGNAL(finished(const Licq::UserId&)), SLOT(sendEventFinished(const Licq::UserId&)));
   myUserSendList.append(static_cast<UserSendCommon*>(e));
 
   return e;
 }
 
-void LicqGui::replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, const UserId& userId)
+void LicqGui::replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, const Licq::UserId& userId)
 {
-  disconnect(oldDialog, SIGNAL(finished(const UserId&)), this, SLOT(sendEventFinished(const UserId&)));
+  disconnect(oldDialog, SIGNAL(finished(const Licq::UserId&)), this, SLOT(sendEventFinished(const Licq::UserId&)));
   sendEventFinished(userId);
-  connect(newDialog, SIGNAL(eventSent(const LicqEvent*)), SIGNAL(eventSent(const LicqEvent*)));
-  connect(newDialog, SIGNAL(finished(const UserId&)), SLOT(sendEventFinished(const UserId&)));
+  connect(newDialog, SIGNAL(eventSent(const Licq::Event*)), SIGNAL(eventSent(const Licq::Event*)));
+  connect(newDialog, SIGNAL(finished(const Licq::UserId&)), SLOT(sendEventFinished(const Licq::UserId&)));
     myUserSendList.append(newDialog);
 }
 
-void LicqGui::showMessageDialog(const UserId& userId)
+void LicqGui::showMessageDialog(const Licq::UserId& userId)
 {
   showEventDialog(MessageEvent, userId);
 }
 
-void LicqGui::sendMsg(const UserId& userId, const QString& message)
+void LicqGui::sendMsg(const Licq::UserId& userId, const QString& message)
 {
   UserSendCommon* event = dynamic_cast<UserSendCommon*>(showEventDialog(MessageEvent, userId));
   if (event == 0)
@@ -948,7 +928,7 @@ void LicqGui::sendMsg(const UserId& userId, const QString& message)
   event->setText(message);
 }
 
-void LicqGui::sendFileTransfer(const UserId& userId, const QString& filename, const QString& description)
+void LicqGui::sendFileTransfer(const Licq::UserId& userId, const QString& filename, const QString& description)
 {
   UserSendFileEvent* event = dynamic_cast<UserSendFileEvent*>(showEventDialog(FileEvent, userId));
   if (event == 0)
@@ -957,14 +937,14 @@ void LicqGui::sendFileTransfer(const UserId& userId, const QString& filename, co
   event->setFile(filename, description);
 }
 
-void LicqGui::sendChatRequest(const UserId& userId)
+void LicqGui::sendChatRequest(const Licq::UserId& userId)
 {
   UserSendCommon* event = dynamic_cast<UserSendCommon*>(showEventDialog(ChatEvent, userId));
   if (event == 0)
     return;
 }
 
-bool LicqGui::userDropEvent(const UserId& userId, const QMimeData& mimeData)
+bool LicqGui::userDropEvent(const Licq::UserId& userId, const QMimeData& mimeData)
 {
   if (mimeData.hasUrls())
   {
@@ -1010,21 +990,27 @@ bool LicqGui::userDropEvent(const UserId& userId, const QMimeData& mimeData)
     QString text = mimeData.text();
 
     unsigned long dropPpid = 0;
-    FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
+
     {
-      if (text.startsWith(PPIDSTRING((*_ppit)->PPID())))
+      Licq::OwnerListGuard ownerList;
+      BOOST_FOREACH(Licq::Owner* owner, **ownerList)
       {
-        dropPpid = (*_ppit)->PPID();
-        break;
+        unsigned long ppid = owner->ppid();
+        char ppidStr[5];
+        Licq::protocolId_toStr(ppidStr, ppid);
+        if (text.startsWith(ppidStr))
+        {
+          dropPpid = ppid;
+          break;
+        }
       }
     }
-    FOR_EACH_PROTO_PLUGIN_END
 
     if (dropPpid != 0 && text.length() > 4)
     {
       QString dropId = text.mid(4);
-      UserId dropUserId = LicqUser::makeUserId(dropId.toLatin1().data(), dropPpid);
-      if (!USERID_ISVALID(dropUserId) || userId == dropUserId)
+      Licq::UserId dropUserId(dropId.toLatin1().data(), dropPpid);
+      if (!dropUserId.isValid() || userId == dropUserId)
         return false;
 
       UserSendContactEvent* sendContact = dynamic_cast<UserSendContactEvent*>(showEventDialog(ContactEvent, userId));
@@ -1056,16 +1042,7 @@ void LicqGui::viewUrl(const QString& url)
   else
     KToolInvocation::invokeBrowser(url);
 #else
-  bool useCustomUrlBrowser(Config::Chat::instance()->useCustomUrlBrowser());
-
-  if (useCustomUrlBrowser || (!useCustomUrlBrowser && !QDesktopServices::openUrl(QUrl(url))))
-  {
-    if (!myLicqDaemon->getUrlViewer())
-      myLicqDaemon->setUrlViewer(DEFAULT_URL_VIEWER);
-    if (!myLicqDaemon->ViewUrl(url.toLocal8Bit().data()))
-      WarnUser(NULL, tr("Licq is unable to start your browser and open the URL.\n"
-            "You will need to start the browser and open the URL manually."));
-  }
+  QDesktopServices::openUrl(QUrl(url));
 #endif
 }
 
@@ -1074,8 +1051,8 @@ void LicqGui::userDlgFinished(UserDlg* dialog)
   if (myUserDlgList.removeAll(dialog) > 0)
     return;
 
-  gLog.Warn("%sUser Info finished signal for user with no window (%s)!\n",
-      L_WARNxSTR, USERID_TOSTR(dialog->userId()));
+  gLog.warning("User Info finished signal for user with no window (%s)",
+      dialog->userId().toString().c_str());
 }
 
 void LicqGui::userEventTabDlgDone()
@@ -1083,7 +1060,7 @@ void LicqGui::userEventTabDlgDone()
   myUserEventTabDlg = NULL;
 }
 
-void LicqGui::userEventFinished(const UserId& userId)
+void LicqGui::userEventFinished(const Licq::UserId& userId)
 {
   for (int i = 0; i < myUserViewList.size(); ++i)
   {
@@ -1096,7 +1073,7 @@ void LicqGui::userEventFinished(const UserId& userId)
   }
 }
 
-void LicqGui::sendEventFinished(const UserId& userId)
+void LicqGui::sendEventFinished(const Licq::UserId& userId)
 {
   // go through the whole list, since there might be more than one hit
   for (int i = 0; i < myUserSendList.size(); ++i)
@@ -1107,39 +1084,38 @@ void LicqGui::sendEventFinished(const UserId& userId)
   }
 }
 
-void LicqGui::showDefaultEventDialog(const UserId& userId)
+void LicqGui::showDefaultEventDialog(const Licq::UserId& userId)
 {
-  if (!USERID_ISVALID(userId))
+  if (!userId.isValid())
     return;
 
-  const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
+  QString id = userId.accountId().c_str();
+  unsigned long ppid = userId.protocolId();
 
-  if (u == NULL)
-    return;
-
-  QString id = u->accountId().c_str();
-  unsigned long ppid = u->ppid();
-
-  // For multi user conversations (i.e. in MSN)
+  bool send;
   int convoId = -1;
-
-  // set default function to read or send depending on whether or not
-  // there are new messages
-  bool send = (u->NewMessages() == 0);
-  if (!send && Config::Chat::instance()->msgChatView())
   {
-    // if one of the new events is a msg in chatview mode,
-    // change def function to send
-    for (unsigned short i = 0; i < u->NewMessages(); i++)
-      if (u->EventPeek(i)->SubCommand() == ICQ_CMDxSUB_MSG ||
-          u->EventPeek(i)->SubCommand() == ICQ_CMDxSUB_URL)
-      {
-        convoId = u->EventPeek(i)->ConvoId();
-        send = true;
-        break;
-      }
+    Licq::UserReadGuard u(userId);
+    if (!u.isLocked())
+      return;
+
+    // set default function to read or send depending on whether or not
+    // there are new messages
+    send = (u->NewMessages() == 0);
+    if (!send && Config::Chat::instance()->msgChatView())
+    {
+      // if one of the new events is a msg in chatview mode,
+      // change def function to send
+      for (unsigned short i = 0; i < u->NewMessages(); i++)
+        if (u->EventPeek(i)->SubCommand() == ICQ_CMDxSUB_MSG ||
+            u->EventPeek(i)->SubCommand() == ICQ_CMDxSUB_URL)
+        {
+          convoId = u->EventPeek(i)->ConvoId();
+          send = true;
+          break;
+        }
+    }
   }
-  gUserManager.DropUser(u);
 
   if (!send)
   {
@@ -1163,21 +1139,13 @@ void LicqGui::showDefaultEventDialog(const UserId& userId)
     }
 
     // Check which message types are supported for this protocol
-    unsigned long sendFuncs = 0xFFFFFFFF;
-    if (ppid != LICQ_PPID)
-    {
-      FOR_EACH_PROTO_PLUGIN_START(gLicqDaemon)
-      {
-        if ((*_ppit)->PPID() == ppid)
-        {
-          sendFuncs = (*_ppit)->SendFunctions();
-          break;
-        }
-      }
-      FOR_EACH_PROTO_PLUGIN_END
-    }
+    unsigned long sendFuncs = 0;
+    Licq::ProtocolPlugin::Ptr protocol = gPluginManager.getProtocolPlugin(ppid);
+    if (protocol.get() != NULL)
+      sendFuncs = protocol->getSendFunctions();
 
-    if (sendFuncs & PP_SEND_URL && (c.left(5) == "http:" || c.left(4) == "ftp:" || c.left(6) == "https:"))
+    if (sendFuncs & Licq::ProtocolPlugin::CanSendUrl &&
+        (c.left(5) == "http:" || c.left(4) == "ftp:" || c.left(6) == "https:"))
     {
       UserEventCommon* ec = showEventDialog(UrlEvent, userId);
       if (!ec || ec->objectName() != "UserSendUrlEvent")
@@ -1189,7 +1157,8 @@ void LicqGui::showDefaultEventDialog(const UserId& userId)
       clip->clear(mode);
       return;
     }
-    else if (sendFuncs & PP_SEND_FILE && (c.left(5) == "file:" || c.left(1) == "/"))
+    else if (sendFuncs & Licq::ProtocolPlugin::CanSendFile &&
+        (c.left(5) == "file:" || c.left(1) == "/"))
     {
       UserEventCommon* ec = showEventDialog(FileEvent, userId);
       if (!ec || ec->objectName() != "UserSendFileEvent")
@@ -1211,67 +1180,65 @@ void LicqGui::showDefaultEventDialog(const UserId& userId)
   showEventDialog(MessageEvent, userId, convoId);
 }
 
-void LicqGui::showAllOwnerEvents()
+bool LicqGui::showAllOwnerEvents()
 {
-  FOR_EACH_PROTO_PLUGIN_START(myLicqDaemon)
+  bool foundEvents = false;
+
+  // Get a list of owners first so we can unlock list before calling showViewEventDialog
+  list<Licq::UserId> users;
+
   {
-    const ICQOwner* o = gUserManager.FetchOwner((*_ppit)->PPID(), LOCK_R);
-    if (o == NULL)
-      continue;
-    unsigned short nNumMsg = o->NewMessages();
-    UserId userId = o->id();
-    gUserManager.DropOwner(o);
-
-    if (nNumMsg > 0)
-      showViewEventDialog(userId);
-  }
-  FOR_EACH_PROTO_PLUGIN_END
-}
-
-void LicqGui::showNextEvent(const UserId& uid)
-{
-  // Do nothing if there are no events pending
-  if (LicqUser::getNumUserEvents() == 0)
-    return;
-
-  UserId userId = uid;
-
-  if (!USERID_ISVALID(userId))
-  {
-    // Do system messages first
-    FOR_EACH_PROTO_PLUGIN_START(myLicqDaemon)
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
     {
-      const ICQOwner* o = gUserManager.FetchOwner((*_ppit)->PPID(), LOCK_R);
-      if (o == NULL)
-        continue;
-      unsigned short nNumMsg = o->NewMessages();
-      gUserManager.DropOwner(o);
-      if (nNumMsg > 0)
+      Licq::OwnerReadGuard o(owner);
+      if (o->NewMessages() > 0)
       {
-        showAllOwnerEvents();
-        return;
+        users.push_back(o->id());
+        foundEvents = true;
       }
     }
-    FOR_EACH_PROTO_PLUGIN_END
+  }
+
+  BOOST_FOREACH(Licq::UserId& userId, users)
+    showViewEventDialog(userId);
+
+  return foundEvents;
+}
+
+void LicqGui::showNextEvent(const Licq::UserId& uid)
+{
+  // Do nothing if there are no events pending
+  if (Licq::User::getNumUserEvents() == 0)
+    return;
+
+  Licq::UserId userId = uid;
+
+  if (!userId.isValid())
+  {
+    // Do system messages first
+    if (showAllOwnerEvents())
+      return;
 
     time_t t = time(NULL);
-    FOR_EACH_USER_START(LOCK_R)
+    Licq::UserListGuard userList;
+    BOOST_FOREACH(const Licq::User* user, **userList)
     {
+      Licq::UserReadGuard pUser(user);
       if (pUser->NewMessages() > 0 && pUser->Touched() <= t)
       {
         userId = pUser->id();
         t = pUser->Touched();
       }
     }
-    FOR_EACH_USER_END
   }
 
-  if (USERID_ISVALID(userId))
+  if (userId.isValid())
   {
     if (Config::Chat::instance()->msgChatView())
     {
-      const LicqUser* u = gUserManager.fetchUser(userId);
-      if (u == NULL)
+      Licq::UserReadGuard u(userId);
+      if (!u.isLocked())
         return;
 
       for (unsigned short i = 0; i < u->NewMessages(); i++)
@@ -1279,12 +1246,12 @@ void LicqGui::showNextEvent(const UserId& uid)
         if (u->EventPeek(i)->SubCommand() == ICQ_CMDxSUB_MSG ||
             u->EventPeek(i)->SubCommand() == ICQ_CMDxSUB_URL)
         {
-          gUserManager.DropUser(u);
-          showEventDialog(MessageEvent, userId, u->EventPeek(i)->ConvoId());
+          int convoId = u->EventPeek(i)->ConvoId();
+          u.unlock();
+          showEventDialog(MessageEvent, userId, convoId);
           return;
         }
       }
-      gUserManager.DropUser(u);
     }
 
     showViewEventDialog(userId);
@@ -1294,35 +1261,29 @@ void LicqGui::showNextEvent(const UserId& uid)
 void LicqGui::showAllEvents()
 {
   // Do nothing if there are no events pending
-  if (LicqUser::getNumUserEvents() == 0)
+  if (Licq::User::getNumUserEvents() == 0)
     return;
 
   // Do system messages first
-  const ICQOwner* o = gUserManager.FetchOwner(LICQ_PPID, LOCK_R);
-  unsigned short numMsg = 0;
-  if (o != NULL)
+  showAllOwnerEvents();
+
+  list<Licq::UserId> users;
   {
-    numMsg = o->NewMessages();
-    gUserManager.DropOwner(o);
+    Licq::UserListGuard userList;
+    BOOST_FOREACH(const Licq::User* user, **userList)
+    {
+      Licq::UserReadGuard pUser(user);
+      if (pUser->NewMessages() > 0)
+        users.push_back(pUser->id());
+    }
   }
 
-  if (numMsg > 0)
-    showAllOwnerEvents();
-
-  list<UserId> users;
-  FOR_EACH_USER_START(LOCK_R)
-  {
-    if (pUser->NewMessages() > 0)
-      users.push_back(pUser->id());
-  }
-  FOR_EACH_USER_END
-
-  list<UserId>::iterator iter;
+  list<Licq::UserId>::iterator iter;
   for (iter = users.begin(); iter != users.end(); iter++)
     showDefaultEventDialog(*iter);
 }
 
-void LicqGui::toggleFloaty(const UserId& userId)
+void LicqGui::toggleFloaty(const Licq::UserId& userId)
 {
   FloatyView* v = FloatyView::findFloaty(userId);
   if (v == NULL)
@@ -1331,16 +1292,16 @@ void LicqGui::toggleFloaty(const UserId& userId)
     delete v;
 }
 
-void LicqGui::createFloaty(const UserId& userId,
-   unsigned short x, unsigned short y, unsigned short w)
+void LicqGui::createFloaty(const Licq::UserId& userId,
+   int x, int y, int w)
 {
-  if (!USERID_ISVALID(userId) || !gUserManager.userExists(userId))
+  if (!userId.isValid() || !Licq::gUserManager.userExists(userId))
     return;
 
   FloatyView* f = new FloatyView(myContactList, userId);
 
-  connect(f, SIGNAL(userDoubleClicked(const UserId&)),
-      SLOT(showDefaultEventDialog(const UserId&)));
+  connect(f, SIGNAL(userDoubleClicked(const Licq::UserId&)),
+      SLOT(showDefaultEventDialog(const Licq::UserId&)));
 
   // not so good, we should allow for multiple guys in one box...
   // perhaps use the viewport sizeHint
@@ -1356,11 +1317,11 @@ void LicqGui::createFloaty(const UserId& userId,
   f->show();
 }
 
-void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const UserId& userId)
+void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const Licq::UserId& userId)
 {
   switch (subSignal)
   {
-    case LIST_REMOVE:
+    case Licq::PluginSignal::ListUserRemoved:
     {
       // If their floaty is enabled, remove it
       FloatyView* f = FloatyView::findFloaty(userId);
@@ -1407,10 +1368,10 @@ void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const Use
       break;
     }
 
-    case LIST_ALL:
-    case LIST_GROUP_ADDED:
-    case LIST_GROUP_REMOVED:
-    case LIST_GROUP_CHANGED:
+    case Licq::PluginSignal::ListInvalidate:
+    case Licq::PluginSignal::ListGroupAdded:
+    case Licq::PluginSignal::ListGroupRemoved:
+    case Licq::PluginSignal::ListGroupChanged:
       myMainWindow->updateGroups();
       myUserMenu->updateGroups();
       myGroupMenu->updateGroups();
@@ -1418,22 +1379,14 @@ void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const Use
   }
 }
 
-void LicqGui::userUpdated(const UserId& userId, unsigned long subSignal, int argument, unsigned long cid)
+void LicqGui::userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid)
 {
-  const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-  if (u == NULL)
-  {
-    gLog.Warn("%sLicqGui::userUpdated(): Invalid user received: %s\n",
-        L_ERRORxSTR, USERID_TOSTR(userId));
-    return;
-  }
-  QString id = u->accountId().c_str();
-  unsigned long ppid = u->ppid();
-  gUserManager.DropUser(u);
+  QString id = userId.accountId().c_str();
+  unsigned long ppid = userId.protocolId();
 
   switch (subSignal)
   {
-    case USER_EVENTS:
+    case Licq::PluginSignal::UserEvents:
     {
       // Skip all this if it was just an away message check
       if (argument == 0)
@@ -1443,91 +1396,88 @@ void LicqGui::userUpdated(const UserId& userId, unsigned long subSignal, int arg
       {
         unsigned short popCheck = 99;
 
-        const ICQOwner* o = gUserManager.FetchOwner(ppid, LOCK_R);
-        if (o != NULL)
         {
-          switch (o->Status())
+          Licq::OwnerReadGuard o(ppid);
+          if (o.isLocked())
           {
-            case ICQ_STATUS_ONLINE:
-            case ICQ_STATUS_FREEFORCHAT:
-              popCheck = 1;
-              break;
-            case ICQ_STATUS_AWAY:
-              popCheck = 2;
-              break;
-            case ICQ_STATUS_NA:
-              popCheck = 3;
-              break;
-            case ICQ_STATUS_OCCUPIED:
-              popCheck = 4;
-              break;
-            case ICQ_STATUS_DND:
+            unsigned status = o->status();
+            if (status & User::DoNotDisturbStatus)
               popCheck = 5;
-              break;
+            else if (status & User::OccupiedStatus)
+              popCheck = 4;
+            else if (status & User::NotAvailableStatus)
+              popCheck = 3;
+            else if (status & User::AwayStatus)
+              popCheck = 2;
+            else if (status & User::OnlineStatus)
+              popCheck = 1;
           }
-          gUserManager.DropOwner(o);
         }
 
         if (Config::Chat::instance()->autoPopup() >= popCheck)
         {
-          const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-          if (u != NULL)
+          bool bCallUserView = false, bCallSendMsg = false;
           {
-            bool bCallUserView = false, bCallSendMsg = false;
-
-            if (u->NewMessages() > 0)
+            Licq::UserReadGuard u(userId);
+            if (u.isLocked() && u->NewMessages() > 0)
             {
-              if (Config::Chat::instance()->msgChatView())
+              bool urgent = false;
+              for (unsigned short i = 0; i < u->NewMessages(); i++)
               {
-                for (unsigned short i = 0; i < u->NewMessages(); i++)
+                const Licq::UserEvent* event = u->EventPeek(i);
+
+                if (event->IsUrgent())
+                  urgent = true;
+
+                switch (event->SubCommand())
                 {
-                  switch (u->EventPeek(i)->SubCommand())
-                  {
-                    case ICQ_CMDxSUB_MSG:
-                    case ICQ_CMDxSUB_URL:
-                      bCallSendMsg = true;
-                      break;
-                    default:
-                      bCallUserView = true;
-                  }
-                  if (bCallSendMsg && bCallUserView)
+                  case ICQ_CMDxSUB_MSG:
+                  case ICQ_CMDxSUB_URL:
+                    bCallSendMsg = true;
                     break;
+                  default:
+                    bCallUserView = true;
                 }
+                if (bCallSendMsg && bCallUserView)
+                  break;
               }
-              else
+
+              if (!urgent && Config::Chat::instance()->autoPopupUrgentOnly())
+              {
+                bCallSendMsg = false;
+                bCallUserView = false;
+              }
+
+              if (bCallSendMsg && !Config::Chat::instance()->msgChatView())
                 bCallUserView = true;
             }
-
-            gUserManager.DropUser(u);
-
-            if (bCallSendMsg)
-              showEventDialog(MessageEvent, userId, cid, true);
-            if (bCallUserView)
-              showViewEventDialog(userId);
           }
+
+          if (bCallSendMsg)
+            showEventDialog(MessageEvent, userId, cid, true);
+          if (bCallUserView)
+            showViewEventDialog(userId);
         }
       }
       // Fall through
     }
-    case USER_STATUS:
-    case USER_BASIC:
-    case USER_GENERAL:
-    case USER_EXT:
-    case USER_SECURITY:
-    case USER_TYPING:
+    case Licq::PluginSignal::UserStatus:
+    case Licq::PluginSignal::UserBasic:
+    case Licq::PluginSignal::UserSecurity:
+    case Licq::PluginSignal::UserTyping:
     {
-      const LicqUser* u = gUserManager.fetchUser(userId, LOCK_R);
-      if (u == NULL)
+      Licq::UserReadGuard u(userId);
+      if (!u.isLocked())
         break;
 
       // update the tab icon of this user
       if (Config::Chat::instance()->tabbedChatting() && myUserEventTabDlg != NULL)
       {
-        if (subSignal == USER_TYPING)
-          myUserEventTabDlg->setTyping(u, argument);
-        myUserEventTabDlg->updateTabLabel(u);
+        if (subSignal == Licq::PluginSignal::UserTyping)
+          myUserEventTabDlg->setTyping(*u, argument);
+        myUserEventTabDlg->updateTabLabel(*u);
       }
-      else if (subSignal == USER_TYPING)
+      else if (subSignal == Licq::PluginSignal::UserTyping)
       {
         // First, update the window if available
         for (int i = 0; i < myUserSendList.size(); ++i)
@@ -1538,30 +1488,23 @@ void LicqGui::userUpdated(const UserId& userId, unsigned long subSignal, int arg
           {
             // For protocols that use the convo id
             if (item->convoId() == (unsigned long)(argument) && item->ppid() == ppid)
-              item->setTyping(u->GetTyping());
+              item->setTyping(u->isTyping());
           }
           else
           {
             // For protocols that don't use a convo id
             if (item->userId() == userId)
-              item->setTyping(u->GetTyping());
+              item->setTyping(u->isTyping());
           }
         }
       }
-
-      gUserManager.DropUser(u);
 
       break;
     }
   }
 }
 
-void LicqGui::updateUserData(const UserId& userId)
-{
-  myContactList->updateUser(userId);
-}
-
-void LicqGui::convoSet(const UserId& userId, unsigned long convoId)
+void LicqGui::convoSet(const Licq::UserId& userId, unsigned long convoId)
 {
   for (int i = 0; i < myUserSendList.size(); ++i)
   {
@@ -1574,7 +1517,7 @@ void LicqGui::convoSet(const UserId& userId, unsigned long convoId)
   }
 }
 
-void LicqGui::convoJoin(const UserId& userId, unsigned long ppid, unsigned long convoId)
+void LicqGui::convoJoin(const Licq::UserId& userId, unsigned long ppid, unsigned long convoId)
 {
   for (int i = 0; i < myUserSendList.size(); ++i)
   {
@@ -1587,7 +1530,7 @@ void LicqGui::convoJoin(const UserId& userId, unsigned long ppid, unsigned long 
   }
 }
 
-void LicqGui::convoLeave(const UserId& userId, unsigned long ppid, unsigned long convoId)
+void LicqGui::convoLeave(const Licq::UserId& userId, unsigned long ppid, unsigned long convoId)
 {
   for (int i = 0; i < myUserSendList.size(); ++i)
   {
@@ -1606,8 +1549,8 @@ struct SAutoAwayInfo
   SAutoAwayInfo() : isAutoAway(false) {}
   bool isAutoAway;
 
-  unsigned short preAutoAwayStatus;
-  unsigned short setAutoAwayStatus;
+  unsigned preAutoAwayStatus;
+  unsigned setAutoAwayStatus;
 };
 
 void LicqGui::autoAway()
@@ -1624,8 +1567,7 @@ void LicqGui::autoAway()
       mit_info = XScreenSaverAllocInfo ();
     else
     {
-      gLog.Warn("%sNo XScreenSaver extension found on current XServer, disabling auto-away.\n",
-                L_WARNxSTR);
+      gLog.warning("No XScreenSaver extension found on current XServer, disabling auto-away");
       myAutoAwayTimer.stop();
       return;
     }
@@ -1633,119 +1575,122 @@ void LicqGui::autoAway()
 
   if (!XScreenSaverQueryInfo(myMainWindow->x11Info().display(), QX11Info::appRootWindow(), mit_info))
   {
-    gLog.Warn("%sXScreenSaverQueryInfo failed, disabling auto-away.\n",
-              L_WARNxSTR);
+    gLog.warning("XScreenSaverQueryInfo failed, disabling auto-away");
     myAutoAwayTimer.stop();
     return;
   }
 
   const unsigned long idleTime = mit_info->idle;
-  static std::map<unsigned long, SAutoAwayInfo> autoAwayInfo;
+  static std::map<Licq::UserId, SAutoAwayInfo> autoAwayInfo;
 
   Config::General* generalConfig = Config::General::instance();
 
-  // Go through each protocol, as the statuses may differ
-  FOR_EACH_PROTO_PLUGIN_START(myLicqDaemon)
+  // Check every owner as the statuses may differ
+  map<Licq::UserId, unsigned> newStatuses;
+
   {
-    const unsigned long nPPID = (*_ppit)->PPID();
-
-    // Fetch current status
-    unsigned short status = ICQ_STATUS_OFFLINE;
-    const ICQOwner* o = gUserManager.FetchOwner(nPPID, LOCK_R);
-    if (o != NULL)
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
     {
-      status = o->Status();
-      gUserManager.DropOwner(o);
-    }
+      // Fetch current status
+      Licq::UserId userId;
+      unsigned status;
+      {
+        Licq::OwnerReadGuard o(owner);
+        userId = o->id();
+        status = o->status();
+      }
 
-    SAutoAwayInfo& info = autoAwayInfo[nPPID];
+      SAutoAwayInfo& info = autoAwayInfo[userId];
 
-    // Check no one changed the status behind our back
-    if (info.isAutoAway && info.setAutoAwayStatus != status)
-    {
-      gLog.Warn("%sSomeone changed the status behind our back (%u != %u; PPID: 0x%lx).\n",
-                L_WARNxSTR, info.setAutoAwayStatus, status, nPPID);
-      info.isAutoAway = false;
-      continue;
-    }
+      // Check no one changed the status behind our back
+      if (info.isAutoAway && info.setAutoAwayStatus != status)
+      {
+        gLog.warning("Someone changed the status behind our back (%4x != %4x; account: %s)",
+            info.setAutoAwayStatus, status, userId.toString().c_str());
+        info.isAutoAway = false;
+        continue;
+      }
 
-    // If we are offline, and it isn't auto offline, we shouldn't do anything
-    if (status == ICQ_STATUS_OFFLINE && !info.isAutoAway)
-      continue;
-
-    bool returnFromAutoAway = false;
-    unsigned short wantedStatus;
-    if (generalConfig->autoOfflineTime() > 0 &&
-        idleTime > (unsigned long)(generalConfig->autoOfflineTime() * 60000))
-      wantedStatus = ICQ_STATUS_OFFLINE;
-    else if (generalConfig->autoNaTime() > 0 &&
-        idleTime > (unsigned long)(generalConfig->autoNaTime() * 60000))
-      wantedStatus = ICQ_STATUS_NA;
-    else if (generalConfig->autoAwayTime() > 0 &&
-        idleTime > (unsigned long)(generalConfig->autoAwayTime() * 60000))
-      wantedStatus = ICQ_STATUS_AWAY;
-    else
-    {
-      // The user is active and we're not auto away
-      if (!info.isAutoAway)
+      // If we are offline, and it isn't auto offline, we shouldn't do anything
+      if (status == User::OfflineStatus && !info.isAutoAway)
         continue;
 
-      returnFromAutoAway = true;
-      wantedStatus = info.preAutoAwayStatus;
-    }
-
-    // MSN does not support NA
-    if (nPPID == MSN_PPID && wantedStatus == ICQ_STATUS_NA)
-      wantedStatus = ICQ_STATUS_AWAY;
-
-    // Never change from NA to away unless we are returning from auto away
-    if (status == ICQ_STATUS_NA && wantedStatus == ICQ_STATUS_AWAY && !returnFromAutoAway)
-      continue;
-
-    if (status == wantedStatus)
-      continue;
-
-    // If we're not auto away, save current status
-    if (!info.isAutoAway)
-    {
-      info.isAutoAway = true;
-      info.preAutoAwayStatus = status;
-    }
-    else if (returnFromAutoAway)
-      info.isAutoAway = false;
-
-    // Set auto response
-    if (wantedStatus == ICQ_STATUS_NA && generalConfig->autoNaMess())
-    {
-      SARList& sar = gSARManager.Fetch(SAR_NA);
-      ICQOwner* o = gUserManager.FetchOwner(nPPID, LOCK_W);
-      if (o != NULL)
+      bool returnFromAutoAway = false;
+      unsigned wantedStatus;
+      if (generalConfig->autoOfflineTime() > 0 &&
+          idleTime > (unsigned long)(generalConfig->autoOfflineTime() * 60000))
+        wantedStatus = User::OfflineStatus;
+      else if (generalConfig->autoNaTime() > 0 &&
+          idleTime > (unsigned long)(generalConfig->autoNaTime() * 60000))
+        wantedStatus = User::OnlineStatus | User::NotAvailableStatus;
+      else if (generalConfig->autoAwayTime() > 0 &&
+          idleTime > (unsigned long)(generalConfig->autoAwayTime() * 60000))
+        wantedStatus = User::OnlineStatus | User::AwayStatus;
+      else
       {
-        o->SetAutoResponse(QString(sar[generalConfig->autoNaMess() - 1]->AutoResponse()).toLocal8Bit());
-        gUserManager.DropOwner(o);
+        // The user is active and we're not auto away
+        if (!info.isAutoAway)
+          continue;
+
+        returnFromAutoAway = true;
+        wantedStatus = info.preAutoAwayStatus;
       }
-      gSARManager.Drop();
-    }
-    else if (wantedStatus == ICQ_STATUS_AWAY && generalConfig->autoAwayMess())
-    {
-      SARList& sar = gSARManager.Fetch(SAR_AWAY);
-      ICQOwner* o = gUserManager.FetchOwner(nPPID, LOCK_W);
-      if (o != NULL)
+
+      // MSN does not support NA
+      if (userId.protocolId() == MSN_PPID && wantedStatus & User::NotAvailableStatus)
+        wantedStatus = User::OnlineStatus | User::AwayStatus;
+
+      // Never change from NA to away unless we are returning from auto away
+      if (status & User::NotAvailableStatus && wantedStatus & User::AwayStatus && !returnFromAutoAway)
+        continue;
+
+      if (status == wantedStatus)
+        continue;
+
+      // If we're not auto away, save current status
+      if (!info.isAutoAway)
       {
-        o->SetAutoResponse(QString(sar[generalConfig->autoAwayMess() - 1]->AutoResponse()).toLocal8Bit());
-        gUserManager.DropOwner(o);
+        info.isAutoAway = true;
+        info.preAutoAwayStatus = status;
       }
-      gSARManager.Drop();
+      else if (returnFromAutoAway)
+        info.isAutoAway = false;
+
+      // Set auto response
+      QString autoResponse;
+      if (wantedStatus & User::NotAvailableStatus && generalConfig->autoNaMess())
+      {
+        const Licq::SarList& sars(gSarManager.getList(SarManager::NotAvailableList));
+        autoResponse = QString::fromLocal8Bit(sars.begin()->text.c_str());
+        gSarManager.releaseList();
+      }
+      else if (wantedStatus & User::AwayStatus && generalConfig->autoAwayMess())
+      {
+        const Licq::SarList& sars(gSarManager.getList(SarManager::AwayList));
+        autoResponse = QString::fromLocal8Bit(sars.begin()->text.c_str());
+        gSarManager.releaseList();
+      }
+      if (!autoResponse.isNull())
+      {
+        Licq::OwnerWriteGuard o(owner);
+        o->setAutoResponse(autoResponse.toLocal8Bit().data());
+      }
+
+      //gLog.info("Auto-away changing status to %u (from %u, PPID 0x%lx)",
+      //    wantedStatus, status, userId.protocolId());
+
+      // Change status
+      info.setAutoAwayStatus = wantedStatus;
+      newStatuses[userId] = wantedStatus;
     }
-
-    //gLog.Info("%sAuto-away changing status to %u (from %u, PPID 0x%lx).\n",
-    //          L_SRVxSTR, wantedStatus, status, nPPID);
-
-    // Change status
-    info.setAutoAwayStatus = wantedStatus;
-    changeStatus(wantedStatus, nPPID);
   }
-  FOR_EACH_PROTO_PLUGIN_END
+
+  // Do the actual status change here, after we've released the lock on owner list
+  map<Licq::UserId, unsigned>::const_iterator iter;
+  for (iter = newStatuses.begin(); iter != newStatuses.end(); ++iter)
+    changeStatus(iter->second, iter->first);
+
 #endif // USE_SCRNSAVER
 }
 
@@ -1785,3 +1730,41 @@ void LicqGui::updateDockIcon()
   connect(myDockIcon, SIGNAL(middleClicked()), SLOT(showNextEvent()));
 }
 
+void LicqGui::setUserInGroup(const Licq::UserId& userId, int groupId, bool inGroup, bool updateServer)
+{
+  // Normal user group
+  if (groupId < ContactListModel::SystemGroupOffset)
+    return Licq::gUserManager.setUserInGroup(userId, groupId, inGroup, updateServer);
+
+  // Groups that require server update
+  if (groupId == ContactListModel::VisibleListGroupId)
+    return gProtocolManager.visibleListSet(userId, inGroup);
+  if (groupId == ContactListModel::InvisibleListGroupId)
+    return gProtocolManager.invisibleListSet(userId, inGroup);
+  if (groupId == ContactListModel::IgnoreListGroupId)
+    return gProtocolManager.ignoreListSet(userId, inGroup);
+
+  // If we got here, the "group" is just a flag for local user
+
+  {
+    Licq::UserWriteGuard u(userId);
+    if (!u.isLocked())
+      return;
+
+    switch (groupId)
+    {
+      case ContactListModel::OnlineNotifyGroupId:
+        u->SetOnlineNotify(inGroup);
+        break;
+      case ContactListModel::NewUsersGroupId:
+        u->SetNewUser(inGroup);
+        break;
+      default:
+        // Invalid group
+        return;
+    }
+  }
+
+  // Notify everyone of the change
+  Licq::gUserManager.notifyUserUpdated(userId, Licq::PluginSignal::UserSettings);
+}

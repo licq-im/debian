@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,10 +26,11 @@
 #include <QLabel>
 #include <QLineEdit>
 
-#include <licq_icqd.h>
-#include <licq_user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/icq.h>
 
 #include "config/contactlist.h"
+#include "contactlist/contactlist.h"
 #include "helpers/support.h"
 
 #include "widgets/groupcombobox.h"
@@ -38,7 +39,7 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::AddUserDlg */
 
-AddUserDlg::AddUserDlg(const UserId& userId, QWidget* parent)
+AddUserDlg::AddUserDlg(const Licq::UserId& userId, QWidget* parent)
   : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint)
 {
   Support::setWidgetProps(this, "AddUserDialog");
@@ -49,7 +50,7 @@ AddUserDlg::AddUserDlg(const UserId& userId, QWidget* parent)
 
   QLabel* lblProtocol = new QLabel(tr("&Protocol:"));
   myProtocol = new ProtoComboBox();
-  myProtocol->setCurrentPpid(LicqUser::getUserProtocolId(userId));
+  myProtocol->setCurrentPpid(userId.protocolId());
   lblProtocol->setBuddy(myProtocol);
 
   unsigned line = 0;
@@ -62,14 +63,14 @@ AddUserDlg::AddUserDlg(const UserId& userId, QWidget* parent)
   lblGroup->setBuddy(myGroup);
 
   // Get current active group and set as default
-  if (Config::ContactList::instance()->groupType() == GROUPS_USER)
+  if (Config::ContactList::instance()->groupId() < ContactListModel::SystemGroupOffset)
     myGroup->setCurrentGroupId(Config::ContactList::instance()->groupId());
 
   layDialog->addWidget(lblGroup, line, 0);
   layDialog->addWidget(myGroup, line++, 1);
 
   QLabel* lblId = new QLabel(tr("New &User ID:"));
-  QString accountId = LicqUser::getUserAccountId(userId).c_str();
+  QString accountId = userId.accountId().c_str();
   myId = new QLineEdit();
   if (!accountId.isEmpty())
     myId->setText(accountId);
@@ -98,17 +99,17 @@ AddUserDlg::AddUserDlg(const UserId& userId, QWidget* parent)
 void AddUserDlg::ok()
 {
   QString accountId = myId->text().trimmed();
-  UserId userId = LicqUser::makeUserId(accountId.toLatin1().data(), myProtocol->currentPpid());
+  Licq::UserId userId(accountId.toLatin1().data(), myProtocol->currentPpid());
   int group = myGroup->currentGroupId();
   bool notify = myNotify->isChecked();
   bool added = false;
 
-  if (USERID_ISVALID(userId))
+  if (userId.isValid())
   {
-    if (gUserManager.userExists(userId))
-      added = gUserManager.makeUserPermanent(userId, true, group);
+    if (Licq::gUserManager.userExists(userId))
+      added = Licq::gUserManager.makeUserPermanent(userId, true, group);
     else
-      added = gUserManager.addUser(userId, true, true, group);
+      added = Licq::gUserManager.addUser(userId, true, true, group);
   }
 
   if (added && notify)

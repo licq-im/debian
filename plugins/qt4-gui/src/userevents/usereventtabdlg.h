@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2009 Licq developers
+ * Copyright (C) 2000-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,11 @@
 
 #include <QWidget>
 
-class LicqUser;
+namespace Licq
+{
+class User;
+}
+
 
 namespace LicqQtGui
 {
@@ -46,9 +50,8 @@ public:
   bool tabIsSelected(QWidget* tab);
   bool tabExists(QWidget* tab);
   void updateConvoLabel(UserEventCommon* tab);
-  void updateTabLabel(const LicqUser* u);
-  void updateTabLabel(UserEventCommon* tab, const LicqUser* u = NULL);
-  void setTyping(const LicqUser* u, int convoId);
+  void updateTabLabel(const Licq::User* u);
+  void setTyping(const Licq::User* u, int convoId);
 
 #ifdef USE_KDE
   virtual void setIcon(const QPixmap& icon);
@@ -78,6 +81,8 @@ private slots:
   void updateShortcuts();
 
 private:
+  void updateTabLabel(UserEventCommon* tab, const Licq::User* u);
+
   TabWidget* myTabs;
   QAction* myTabSwitch01Action;
   QAction* myTabSwitch02Action;

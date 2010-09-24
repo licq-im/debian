@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,10 @@
 #include <QPixmap>
 #include <QRect>
 
-class CIniFile;
+namespace Licq
+{
+class IniFile;
+}
 
 namespace LicqQtGui
 {
@@ -39,17 +42,17 @@ namespace Config
 class Border
 {
 public:
-  unsigned short top, bottom;
-  unsigned short left, right;
+  int top, bottom;
+  int left, right;
 
-  void AdjustForMenuBar(unsigned short h1, unsigned short h2);
+  void AdjustForMenuBar(int h1, int h2);
 };
 
 class FrameSkin
 {
 public:
   struct Border border;
-  unsigned short frameStyle;
+  unsigned frameStyle;
   bool maintainBorder;
   bool hasMenuBar;
   bool transparent;
@@ -57,7 +60,7 @@ public:
   QPixmap mask;
 
   virtual ~FrameSkin() {}
-  virtual void loadSkin(CIniFile& skinFile, const QString& name, const QString& baseSkinDir);
+  virtual void loadSkin(const Licq::IniFile& skinFile, const QString& name, const QString& baseSkinDir);
 };
 
 class ShapeSkin
@@ -68,9 +71,9 @@ public:
   QColor background;
 
   virtual ~ShapeSkin() { }
-  virtual void loadSkin(CIniFile& skinFile, const QString& name);
+  virtual void loadSkin(const Licq::IniFile& skinFile, const QString& name);
   QRect borderToRect(const QWidget* w) const;
-  void AdjustForMenuBar(unsigned short h1, unsigned short h2);
+  void AdjustForMenuBar(int h1, int h2);
 };
 
 class ButtonSkin : public ShapeSkin
@@ -82,7 +85,7 @@ public:
   QString caption;
 
   virtual ~ButtonSkin() { }
-  virtual void loadSkin(CIniFile& skinFile, const QString& name, const QString& baseSkinDir);
+  virtual void loadSkin(const Licq::IniFile& skinFile, const QString& name, const QString& baseSkinDir);
 
 private:
   using ShapeSkin::loadSkin;
@@ -92,12 +95,12 @@ class LabelSkin : public ShapeSkin
 {
 public:
   QPixmap pixmap;
-  unsigned short frameStyle;
+  unsigned frameStyle;
   bool transparent;
-  unsigned short margin;
+  int margin;
 
   virtual ~LabelSkin() { }
-  virtual void loadSkin(CIniFile& skinFile, const QString& name, const QString& baseSkinDir);
+  virtual void loadSkin(const Licq::IniFile& skinFile, const QString& name, const QString& baseSkinDir);
 
 private:
   using ShapeSkin::loadSkin;
@@ -144,7 +147,7 @@ public:
   QPixmap mainwinMask(int width, int height) const;
 
   void setFrameTransparent(bool transparent);
-  void setFrameStyle(unsigned short frameStyle);
+  void setFrameStyle(unsigned frameStyle);
 
   FrameSkin frame;
   ButtonSkin btnSys;
@@ -176,7 +179,7 @@ public:
   bool tileGroupBackImage;
 
   // Functions
-  void AdjustForMenuBar(unsigned short n);
+  void AdjustForMenuBar(int n);
   int frameWidth(void);
   int frameHeight(void);
   QPalette palette(QWidget* parent);
@@ -193,7 +196,7 @@ private:
   QPixmap scaleWithBorder(const QPixmap& pm, int width, int height) const;
 
   QString mySkinName;
-  unsigned short myMenuBarHeight;
+  int myMenuBarHeight;
 };
 
 } // namespace Config

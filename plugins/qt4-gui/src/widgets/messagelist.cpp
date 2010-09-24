@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2009 Licq developers
+ * Copyright (C) 1999-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,8 +29,8 @@
 #include <QScrollBar>
 #include <QTextCodec>
 
-#include <licq_message.h>
-#include <licq_icq.h>
+#include <licq/icqdefines.h>
+#include <licq/userevents.h>
 
 #include "helpers/eventdesc.h"
 
@@ -38,7 +38,7 @@ using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::MessageList */
 /* TRANSLATOR LicqQtGui::MessageListItem */
 
-MessageListItem::MessageListItem(const CUserEvent* theMsg, const QTextCodec* codec, QTreeWidget* parent)
+MessageListItem::MessageListItem(const Licq::UserEvent* theMsg, const QTextCodec* codec, QTreeWidget* parent)
   : QTreeWidgetItem(parent)
 {
   // Keep a copy of the event
@@ -46,9 +46,9 @@ MessageListItem::MessageListItem(const CUserEvent* theMsg, const QTextCodec* cod
 
   myCodec = codec;
 
-  myUnread = (myMsg->Direction() == D_RECEIVER);
+  myUnread = (myMsg->isReceiver());
 
-  setText(0, myMsg->Direction() == D_SENDER ? "S" : "*R");
+  setText(0, myMsg->isReceiver() ? "*R" : "S");
   setTextAlignment(0, Qt::AlignHCenter);
   SetEventLine();
   QString t =  "-----";
@@ -70,7 +70,7 @@ MessageListItem::MessageListItem(const CUserEvent* theMsg, const QTextCodec* cod
   setText(3, sd);
 
   QColor foreColor;
-  if (myMsg->Direction() == D_SENDER)
+  if (!myMsg->isReceiver())
     foreColor = QColor("blue");
   else
     foreColor = QColor("red");
@@ -107,23 +107,23 @@ void MessageListItem::SetEventLine()
   switch(myMsg->SubCommand())
   {
     case ICQ_CMDxSUB_MSG:
-      text = myCodec->toUnicode(myMsg->Text());
+      text = myCodec->toUnicode(myMsg->text().c_str());
       break;
 
     case ICQ_CMDxSUB_URL:
-      text = myCodec->toUnicode(dynamic_cast<CEventUrl*>(myMsg)->Url());
+      text = myCodec->toUnicode(dynamic_cast<Licq::EventUrl*>(myMsg)->url().c_str());
       break;
 
     case ICQ_CMDxSUB_CHAT:
-      text = myCodec->toUnicode(dynamic_cast<CEventChat*>(myMsg)->Reason());
+      text = myCodec->toUnicode(dynamic_cast<Licq::EventChat*>(myMsg)->reason().c_str());
       break;
 
     case ICQ_CMDxSUB_FILE:
-      text = myCodec->toUnicode(dynamic_cast<CEventFile*>(myMsg)->Filename());
+      text = myCodec->toUnicode(dynamic_cast<Licq::EventFile*>(myMsg)->filename().c_str());
       break;
 
     case ICQ_CMDxSUB_EMAILxALERT:
-      text = myCodec->toUnicode(dynamic_cast<CEventEmailAlert*>(myMsg)->From());
+      text = myCodec->toUnicode(dynamic_cast<Licq::EventEmailAlert*>(myMsg)->from().c_str());
       break;
 
     default:
@@ -146,7 +146,7 @@ void MessageListItem::MarkRead()
   setFont(2, f);
   setFont(3, f);
 
-  setText(0, myMsg->Direction() == D_SENDER ? "S" : "R");
+  setText(0, myMsg->isReceiver() ? "R" : "S");
   SetEventLine();
 }
 
@@ -176,7 +176,7 @@ MessageList::MessageList(QWidget* parent)
   setMinimumHeight(40);
 }
 
-CUserEvent* MessageList::currentMsg()
+Licq::UserEvent* MessageList::currentMsg()
 {
   if (currentItem() == NULL)
     return NULL;
@@ -256,7 +256,7 @@ bool MessageList::event(QEvent* event)
       if (item->msg()->IsCancelled())
         s += QString(" / ") + tr("Cancelled Event");
       if (item->msg()->IsLicq())
-        s += QString(" / Licq ") + QString::fromLocal8Bit(item->msg()->LicqVersionStr());
+        s += QString(" / Licq ") + QString::fromLocal8Bit(item->msg()->licqVersionStr().c_str());
 
       setToolTip(s);
     }

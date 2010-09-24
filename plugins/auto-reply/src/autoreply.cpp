@@ -1,6 +1,21 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2000-2010 Licq developers
+ *
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
 
 #include <cctype>
 #include <climits>
@@ -13,30 +28,36 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
-#ifdef HAVE_ERRNO_H
 #include <cerrno>
+#ifdef __sun
+# define _PATH_BSHELL "/bin/sh"
 #else
-extern int errno;
+# include <paths.h>
 #endif
-#ifdef HAVE_PATHS_H
-#include <paths.h>
-#else
-#define _PATH_BSHELL "/bin/sh"
-#endif
-
 
 #include "autoreply.h"
-#include "licq_log.h"
-#include "licq_icqd.h"
-#include "licq_file.h"
-#include "licq_user.h"
-#include "licq_constants.h"
+
+#include <licq/logging/log.h>
+#include <licq/contactlist/user.h>
+#include <licq/contactlist/usermanager.h>
+#include <licq/daemon.h>
+#include <licq/event.h>
+#include <licq/icqdefines.h>
+#include <licq/inifile.h>
+#include <licq/pluginmanager.h>
+#include <licq/pluginsignal.h>
+#include <licq/protocolmanager.h>
+#include <licq/userevents.h>
 
 extern "C" { const char *LP_Version(); }
 
 using namespace std;
+using Licq::UserId;
+using Licq::gLog;
+using Licq::gPluginManager;
+using Licq::gProtocolManager;
+using Licq::gUserManager;
 
-const char L_AUTOREPxSTR[]  = "[RPL] ";
 const unsigned short SUBJ_CHARS = 20;
 
 /*---------------------------------------------------------------------------
@@ -63,43 +84,39 @@ CLicqAutoReply::~CLicqAutoReply()
  *-------------------------------------------------------------------------*/
 void CLicqAutoReply::Shutdown()
 {
-  gLog.Info("%sShutting down auto reply.\n", L_AUTOREPxSTR);
-  licqDaemon->UnregisterPlugin();
+  gLog.info("Shutting down auto reply");
+  gPluginManager.unregisterGeneralPlugin();
 }
 
 
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::Run
  *-------------------------------------------------------------------------*/
-int CLicqAutoReply::Run(CICQDaemon *_licqDaemon)
+int CLicqAutoReply::Run()
 {
   // Register with the daemon, we only want the update user signal
-  m_nPipe = _licqDaemon->RegisterPlugin(SIGNAL_UPDATExUSER);
-  licqDaemon = _licqDaemon;
+  m_nPipe = gPluginManager.registerGeneralPlugin(Licq::PluginSignal::SignalUser);
 
-  char filename[256];
-  sprintf (filename, "%s/licq_autoreply.conf", BASE_DIR);
-  CIniFile conf;
-  conf.LoadFile(filename);
-  conf.SetSection("Reply");
-  conf.ReadStr("Program", m_szProgram, "cat");
-  conf.ReadStr("Arguments", m_szArguments, "");
-  conf.ReadBool("PassMessage", m_bPassMessage, false);
-  conf.ReadBool("FailOnExitCode", m_bFailOnExitCode, false);
-  conf.ReadBool("AbortDeleteOnExitCode", m_bAbortDeleteOnExitCode, false);
-  conf.ReadBool("SendThroughServer", m_bSendThroughServer, true);
-  conf.ReadBool("StartEnabled", m_bEnabled, false);
-  conf.ReadBool("DeleteMessage", m_bDelete, false);
-  conf.CloseFile();
+  Licq::IniFile conf("licq_autoreply.conf");
+  conf.loadFile();
+  conf.setSection("Reply");
+  conf.get("Program", myProgram, "cat");
+  conf.get("Arguments", myArguments, "");
+  conf.get("PassMessage", m_bPassMessage, false);
+  conf.get("FailOnExitCode", m_bFailOnExitCode, false);
+  conf.get("AbortDeleteOnExitCode", m_bAbortDeleteOnExitCode, false);
+  conf.get("SendThroughServer", m_bSendThroughServer, true);
+  conf.get("StartEnabled", m_bEnabled, false);
+  conf.get("DeleteMessage", m_bDelete, false);
 
   // Log on if necessary
   if (m_szStatus != NULL)
   {
-    unsigned long s = StringToStatus(m_szStatus);
-    if (s == INT_MAX)
-      gLog.Warn("%sInvalid startup status.\n", L_AUTOREPxSTR);
+    unsigned s;
+    if (!Licq::User::stringToStatus(m_szStatus, s))
+      gLog.warning("Invalid startup status");
     else
-      licqDaemon->protoSetStatus(gUserManager.ownerUserId(LICQ_PPID), s);
+      gProtocolManager.setStatus(gUserManager.ownerUserId(LICQ_PPID), s);
     free(m_szStatus);
     m_szStatus = NULL;
   }
@@ -115,7 +132,7 @@ int CLicqAutoReply::Run(CICQDaemon *_licqDaemon)
     nResult = select(m_nPipe + 1, &fdSet, NULL, NULL, NULL);
     if (nResult == -1)
     {
-      gLog.Error("%sError in select(): %s\n", L_ERRORxSTR, strerror(errno));
+      gLog.error("Error in select(): %s", strerror(errno));
       m_bExit = true;
     }
     else
@@ -137,43 +154,44 @@ void CLicqAutoReply::ProcessPipe()
   read(m_nPipe, buf, 1);
   switch (buf[0])
   {
-  case 'S':  // A signal is pending
-  {
-      LicqSignal* s = licqDaemon->popPluginSignal();
+    case Licq::GeneralPlugin::PipeSignal:
+    {
+      Licq::PluginSignal* s = Licq::gDaemon.popPluginSignal();
     if (m_bEnabled) ProcessSignal(s);
     break;
   }
 
-  case 'E':  // An event is pending (should never happen)
-  {
-    ICQEvent *e = licqDaemon->PopPluginEvent();
+    case Licq::GeneralPlugin::PipeEvent:
+    {
+      // An event is pending (should never happen)
+      Licq::Event* e = Licq::gDaemon.PopPluginEvent();
     if (m_bEnabled) ProcessEvent(e);
     break;
   }
 
-  case 'X':  // Shutdown
-  {
-    gLog.Info("%sExiting.\n", L_AUTOREPxSTR);
+    case Licq::GeneralPlugin::PipeShutdown:
+    {
+    gLog.info("Exiting");
     m_bExit = true;
     break;
   }
 
-  case '0':  // disable
-  {
-    gLog.Info("%sDisabling.\n", L_AUTOREPxSTR);
+    case Licq::GeneralPlugin::PipeDisable:
+    {
+    gLog.info("Disabling");
     m_bEnabled = false;
     break;
   }
 
-  case '1':  // enable
-  {
-    gLog.Info("%sEnabling.\n", L_AUTOREPxSTR);
+    case Licq::GeneralPlugin::PipeEnable:
+    {
+    gLog.info("Enabling");
     m_bEnabled = true;
     break;
   }
 
   default:
-    gLog.Warn("%sUnknown notification type from daemon: %c.\n", L_WARNxSTR, buf[0]);
+    gLog.warning("Unknown notification type from daemon: %c", buf[0]);
   }
 }
 
@@ -181,13 +199,13 @@ void CLicqAutoReply::ProcessPipe()
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::ProcessSignal
  *-------------------------------------------------------------------------*/
-void CLicqAutoReply::ProcessSignal(LicqSignal* s)
+void CLicqAutoReply::ProcessSignal(Licq::PluginSignal* s)
 {
-  switch (s->Signal())
+  switch (s->signal())
   {
-    case SIGNAL_UPDATExUSER:
-      if (s->SubSignal() == USER_EVENTS && !gUserManager.isOwner(s->userId()) && s->Argument() > 0)
-        processUserEvent(s->userId(), s->Argument());
+    case Licq::PluginSignal::SignalUser:
+      if (s->subSignal() == Licq::PluginSignal::UserEvents && !gUserManager.isOwner(s->userId()) && s->argument() > 0)
+        processUserEvent(s->userId(), s->argument());
       break;
     // We should never get any other signal
     default:
@@ -200,18 +218,18 @@ void CLicqAutoReply::ProcessSignal(LicqSignal* s)
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::ProcessEvent
  *-------------------------------------------------------------------------*/
-void CLicqAutoReply::ProcessEvent(ICQEvent *e)
+void CLicqAutoReply::ProcessEvent(Licq::Event* e)
 {
-  const CUserEvent* user_event;
+  const Licq::UserEvent* user_event;
 
-  if (e->Result() != EVENT_ACKED)
+  if (e->Result() != Licq::Event::ResultAcked)
   {
     if (e->Command() == ICQ_CMDxTCP_START &&
         (e->SubCommand() != ICQ_CMDxSUB_CHAT &&
          e->SubCommand() != ICQ_CMDxSUB_FILE))
     {
-	    user_event = e->UserEvent();
-      licqDaemon->sendMessage(e->userId(), user_event->Text(), m_bSendThroughServer,
+      user_event = e->userEvent();
+      gProtocolManager.sendMessage(e->userId(), user_event->text(), m_bSendThroughServer,
         ICQ_TCPxMSG_URGENT); //urgent, because, hey, he asked us, right?
     }
   }
@@ -222,53 +240,50 @@ void CLicqAutoReply::ProcessEvent(ICQEvent *e)
 
 void CLicqAutoReply::processUserEvent(const UserId& userId, unsigned long nId)
 {
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  if (u == NULL)
-  {
-    gLog.Warn("%sInvalid user id received from daemon (%s).\n", L_AUTOREPxSTR, USERID_TOSTR(userId));
-    return;
-  }
+  const Licq::UserEvent* e;
 
-  const CUserEvent* e = u->EventPeekId(nId);
-  gUserManager.DropUser(u);
+  {
+    Licq::UserReadGuard u(userId);
+    if (!u.isLocked())
+    {
+      gLog.warning("Invalid user id received from daemon (%s)",
+          userId.toString().c_str());
+      return;
+    }
+
+    e = u->EventPeekId(nId);
+  }
 
   if (e == NULL)
   {
-    gLog.Warn("%sInvalid message id (%ld).\n", L_AUTOREPxSTR, nId);
+    gLog.warning("Invalid message id (%ld)", nId);
     return;
   }
 
   bool r = autoReplyEvent(userId, e);
   if (m_bDelete && r)
   {
-    LicqUser* u = gUserManager.fetchUser(userId, LOCK_W);
+    Licq::UserWriteGuard u(userId);
     u->EventClearId(nId);
-    gUserManager.DropUser(u);
   }
 }
 
-bool CLicqAutoReply::autoReplyEvent(const UserId& userId, const CUserEvent* event)
+bool CLicqAutoReply::autoReplyEvent(const UserId& userId, const Licq::UserEvent* event)
 {
-  char *szCommand;
-  char buf[4096];
-  char *tmp;
-  sprintf(buf, "%s ", m_szProgram);
-  const LicqUser* u = gUserManager.fetchUser(userId);
-  tmp = u->usprintf(m_szArguments);
-  gUserManager.DropUser(u);
-  szCommand = new char[strlen(buf) + strlen(tmp) + 1];
-  strcpy(szCommand, buf);
-  strcat(szCommand, tmp);
-  free(tmp);
-
-  if (!POpen(szCommand))
+  string command = myProgram + " ";
   {
-    gLog.Warn("%sCould not execute %s\n", L_AUTOREPxSTR, szCommand);
+    Licq::UserReadGuard u(userId);
+    command += u->usprintf(myArguments);
+  }
+
+  if (!POpen(command.c_str()))
+  {
+    gLog.warning("Could not execute %s", command.c_str());
     return false;
   }
   if (m_bPassMessage)
   {
-    fprintf(fStdIn, "%s\n", event->Text());
+    fprintf(fStdIn, "%s\n", event->text().c_str());
     fclose(fStdIn);
     fStdIn = NULL;
   }
@@ -285,34 +300,31 @@ bool CLicqAutoReply::autoReplyEvent(const UserId& userId, const CUserEvent* even
   int r = 0;
   if ((r = PClose()) != 0 && m_bFailOnExitCode)
   {
-    gLog.Warn("%s%s returned abnormally: exit code %d\n", L_AUTOREPxSTR,
-     szCommand, r);
-    delete [] szCommand;
+    gLog.warning("%s returned abnormally: exit code %d", command.c_str(), r);
     return !m_bAbortDeleteOnExitCode;
   }
 
   char *szText = new char[4096 + 256];
   sprintf(szText, "%s", m_szMessage);
-  unsigned long tag = licqDaemon->sendMessage(userId, szText, m_bSendThroughServer,
+  unsigned long tag = gProtocolManager.sendMessage(userId, szText, m_bSendThroughServer,
      ICQ_TCPxMSG_URGENT);
   delete []szText;
-  delete [] szCommand;
 
-  u = gUserManager.fetchUser(userId);
-  if (u == NULL) return false;
+  Licq::UserReadGuard u(userId);
+  if (!u.isLocked())
+    return false;
 
   if (tag == 0)
   {
-    gLog.Warn("%sSending message to %s (%s) failed.\n", L_AUTOREPxSTR,
-        u->GetAlias(), u->accountId().c_str());
+    gLog.warning("Sending message to %s (%s) failed",
+        u->getAlias().c_str(), u->accountId().c_str());
   }
   else
   {
-    gLog.Info("%sSent autoreply to %s (%s).\n", L_AUTOREPxSTR, u->GetAlias(),
-        u->accountId().c_str());
+    gLog.info("Sent autoreply to %s (%s)",
+        u->getAlias().c_str(), u->accountId().c_str());
   }
 
-  gUserManager.DropUser(u);
   return tag != 0;
 }
 

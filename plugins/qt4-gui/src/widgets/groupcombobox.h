@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2010 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,13 @@ class GroupComboBox : public QComboBox
   Q_OBJECT
 
 public:
-  GroupComboBox(bool withAllUsers = false, QWidget* parent = NULL);
+  /**
+   * Constructor
+   *
+   * @param groupPos True to add "First" entry and prefix group names with "After "
+   * @param parent Parent widget
+   */
+  GroupComboBox(bool groupPos = false, QWidget* parent = NULL);
 
   int currentGroupId() const;
   bool setCurrentGroupId(int groupId);
