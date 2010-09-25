@@ -1,3 +1,18 @@
+licq (1.5.0~rc1.6-1) unstable; urgency=low
+
+  * New upstream version
+    - 1.5.0-rc1.6 taken from 1.5-stable r7883
+    - kde/qt-gui are now fully replaced by kde4/qt4-gui
+  * Bumped Standards Version to 3.9.1 with no changes
+  * Updated patches for new upstream release
+  * Packaged jabber protocol plugin
+  * Packaged kde4-gui plugin
+  * Moved qt4 data files to a separate package licq-plugin-qt4-common
+  * Build system updated for new upstream release
+  * licq-plugin-kde/qt are now dummy packages depending on licq-plugin-kde4/qt4
+
+ -- Erik Johansson <debian@ejohansson.se>  Fri, 24 Sep 2010 22:32:38 +0200
+
 licq (1.3.9-1) unstable; urgency=low
 
   * New upstream version (closes: #74655)
