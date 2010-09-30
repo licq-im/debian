@@ -72,15 +72,15 @@ Package: licq-plugin-jabber
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
-Description: jabber plug-in for Licq
+Description: Jabber plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
- communication over a jabber (XMPP) instant messaging network.
+ communication over a Jabber (XMPP) instant messaging network.
 
 Package: licq-plugin-kde
 Architecture: all
 Depends: licq-plugin-kde4, ${misc:Depends}
 Section: oldlibs
-Description: transitional dummy package
+Description: dummy package for transition to licq-plugin-kde4
  This is a transitional dummy package to ease the migration from the deprecated
  licq-plugin-kde to the new licq-plugin-kde4 package.  You can remove it
  safely.
@@ -123,7 +123,7 @@ Package: licq-plugin-qt
 Architecture: all
 Depends: licq-plugin-qt4, ${misc:Depends}
 Section: oldlibs
-Description: transitional dummy package
+Description: dummy package for transition to licq-plugin-qt4
  This is a transitional dummy package to ease the migration from the deprecated
  licq-plugin-qt to the new licq-plugin-qt4 package.  You can remove it safely.
 
@@ -158,9 +158,10 @@ Architecture: all
 Depends: ${misc:Depends}
 Replaces: licq-plugin-qt4 (<< 1.5.0~)
 Breaks: licq-plugin-qt4 (<< 1.5.0~)
-Description: common data files for qt4 and kde4 plugin
- This package contains skins, icons and similar files that are used by both
- licq-plugin-qt4 and licq-plugin-kde4.
+Description: common data files for the Qt4 and KDE4 Licq plugins
+ This package contains common skins, icons and similar files that are used by
+ the Qt4 and KDE4 plugins for Licq. The package is only of use if at least one
+ of licq-plugin-qt4 and licq-plugin-kde4 is installed.
 
 Package: licq-plugin-rms
 Architecture: any
