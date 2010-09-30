@@ -1,3 +1,11 @@
+licq (1.5.0~rc2-2) unstable; urgency=low
+
+  * Minor changes of package descriptions - thanks to Joel R
+  * Remove empty /usr/share/licq directory from licq-plugin-qt4 and
+    licq-plugin-kde4 - thanks to Joel R
+
+ -- Erik Johansson <debian@ejohansson.se>  Thu, 30 Sep 2010 23:25:22 +0200
+
 licq (1.5.0~rc2-1) unstable; urgency=low
 
   * New upstream version
