@@ -87,8 +87,8 @@ ifeq ($(1),qt4)
 	mkdir -p debian/licq-plugin-qt4-common/usr/share/licq
 	mv debian/licq-plugin-qt4/usr/share/licq/qt4-gui debian/licq-plugin-qt4-common/usr/share/licq/
 endif
-ifeq ($(1),kde4)
-	rm -r debian/licq-plugin-kde4/usr/share/licq/qt4-gui
+ifneq ($(filter $(1), qt4 kde4),)
+	rm -r debian/licq-plugin-$(1)/usr/share/licq
 endif
 
 clean::
