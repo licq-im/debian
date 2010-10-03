@@ -1,3 +1,9 @@
+licq (1.5.0-1) unstable; urgency=low
+
+  * New upstream version 1.5.0
+
+ -- Erik Johansson <debian@ejohansson.se>  Sun, 03 Oct 2010 12:23:56 +0200
+
 licq (1.5.0~rc2-2) unstable; urgency=low
 
   * Minor changes of package descriptions - thanks to Joel R
