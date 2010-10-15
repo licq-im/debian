@@ -59,7 +59,7 @@ $(CMAKE_BUILDDIR)/CMakeCache.txt:
 
 build/licq:: debian/stamp-licq-build
 debian/stamp-licq-build:
-	$(DEB_MAKE_ENVVARS) $(MAKE) -C $(CMAKE_BUILDDIR)
+	$(DEB_MAKE_ENVVARS) $(MAKE) ARGS=-V -C $(CMAKE_BUILDDIR)
 	touch $@
 
 clean::
