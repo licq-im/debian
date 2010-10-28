@@ -80,6 +80,7 @@ Package: licq-plugin-kde
 Architecture: all
 Depends: licq-plugin-kde4, ${misc:Depends}
 Section: oldlibs
+Priority: extra
 Description: dummy package for transition to licq-plugin-kde4
  This is a transitional dummy package to ease the migration from the deprecated
  licq-plugin-kde to the new licq-plugin-kde4 package.  You can remove it
@@ -123,6 +124,7 @@ Package: licq-plugin-qt
 Architecture: all
 Depends: licq-plugin-qt4, ${misc:Depends}
 Section: oldlibs
+Priority: extra
 Description: dummy package for transition to licq-plugin-qt4
  This is a transitional dummy package to ease the migration from the deprecated
  licq-plugin-qt to the new licq-plugin-qt4 package.  You can remove it safely.
