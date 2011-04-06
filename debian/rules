@@ -18,6 +18,7 @@ CMAKE_NORMAL_ARGS += -DCMAKE_C_FLAGS="$(CFLAGS)"
 CMAKE_NORMAL_ARGS += -DCMAKE_CXX_FLAGS="$(CXXFLAGS)"
 CMAKE_NORMAL_ARGS += -DCMAKE_SKIP_RPATH=ON
 CMAKE_NORMAL_ARGS += -DCMAKE_VERBOSE_MAKEFILE=ON
+export CTEST_OUTPUT_ON_FAILURE=1
 
 # plugin packages
 PLUGINS := $(patsubst licq-plugin-%,%,$(filter licq-plugin-%,$(shell dh_listpackages)))
