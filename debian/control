@@ -4,8 +4,8 @@ Section: net
 Priority: optional
 Maintainer: Erik Johansson <debian@ejohansson.se>
 Standards-Version: 3.9.1
-Vcs-Git: git://gitorious.org/licq/debian.git
-Vcs-Browser: http://gitorious.org/licq/debian
+Vcs-Git: git://github.com/licq-im/debian.git
+Vcs-Browser: https://github.com/licq-im/debian
 Homepage: http://www.licq.org/
 
 Package: licq
