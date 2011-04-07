@@ -110,6 +110,6 @@ install/licq install/licq-dev:: install-licq-common
 install-licq-common::
 	$(DEB_MAKE_ENVVARS) $(MAKE) -C $(CMAKE_BUILDDIR) install DESTDIR=$(CURDIR)/debian/licq
 	mkdir -p debian/licq/usr/share/pixmaps
-	convert /usr/share/icons/oxygen/32x32/apps/licq.png debian/licq/usr/share/pixmaps/licq.xpm
+	cp plugins/qt4-gui/src/xpm/licq.xpm debian/licq/usr/share/pixmaps
 	mkdir -p debian/licq-dev/usr
 	mv debian/licq/usr/include debian/licq-dev/usr/include
