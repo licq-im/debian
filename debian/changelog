@@ -1,3 +1,15 @@
+licq (1.5.0-2) unstable; urgency=low
+
+  * Change vcs url to github
+  * Print test output on failure
+  * Install icon included in package instead of external (Closes: #628339)
+  * Bump standards version to 3.9.2 with no changes
+  * Incorporate Ubuntu patches
+  * Fix pthread crash on hppa (Closes: #607082)
+  * Fix FTBFS with gtest 1.6.0
+
+ -- Erik Johansson <debian@ejohansson.se>  Thu, 16 Jun 2011 21:32:23 +0200
+
 licq (1.5.0-1) unstable; urgency=low
 
   * New upstream version 1.5.0
