@@ -1,0 +1,21 @@
+commit f1b958d67189a499b4c23356cbe5919829ced7d9
+Author: Erik Johansson <erik@ejohansson.se>
+Date:   Wed Apr 6 22:16:31 2011 +0200
+
+    Fix build error when LDFLAGS is set in the environment
+    
+    Patch taken from ubuntu
+
+diff --git a/licq/src/CMakeLists.txt b/licq/src/CMakeLists.txt
+index a655654..7e3b214 100644
+--- licq/src/CMakeLists.txt
++++ licq/src/CMakeLists.txt
+@@ -114,7 +114,7 @@ add_executable(licq ${licq_SRCS})
+ set_target_properties(licq PROPERTIES LINK_FLAGS "${CMAKE_THREAD_LIBS_INIT}")
+ 
+ # Must export symbols from daemon so that plugins can use them
+-list(APPEND CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_EXPORTS_CXX_FLAG})
++set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_EXPORTS_CXX_FLAG}")
+ 
+ # To find public headers
+ include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
