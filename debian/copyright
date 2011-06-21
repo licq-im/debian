@@ -24,7 +24,7 @@ Copyright:
   GNU General Public License for more details.
 
 On Debian systems, the complete text of the GNU GPL can be found in the
-file /usr/share/common-licenses/GPL.
+file /usr/share/common-licenses/GPL-2.
 
 
 include/licq/byteorder.h and files under cmake/Modules are under this license:
