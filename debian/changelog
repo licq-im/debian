@@ -1,3 +1,13 @@
+licq (1.5.1-1) unstable; urgency=low
+
+  * New upstream version 1.5.1
+  * Refer to GPL version 2 explicit in copyright
+  * Correct lintian overrides
+  * Re-enable building of unit tests
+  * Drop patches included in upstream release
+
+ -- Erik Johansson <debian@ejohansson.se>  Fri, 01 Jul 2011 21:08:33 +0200
+
 licq (1.5.0-2) unstable; urgency=low
 
   * Change vcs url to github
