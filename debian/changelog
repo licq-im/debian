@@ -1,6 +1,6 @@
 licq (1.5.1-1) unstable; urgency=low
 
-  * New upstream version 1.5.1
+  * New upstream version 1.5.1 (Closes: #599071)
   * Refer to GPL version 2 explicit in copyright
   * Correct lintian overrides
   * Re-enable building of unit tests
