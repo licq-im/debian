@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 #include <licq/utility.h>
 
 #include "config/iconmanager.h"
+#include "config/shortcuts.h"
 
 #include "contactlist/contactlist.h"
 
@@ -75,14 +76,14 @@ UserMenu::UserMenu(QWidget* parent)
     a = mySendMenu->addAction(text); \
     mySendActions.insert(data, a); \
     a->setData(data);
-  ADD_SEND(tr("Send &Message"), SendMessage)
-  ADD_SEND(tr("Send &URL"), SendUrl)
-  ADD_SEND(tr("Send &Chat Request"), SendChat)
-  ADD_SEND(tr("Send &File Transfer"), SendFile)
-  ADD_SEND(tr("Send Contact &List"), SendContact)
-  ADD_SEND(tr("Send &Authorization"), SendAuthorize)
-  ADD_SEND(tr("Send Authorization Re&quest"), SendReqAuthorize)
-  ADD_SEND(tr("Send &SMS"), SendSms)
+  ADD_SEND(tr("Send &Message..."), SendMessage)
+  ADD_SEND(tr("Send &URL..."), SendUrl)
+  ADD_SEND(tr("Send &Chat Request..."), SendChat)
+  ADD_SEND(tr("Send &File Transfer..."), SendFile)
+  ADD_SEND(tr("Send Contact &List..."), SendContact)
+  ADD_SEND(tr("Send &Authorization..."), SendAuthorize)
+  ADD_SEND(tr("Send Authorization Re&quest..."), SendReqAuthorize)
+  ADD_SEND(tr("Send &SMS..."), SendSms)
   mySendMenu->addSeparator();
   ADD_SEND(tr("Update Info Plugin List"), RequestUpdateInfoPlugin)
   ADD_SEND(tr("Update Status Plugin List"), RequestUpdateStatusPlugin)
@@ -159,7 +160,7 @@ UserMenu::UserMenu(QWidget* parent)
   myGroupsMenu->addActions(mySystemGroupActions->actions());
 
   // User menu
-  myViewEventAction = addAction(tr("&View Event"), this, SLOT(viewEvent()));
+  myViewEventAction = addAction(tr("&View Event..."), this, SLOT(viewEvent()));
   addMenu(mySendMenu);
   addMenu(myMiscModesMenu);
   addMenu(myUtilitiesMenu);
@@ -173,12 +174,12 @@ UserMenu::UserMenu(QWidget* parent)
   addMenu(myGroupsMenu);
   myRemoveUserAction = addAction(tr("Remove From List"), this, SLOT(removeContact()));
   addSeparator();
-  mySetKeyAction = addAction(tr("Set GPG key"), this, SLOT(selectKey()));
+  mySetKeyAction = addAction(tr("Set GPG key..."), this, SLOT(selectKey()));
   if (!Licq::gDaemon.haveGpgSupport())
     mySetKeyAction->setVisible(false);
   myCopyIdAction = addAction(tr("&Copy User ID"), this, SLOT(copyIdToClipboard()));
-  myViewHistoryAction = addAction(tr("View &History"), this, SLOT(viewHistory()));
-  myViewGeneralAction = addAction(tr("&Info"), this, SLOT(viewInfoGeneral()));
+  myViewHistoryAction = addAction(tr("View &History..."), this, SLOT(viewHistory()));
+  myViewGeneralAction = addAction(tr("&Info..."), this, SLOT(viewInfoGeneral()));
 
   connect(this, SIGNAL(aboutToShow()), SLOT(aboutToShowMenu()));
 
@@ -255,10 +256,10 @@ void UserMenu::aboutToShowMenu()
   myMakePermanentAction->setVisible(!u.isLocked() ? false : u->NotInList());
 
   if (status & User::MessageStatuses)
-    myCheckArAction->setText(tr("Check %1 Response")
+    myCheckArAction->setText(tr("Check %1 Response...")
         .arg(u->statusString(true, false).c_str()));
   else
-    myCheckArAction->setText(tr("Check Auto Response"));
+    myCheckArAction->setText(tr("Check Auto Response..."));
 
   if (!u.isLocked())
     return;
@@ -286,12 +287,12 @@ void UserMenu::aboutToShowMenu()
   mySendActions[SendSms]->setEnabled(!u->getCellularNumber().empty());
   if (u->Secure())
   {
-    mySendActions[SendKey]->setText(tr("Close &Secure Channel"));
+    mySendActions[SendKey]->setText(tr("Close &Secure Channel..."));
     mySendActions[SendKey]->setIcon(IconManager::instance()->getIcon(IconManager::SecureOnIcon));
   }
   else
   {
-    mySendActions[SendKey]->setText(tr("Request &Secure Channel"));
+    mySendActions[SendKey]->setText(tr("Request &Secure Channel..."));
     mySendActions[SendKey]->setIcon(IconManager::instance()->getIcon(IconManager::SecureOffIcon));
   }
 
@@ -336,6 +337,33 @@ void UserMenu::aboutToShowMenu()
   myMiscModesActions[ModeStatusOccupied]->setVisible(isIcq);
   myMiscModesActions[ModeStatusDnd]->setVisible(isIcq);
 
+  if (myShowShortcuts)
+  {
+    // Display shortcuts
+    // Note: These shortcuts are only for display, the actual shortcuts for
+    //       the main contact list are handled in mainwin.
+    Config::Shortcuts* shortcuts = Config::Shortcuts::instance();
+
+    myCheckArAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserCheckAutoresponse));
+    mySendActions[SendChat]->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendChatRequest));
+    mySendActions[SendMessage]->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendMessage));
+    mySendActions[SendFile]->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendFile));
+    mySendActions[SendUrl]->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserSendUrl));
+    myViewHistoryAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserViewHistory));
+    myViewEventAction->setShortcut(shortcuts->getShortcut(Config::Shortcuts::MainwinUserViewMessage));
+  }
+  else
+  {
+    // Hide the shortcuts (e.g. menu is displayed from a dialog)
+    myCheckArAction->setShortcut(QKeySequence());
+    mySendActions[SendChat]->setShortcut(QKeySequence());
+    mySendActions[SendMessage]->setShortcut(QKeySequence());
+    mySendActions[SendFile]->setShortcut(QKeySequence());
+    mySendActions[SendUrl]->setShortcut(QKeySequence());
+    myViewHistoryAction->setShortcut(QKeySequence());
+    myViewEventAction->setShortcut(QKeySequence());
+  }
+
   int serverGroup = (u->GetSID() ? Licq::gUserManager.GetGroupFromID(u->GetGSID()) : 0);
 
   // Update group memberships
@@ -352,23 +380,17 @@ void UserMenu::aboutToShowMenu()
     a->setChecked(a->data().toInt() == serverGroup);
 }
 
-void UserMenu::setUser(const Licq::UserId& userId)
+void UserMenu::setUser(const Licq::UserId& userId, bool showShortcuts)
 {
   myUserId = userId;
   myId = userId.accountId().c_str();
   myPpid = userId.protocolId();
+  myShowShortcuts = showShortcuts;
 }
 
-void UserMenu::setUser(const QString& id, unsigned long ppid)
+void UserMenu::popup(QPoint pos, const Licq::UserId& userId, bool showShortcuts)
 {
-  myId = id;
-  myPpid = ppid;
-  myUserId = Licq::UserId(myId.toLatin1().data(), myPpid);
-}
-
-void UserMenu::popup(QPoint pos, const Licq::UserId& userId)
-{
-  setUser(userId);
+  setUser(userId, showShortcuts);
   QMenu::popup(pos);
 }
 

@@ -1161,7 +1161,12 @@ void UserSendCommon::eventDoneReceived(const Licq::Event* e)
     if (e->Command() == ICQ_CMDxTCP_START && e->Result() != Licq::Event::ResultCancelled &&
        (Config::Chat::instance()->autoSendThroughServer() ||
          QueryYesNo(this, tr("Direct send failed,\nsend through server?"))) )
+    {
+      // Remember that we want to send through server
+      mySendServerCheck->setChecked(true);
+
       retrySend(e, false, ICQ_TCPxMSG_NORMAL);
+    }
     return;
   }
 

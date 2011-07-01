@@ -112,6 +112,9 @@ bool Client::isConnected()
 
 void Client::changeStatus(unsigned status, bool notifyHandler)
 {
+  // Must reset status to avoid sending the old status message
+  myClient.presence().resetStatus();
+
   string msg = myHandler.getStatusMessage(status);
   myClient.setPresence(statusToPresence(status), 0, msg);
   if (notifyHandler)
@@ -310,12 +313,12 @@ void Client::handleRoster(const gloox::Roster& roster)
 void Client::handleRosterPresence(const gloox::RosterItem& item,
                                   const string& /*resource*/,
                                   gloox::Presence::PresenceType presence,
-                                  const string& /*msg*/)
+                                  const string& msg)
 {
   TRACE();
 
   myHandler.onUserStatusChange(gloox::JID(item.jid()).bare(),
-      presenceToStatus(presence));
+      presenceToStatus(presence), msg);
 }
 
 void Client::handleSelfPresence(const gloox::RosterItem& /*item*/,
@@ -462,7 +465,12 @@ bool Client::addRosterItem(const gloox::RosterItem& item)
       || item.subscription() == gloox::S10nFrom)
     return false;
 
-  myHandler.onUserAdded(item.jid(), item.name(), item.groups());
+  // States where we have sent a subscription request that hasn't be answered
+  bool awaitAuth = item.subscription() == gloox::S10nNoneOut
+      || item.subscription() == gloox::S10nNoneOutIn
+      || item.subscription() == gloox::S10nFromOut;
+
+  myHandler.onUserAdded(item.jid(), item.name(), item.groups(), awaitAuth);
   return true;
 }
 

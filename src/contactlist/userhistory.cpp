@@ -1,7 +1,7 @@
 // -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2010 Licq developers
+ * Copyright (C) 1998-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -268,7 +268,7 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
       GET_VALID_LINE_OR_BREAK;
         string email = &szResult[1];
       GET_VALID_LINES;
-        e = new Licq::EventWebPanel(name, email, szMsg,
+        e = new Licq::EventEmailPager(name, email, szMsg,
                              nCommand, tTime, nFlags);
       break;
     }
