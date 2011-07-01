@@ -52,8 +52,7 @@ clean::
 
 # Build rules
 
-# Tests disabled until google test 1.6.0 is supported
-#configure/licq:: CMAKE_EXTRA_ARGS += -DBUILD_TESTS=ON
+configure/licq:: CMAKE_EXTRA_ARGS += -DBUILD_TESTS=ON
 configure/licq:: $(CMAKE_BUILDDIR)/CMakeCache.txt
 $(CMAKE_BUILDDIR)/CMakeCache.txt:
 	mkdir -p $(@D)
