@@ -17,7 +17,7 @@ option(USE_HEBREW "Include support for hebrew reverse string" OFF)
 option(USE_OPENSSL "Enable secure communication channels" ON)
 option(USE_SOCKS5 "Enable socks5 support" OFF)
 option(BUILD_PLUGINS "Build all plugins" OFF)
-option(BUILD_TESTS "Build all unit tests" OFF)
+option(BUILD_TESTS "Build all unit tests" ON)
 
 set(DLOPEN_POLICY RTLD_NOW CACHE STRING "2nd dlopen parameter")
 mark_as_advanced(DLOPEN_POLICY)
@@ -110,16 +110,14 @@ if (USE_SOCKS5)
   set(SOCKS5_LIBRARIES ${SOCKS5_LIBRARY})
 endif (USE_SOCKS5)
 
-# Google Test is needed for unit tests
 if (BUILD_TESTS)
-  find_package(GTest)
-  if (NOT GTEST_FOUND)
-    message(FATAL_ERROR
-      "Google Test NOT found; disable unit tests by running cmake with -DBUILD_TESTS=OFF")
-  endif (NOT GTEST_FOUND)
-
   enable_testing()
   add_custom_target(tests ALL COMMAND ${CMAKE_CTEST_COMMAND} $(ARGS))
+
+  # Google Test
+  add_subdirectory(3rdparty/gtest)
+  set(GTEST_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/gtest/include")
+  set(GTEST_LIBRARIES gtest)
 
   # Google Mock
   add_subdirectory(3rdparty/gmock)

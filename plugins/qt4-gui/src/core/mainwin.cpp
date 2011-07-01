@@ -254,7 +254,11 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
   updateGroups(true);
 
   setMiniMode(conf->miniMode());
-  setVisible(!conf->mainwinStartHidden() && !bStartHidden);
+  if(!conf->mainwinStartHidden() && !bStartHidden)
+  {
+    setVisible(true);
+    raise();
+  }
 
   // verify we exist
   if (Licq::gUserManager.NumOwners() == 0)
@@ -543,7 +547,7 @@ void MainWindow::removeUserFromGroup()
   int groupId = Config::ContactList::instance()->groupId();
 
   // Removing "All users" is the same as removing user from the list
-  if (groupId == ContactListModel::AllUsersGroupId ||
+  if (groupId == ContactListModel::MostUsersGroupId ||
       groupId == ContactListModel::AllGroupsGroupId)
   {
     removeUserFromList();
@@ -782,7 +786,7 @@ void MainWindow::nextGroup()
   // Threaded view is selected, set all users
   if (curGroupId == ContactListModel::AllGroupsGroupId)
   {
-    Config::ContactList::instance()->setGroup(ContactListModel::AllUsersGroupId);
+    Config::ContactList::instance()->setGroup(ContactListModel::MostUsersGroupId);
     return;
   }
 
@@ -793,7 +797,7 @@ void MainWindow::nextGroup()
       Licq::GroupReadGuard group(g);
 
       // If current selection is all users, select first group in list
-      if (groupId == 0 && curGroupId == ContactListModel::AllUsersGroupId)
+      if (groupId == 0 && curGroupId == ContactListModel::MostUsersGroupId)
       {
         Config::ContactList::instance()->setGroup(group->id());
         return;
@@ -818,7 +822,7 @@ void MainWindow::nextGroup()
   }
 
   // No users groups exist and current selection is all users, set first system group
-  if (groupId == 0 && curGroupId == ContactListModel::AllUsersGroupId)
+  if (groupId == 0 && curGroupId == ContactListModel::MostUsersGroupId)
   {
     Config::ContactList::instance()->setGroup(ContactListModel::SystemGroupOffset + 0);
     return;
@@ -848,7 +852,7 @@ void MainWindow::prevGroup()
   int groupId = 0;
 
   // All users is selected, set thread view
-  if (curGroupId == ContactListModel::AllUsersGroupId)
+  if (curGroupId == ContactListModel::MostUsersGroupId)
   {
     Config::ContactList::instance()->setGroup(ContactListModel::AllGroupsGroupId);
     return;
@@ -864,7 +868,7 @@ void MainWindow::prevGroup()
       if (curGroupId == group->id())
       {
         if (groupId == 0)
-          Config::ContactList::instance()->setGroup(ContactListModel::AllUsersGroupId);
+          Config::ContactList::instance()->setGroup(ContactListModel::MostUsersGroupId);
         else
           Config::ContactList::instance()->setGroup(groupId);
         return;
@@ -878,7 +882,7 @@ void MainWindow::prevGroup()
   if (groupId != 0 && curGroupId == ContactListModel::SystemGroupOffset + 0)
   {
     if (groupId == 0)
-      Config::ContactList::instance()->setGroup(ContactListModel::AllUsersGroupId);
+      Config::ContactList::instance()->setGroup(ContactListModel::MostUsersGroupId);
     else
       Config::ContactList::instance()->setGroup(groupId);
     return;
@@ -931,7 +935,7 @@ void MainWindow::updateGroups(bool initial)
   myUserGroupsBox->addItem(ContactListModel::systemGroupName(groupId), groupId);
 
   ADD_SYSTEMGROUP(ContactListModel::AllGroupsGroupId);
-  ADD_SYSTEMGROUP(ContactListModel::AllUsersGroupId);
+  ADD_SYSTEMGROUP(ContactListModel::MostUsersGroupId);
 
   {
     Licq::GroupListGuard groupList(true);

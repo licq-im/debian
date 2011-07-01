@@ -887,6 +887,11 @@ int CRMSClient::changeStatus(unsigned long nPPID, const char *szStatus)
     bool b;
     {
       Licq::OwnerReadGuard o(nPPID);
+      if (!o.isLocked())
+      {
+        fprintf(fs, "%d Invalid protocol.\n", CODE_INVALIDxUSER);
+        return -1;
+      }
       b = !o->isOnline();
     }
     unsigned long tag = gProtocolManager.setStatus(ownerId, status);
@@ -1314,12 +1319,14 @@ int CRMSClient::Process_AR_text()
   if (!myUserId.isValid())
   {
     Licq::OwnerWriteGuard o(LICQ_PPID);
-    o->setAutoResponse(m_szText);
+    if (o.isLocked())
+      o->setAutoResponse(m_szText);
   }
   else
   {
     Licq::UserWriteGuard u(myUserId);
-    u->setCustomAutoResponse(m_szText);
+    if (u.isLocked())
+      u->setCustomAutoResponse(m_szText);
   }
 
   fprintf(fs, "%d Auto response saved.\n", CODE_RESULTxSUCCESS);
@@ -1466,7 +1473,7 @@ void CRMSClient::printUserEvent(const Licq::UserEvent* e, const string& alias)
     strcat(szEventHeader, "\n\0");
 
     // Write out the event header
-    fprintf(fs, szEventHeader);
+    fprintf(fs, "%s", szEventHeader);
 
     // Timestamp
     char szTimestamp[39];
@@ -1477,7 +1484,7 @@ void CRMSClient::printUserEvent(const Licq::UserEvent* e, const string& alias)
     sprintf(szTimestamp, "%d Sent At ", CODE_VIEWxTIME);
     strncat(szTimestamp, szTime, 25);
     strcat(szTimestamp, "\n\0");
-    fprintf(fs, szTimestamp);
+    fprintf(fs, "%s", szTimestamp);
 
     // Message
     fprintf(fs, "%d Message Start\n", CODE_VIEWxTEXTxSTART);
@@ -1596,14 +1603,13 @@ int CRMSClient::Process_SECURE()
   else
   {
     Licq::UserReadGuard u(userId);
-   if (u->Secure() == 0)
-   {
-    fprintf(fs, "%d Status: secure connection is closed.\n", CODE_SECURExSTAT);
-   }
-   if (u->Secure() == 1)
-   {
-    fprintf(fs, "%d Status: secure connection is open.\n", CODE_SECURExSTAT);
-   }
+    if (u.isLocked())
+    {
+      if (u->Secure() == 0)
+        fprintf(fs, "%d Status: secure connection is closed.\n", CODE_SECURExSTAT);
+      if (u->Secure() == 1)
+        fprintf(fs, "%d Status: secure connection is open.\n", CODE_SECURExSTAT);
+    }
   }
 
   free(id);
