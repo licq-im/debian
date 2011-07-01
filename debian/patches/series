@@ -1,8 +1,1 @@
 30_licq-debian-config.patch
-
-# Patches from upstream
-Fix-build-error-when-LDFLAGS-is-set-in-the-environme.patch
-Link-with-thread-library-the-normal-way.patch
-
-Dont-call-pthread-after-thread-has-been-joined.patch
-Compare-function-pointers-without-cast.patch
