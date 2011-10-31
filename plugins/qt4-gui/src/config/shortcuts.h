@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2009-2010 Licq developers
+ * Copyright (C) 2009-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -67,6 +66,10 @@ public:
     ChatToggleUrgent,
     ChatUserInfo,
     ChatUserMenu,
+#ifdef Q_WS_X11
+    GlobalPopupMessage,
+    GlobalShowMainwin,
+#endif
     InputClear,
     InputDeleteLine,
     InputDeleteLineBack,

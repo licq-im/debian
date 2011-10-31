@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 1998-2011 Licq developers
@@ -33,7 +32,6 @@
 #include <unistd.h>
 
 #include <licq/logging/log.h>
-#include <licq/icqdefines.h>
 #include <licq/userevents.h>
 #include <licq/userid.h>
 
@@ -117,8 +115,8 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
     }
     else
     {
-      gLog.warning(tr("%sUnable to open history file (%s):\n%s%s.\n"), L_WARNxSTR,
-          myFilename.c_str(), L_BLANKxSTR, strerror(errno));
+      gLog.warning(tr("Unable to open history file (%s): %s."),
+          myFilename.c_str(), strerror(errno));
       return false;
     }
   }
@@ -148,21 +146,31 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
     nCommand = atoi(&sz[13]);
     nFlags = atoi(&sz[20]) << 16;
     tTime = (time_t)atoi(&sz[27]);
+
+    // nCommand == Licq::UserEvent::CommandDirect => FlagDirect (already present in flags)
+    // nCommand == Licq::UserEvent::CommandSent => FlagSender (present in cDir)
+    // nCommand == Licq::UserEvent::CommandRcvOnline => No additional flags set
+    if (nCommand == Licq::UserEvent::CommandRcvOffline)
+      nFlags |= Licq::UserEvent::FlagOffline;
+
+    if (cDir != 'R')
+      nFlags |= Licq::UserEvent::FlagSender;
+
     // Now read in the message
     szMsg[0] = '\0';
     e = NULL;
     switch (nSubCommand)
     {
-    case ICQ_CMDxSUB_MSG:
-    {
-      GET_VALID_LINES;
-        e = new Licq::EventMsg(szMsg, nCommand, tTime, nFlags);
-        break;
-    }
-    case ICQ_CMDxSUB_CHAT:
-    {
-      if (nCommand != ICQ_CMDxTCP_CANCEL)
+      case Licq::UserEvent::TypeMessage:
       {
+      GET_VALID_LINES;
+        e = new Licq::EventMsg(szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeChat:
+      {
+        if (nCommand != Licq::UserEvent::CommandCancelled)
+        {
         GET_VALID_LINES;
           e = new Licq::EventChat(szMsg, 0, tTime, nFlags);
         }
@@ -172,11 +180,11 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
           //e = new Licq::EventChatCancel(0, tTime, nFlags);
         }
         break;
-    }
-    case ICQ_CMDxSUB_FILE:
-    {
-      if (nCommand != ICQ_CMDxTCP_CANCEL)
+      }
+      case Licq::UserEvent::TypeFile:
       {
+        if (nCommand != Licq::UserEvent::CommandCancelled)
+        {
         GET_VALID_LINE_OR_BREAK;
           string file  = &szResult[1];
         GET_VALID_LINE_OR_BREAK;
@@ -192,17 +200,17 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
           //e = new Licq::EventFileCancel(0, tTime, nFlags);
         }
       break;
-    }
-    case ICQ_CMDxSUB_URL:
-    {
+      }
+      case Licq::UserEvent::TypeUrl:
+      {
       GET_VALID_LINE_OR_BREAK;
         string url = &szResult[1];
       GET_VALID_LINES;
-        e = new Licq::EventUrl(url, szMsg, nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_AUTHxREQUEST:
-    {
+        e = new Licq::EventUrl(url, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeAuthRequest:
+      {
       GET_VALID_LINE_OR_BREAK;
         UserId userId(&szResult[1], myPpid);
       GET_VALID_LINE_OR_BREAK;
@@ -215,27 +223,27 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
         string email = &szResult[1];
       GET_VALID_LINES;
         e = new Licq::EventAuthRequest(userId, alias, firstName, lastName,
-            email, szMsg, nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_AUTHxGRANTED:
-    {
+            email, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeAuthGranted:
+      {
       GET_VALID_LINE_OR_BREAK;
         UserId userId(&szResult[1], myPpid);
       GET_VALID_LINES;
-        e = new Licq::EventAuthGranted(userId, szMsg, nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_AUTHxREFUSED:
-    {
+        e = new Licq::EventAuthGranted(userId, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeAuthRefused:
+      {
       GET_VALID_LINE_OR_BREAK;
         UserId userId(&szResult[1], myPpid);
       GET_VALID_LINES;
-        e = new Licq::EventAuthRefused(userId, szMsg, nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_ADDEDxTOxLIST:
-    {
+        e = new Licq::EventAuthRefused(userId, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeAdded:
+      {
       GET_VALID_LINE_OR_BREAK;
         UserId userId(&szResult[1], myPpid);
       GET_VALID_LINE_OR_BREAK;
@@ -247,33 +255,31 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
       GET_VALID_LINE_OR_BREAK;
         string email = &szResult[1];
         e = new Licq::EventAdded(userId, alias, firstName, lastName, email,
-                            nCommand, tTime, nFlags);
+            tTime, nFlags);
       break;
-    }
-    case ICQ_CMDxSUB_WEBxPANEL:
-    {
+      }
+      case Licq::UserEvent::TypeWebPanel:
+      {
       GET_VALID_LINE_OR_BREAK;
         string name = &szResult[1];
       GET_VALID_LINE_OR_BREAK;
         string email = &szResult[1];
       GET_VALID_LINES;
-        e = new Licq::EventWebPanel(name, email, szMsg,
-                             nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_EMAILxPAGER:
-    {
+        e = new Licq::EventWebPanel(name, email, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeEmailPager:
+      {
       GET_VALID_LINE_OR_BREAK;
         string name = &szResult[1];
       GET_VALID_LINE_OR_BREAK;
         string email = &szResult[1];
       GET_VALID_LINES;
-        e = new Licq::EventEmailPager(name, email, szMsg,
-                             nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_CONTACTxLIST:
-    {
+        e = new Licq::EventEmailPager(name, email, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeContactList:
+      {
       Licq::EventContactList::ContactList vc;
       bool b = true;
       string id;
@@ -289,28 +295,28 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
           }
         b = !b;
       }
-        e = new Licq::EventContactList(vc, false, nCommand, tTime, nFlags);
+        e = new Licq::EventContactList(vc, false, tTime, nFlags);
         break;
-    }
-    case ICQ_CMDxSUB_SMS:
-    {
+      }
+      case Licq::UserEvent::TypeSms:
+      {
       GET_VALID_LINE_OR_BREAK;
         string number = &szResult[1];
       GET_VALID_LINES;
-        e = new Licq::EventSms(number, szMsg, nCommand, tTime, nFlags);
-      break;
-    }
-    case ICQ_CMDxSUB_MSGxSERVER:
-    {
+        e = new Licq::EventSms(number, szMsg, tTime, nFlags);
+        break;
+      }
+      case Licq::UserEvent::TypeMsgServer:
+      {
       GET_VALID_LINE_OR_BREAK;
         string name = &szResult[1];
       SKIP_LINE;
       GET_VALID_LINES;
         e = new Licq::EventServerMessage(name, "", szMsg, tTime);
-      break;
-    }
-    case ICQ_CMDxSUB_EMAILxALERT:
-    {
+        break;
+      }
+      case Licq::UserEvent::TypeEmailAlert:
+      {
       GET_VALID_LINE_OR_BREAK;
         string name = &szResult[1];
       GET_VALID_LINE_OR_BREAK;
@@ -319,14 +325,13 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
         e = new Licq::EventEmailAlert(name, 0, email, szMsg, tTime);
       break;
     }
-    default:
-      gLog.warning(tr("%sCorrupt history file (%s): Unknown sub-command 0x%04X.\n"),
-          L_WARNxSTR, myFilename.c_str(), nSubCommand);
-      break;
+      default:
+        gLog.warning(tr("Corrupt history file (%s): Unknown sub-command 0x%04X."),
+            myFilename.c_str(), nSubCommand);
+        break;
     }
     if (e != NULL)
     {
-      e->setIsReceiver(cDir == 'R');
       e->SetPending(false);
       lHistory.push_back(e);
     }
@@ -358,8 +363,8 @@ void UserHistory::write(const string& buf, bool append)
   int fd = open(myFilename.c_str(), O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC), 00600);
   if (fd == -1)
   {
-    gLog.error("%sUnable to open history file (%s):\n%s%s.\n", L_ERRORxSTR,
-        myFilename.c_str(), L_BLANKxSTR, strerror(errno));
+    gLog.error(tr("Unable to open history file (%s): %s."),
+        myFilename.c_str(), strerror(errno));
     return;
   }
   ::write(fd, buf.c_str(), buf.size());

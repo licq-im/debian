@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2010 Licq developers
+ * Copyright (C) 1998-2011 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -23,6 +22,8 @@
 #include <stdlib.h>
 
 #include <licq/logging/log.h>
+
+#include "gettext.h"
 
 using namespace std;
 using Licq::Translator;
@@ -102,8 +103,8 @@ bool Translator::setTranslationMap(const string& mapFileName)
           inputs+0, inputs+1, inputs+2, inputs+3,
           inputs+4, inputs+5, inputs+6, inputs+7) < 8)
     {
-      gLog.error("%sSyntax error in translation file '%s'.\n",
-          L_ERRORxSTR, mapFileName.c_str());
+      gLog.error(tr("Syntax error in translation file '%s'."),
+          mapFileName.c_str());
       setDefaultTranslationMap();
       fclose(mapFile);
       return false;
@@ -125,8 +126,7 @@ bool Translator::setTranslationMap(const string& mapFileName)
   }
   else
   {
-    gLog.error("%sTranslation file '%s' corrupted.\n",
-        L_ERRORxSTR, mapFileName.c_str());
+    gLog.error(tr("Translation file '%s' corrupted."), mapFileName.c_str());
     setDefaultTranslationMap();
     return false;
   }
@@ -374,7 +374,7 @@ string Translator::iconvConvert(const string& s, const string& to, const string&
 {
   ok = true;
 
-  size_t inLen = (length > -1 ? length : s.size());
+  size_t inLen = (length > -1 ? static_cast<size_t>(length) : s.size());
   size_t outLen = inLen * (length == -2 ? 3 : 2);
   size_t outSize = outLen;
 
@@ -410,7 +410,31 @@ string Translator::iconvConvert(const string& s, const string& to, const string&
   }
 
   *outPtr = '\0';
-  string ret(result);
+  string ret(result, outSize - outLen);
   delete[] result;
   return ret;
 }
+
+
+#if defined(__APPLE__) && defined(__amd64__)
+#define LIBICONV_PLUG 1
+#include <iconv.h>
+// The following symbols are not defined on 64-bit OS X but are needed by
+// libintl. Taken in part from
+// http://opensource.apple.com/source/libiconv/libiconv-26/patches/unix03.patch
+iconv_t libiconv_open(const char* tocode, const char* fromcode)
+{
+  return iconv_open(tocode, fromcode);
+}
+
+size_t libiconv(iconv_t cd, const char** inbuf, size_t* inbytesleft,
+		char** outbuf, size_t* outbytesleft)
+{
+  return iconv(cd, (char **)inbuf, inbytesleft, outbuf, outbytesleft);
+}
+
+int libiconv_close(iconv_t cd)
+{
+  return iconv_close(cd);
+}
+#endif

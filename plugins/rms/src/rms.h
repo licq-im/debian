@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2010 Licq developers
+ * Copyright (C) 2000-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
 
 #ifndef LICQRMS_H
 #define LICQRMS_H
+
+#include <licq/plugin/generalplugin.h>
 
 #include <list>
 
@@ -40,20 +42,33 @@ const unsigned short MAX_TEXT_LENGTH = 1024 * 8;
 typedef std::list<class CRMSClient*> ClientList;
 typedef std::list<unsigned long> TagList;
 
-class CLicqRMS
+class CLicqRMS : public Licq::GeneralPlugin
 {
 public:
-  CLicqRMS(bool, unsigned short);
+  CLicqRMS(Params& p);
   ~CLicqRMS();
-  int Run();
   void Shutdown();
-  bool Enabled() { return m_bEnabled; }
+
+  // From Licq::GeneralPlugin
+  std::string name() const;
+  std::string version() const;
+  std::string description() const;
+  std::string usage() const;
+  std::string configFile() const;
+  bool isEnabled() const;
 
 protected:
-  int m_nPipe;
+  // From Licq::GeneralPlugin
+  bool init(int argc, char** argv);
+  int run();
+  void destructor();
+
   bool m_bExit, m_bEnabled;
 
-  unsigned short m_nPort;
+  unsigned int myPort;
+  unsigned long myAuthProtocol;
+  std::string myAuthUser;
+  std::string myAuthPassword;
 
   Licq::TCPSocket* server;
   ClientList clients;
@@ -108,23 +123,22 @@ protected:
   char data_line[MAX_LINE_LENGTH + 1];
   char *data_arg;
   unsigned short data_line_pos;
-  unsigned long m_nCheckUin;
+  std::string myLoginUser;
   char *m_szCheckId;
   unsigned int myLogLevelsBitmask;
   bool m_bNotify;
 
   unsigned long m_nUin;
   Licq::UserId myUserId;
-  char m_szText[MAX_TEXT_LENGTH + 1];
-  char m_szLine[MAX_LINE_LENGTH + 1];
-  unsigned short m_nTextPos;
+  std::string myText;
+  std::string myLine;
 
   int StateMachine();
   int ProcessCommand();
   bool ProcessEvent(Licq::Event* e);
   bool AddLineToText();
-  unsigned long GetProtocol(const char *);
-  void ParseUser(const char *);
+  unsigned long getProtocol(const std::string& data);
+  void ParseUser(const std::string& data);
   int changeStatus(unsigned long, const char *);
 
   int Process_MESSAGE_text();

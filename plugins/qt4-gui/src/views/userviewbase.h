@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 1999-2011 Licq developers
@@ -49,9 +48,10 @@ public:
    * Constructor
    *
    * @param contactList The contact list instance
+   * @param useSkin Enable skin and event animations
    * @param parent Parent object
    */
-  UserViewBase(ContactListModel* contactList, QWidget* parent = 0);
+  UserViewBase(ContactListModel* contactList, bool useSkin = true, QWidget* parent = 0);
 
   /**
    * Destructor

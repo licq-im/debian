@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2010 Licq developers
+ * Copyright (C) 2004-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #include <licq/logging/logservice.h>
 #include <licq/md5.h>
 #include <licq/oneventmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/socket.h>
 #include <licq/userevents.h>
@@ -99,7 +100,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         gSocketMan.CloseSocket(m_nServerSocket, false, true);
   
         // Make the new connection
-        MSNLogon(host.c_str(), port, myStatus);
+        Logon(myStatus, host.c_str(), port);
       }
     }
     else if (strCmd == "USR")
@@ -195,7 +196,8 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         {
           string strDecodedNick = Decode(strNick);
           u->setAlias(strDecodedNick);
-          Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+          Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+              Licq::PluginSignal::SignalUser,
               Licq::PluginSignal::UserBasic, u->id()));
         }
         u->setUserInfoString("Email1", strUser);
@@ -203,8 +205,9 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         u->setUserInfoString("Homepage", strURL);
         u->SetNewUser(false);
         u->SetEnableSave(true);
-        u->SaveLicqInfo();
-        Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+        u->save(Licq::User::SaveLicqInfo);
+        Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+            Licq::PluginSignal::SignalUser,
             Licq::PluginSignal::UserInfo, u->id()));
       }
     }
@@ -228,7 +231,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
         gLog.info("Authorization request from %s", strUser.c_str());
 
         Licq::UserEvent* e = new Licq::EventAuthRequest(userId,
-          strNick.c_str(), "", "", "", "", ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
+            strNick.c_str(), "", "", "", "", time(0), 0);
 
         Licq::OwnerWriteGuard o(MSN_PPID);
         if (Licq::gDaemon.addUserEvent(*o, e))
@@ -249,7 +252,8 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
             string strDecodedNick = Decode(strNick);
             u->setAlias(strDecodedNick);
           }
-          Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+          Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+              Licq::PluginSignal::SignalUser,
               Licq::PluginSignal::UserBasic, u->id()));
         }
       }
@@ -303,7 +307,9 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
           User::statusToString(status, true, false).c_str());
       myStatus = status;
 
-      gUserManager.ownerStatusChanged(MSN_PPID, status);
+      Licq::OwnerWriteGuard o(MSN_PPID);
+      if (o.isLocked())
+        o->statusChanged(status);
     }
     else if (strCmd == "ILN" || strCmd == "NLN")
     {
@@ -329,14 +335,14 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
       Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
       if (u.isLocked())
       {
-        u->SetOnlineSince(time(NULL)); // Not in this protocol
         u->SetSendServer(true); // no direct connections
 
         if (!u->KeepAliasOnUpdate())
         {
           string strDecodedNick = Decode(strNick);
           u->setAlias(strDecodedNick);
-          Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+          Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+              Licq::PluginSignal::SignalUser,
               Licq::PluginSignal::UserBasic, u->id()));
         }
 
@@ -350,9 +356,6 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
 
         gLog.info("%s changed status (%s)", u->getAlias().c_str(), strStatus.c_str());
         u->statusChanged(status);
-
-        if (strCmd == "NLN" && status == User::OnlineStatus)
-          gOnEventManager.performOnEvent(OnEventData::OnEventOnline, *u);
       }
     }
     else if (strCmd == "FLN")
@@ -475,7 +478,7 @@ void CMSN::ProcessServerPacket(CMSNBuffer *packet)
           gLog.error("Cannot send messages while invisible");
           pStart = *it;
           pStart->m_pEvent->m_eResult = Licq::Event::ResultFailed;
-          Licq::gDaemon.PushPluginEvent(pStart->m_pEvent);
+          Licq::gPluginManager.pushPluginEvent(pStart->m_pEvent);
           m_lStart.erase(it);
           break; 
         }
@@ -525,12 +528,7 @@ void CMSN::SendPacket(CMSNPacket *p)
   delete p;
 }
 
-void CMSN::MSNLogon(const char *_szServer, int _nPort)
-{
-  MSNLogon(_szServer, _nPort, myOldStatus);
-}
-
-void CMSN::MSNLogon(const char *_szServer, int _nPort, unsigned status)
+void CMSN::Logon(unsigned status, string host, int port)
 {
   if (status == User::OfflineStatus)
     return;
@@ -546,14 +544,18 @@ void CMSN::MSNLogon(const char *_szServer, int _nPort, unsigned status)
     m_szUserName = strdup(o->accountId().c_str());
     myOwnerId = o->id();
     myPassword = o->password();
+    if (host.empty())
+      host = o->serverHost();
+    if (port == 0)
+      port = o->serverPort();
   }
 
   Licq::SrvSocket* sock = new Licq::SrvSocket(myOwnerId);
-  gLog.info("Server found at %s:%d", _szServer, _nPort);
+  gLog.info("Server found at %s:%d", host.c_str(), port);
 
-  if (!sock->connectTo(_szServer, _nPort))
+  if (!sock->connectTo(host, port))
   {
-    gLog.info("Connect failed to %s", _szServer);
+    gLog.info("Connect failed to %s", host.c_str());
     delete sock;
     return;
   }
@@ -606,7 +608,6 @@ void CMSN::MSNLogoff(bool bDisconnected)
     SendPacket(pSend);
   }
 
-  myOldStatus = myStatus;
   myStatus = User::OfflineStatus;
 
   // Don't try to send any more pings
@@ -629,14 +630,16 @@ void CMSN::MSNLogoff(bool bDisconnected)
       if (u->normalSocketDesc() != -1)
       {
         gSocketMan.CloseSocket(u->normalSocketDesc(), false, true);
-        u->ClearSocketDesc();
+        u->clearAllSocketDesc();
       }
       if (u->isOnline())
         u->statusChanged(User::OfflineStatus);
     }
   }
 
-  gUserManager.ownerStatusChanged(MSN_PPID, User::OfflineStatus);
+  Licq::OwnerWriteGuard o(MSN_PPID);
+  if (o.isLocked())
+    o->statusChanged(Licq::User::OfflineStatus);
 }
 
 void CMSN::MSNAddUser(const UserId& userId)
@@ -648,7 +651,7 @@ void CMSN::MSNAddUser(const UserId& userId)
       u->SetEnableSave(false);
       u->setUserEncoding("UTF-8");
       u->SetEnableSave(true);
-      u->SaveLicqInfo();
+      u->save(Licq::User::SaveLicqInfo);
     }
   }
 
@@ -752,7 +755,7 @@ void *MSNPing_tep(void *p)
 {
   CMSN *pMSN = (CMSN *)p;
 
-  Licq::gDaemon.getLogService().createThreadLog("msn-ping");
+  Licq::gLogService.createThreadLog("msn-ping");
   
   while (true)
   {
@@ -763,8 +766,9 @@ void *MSNPing_tep(void *p)
       pthread_mutex_lock(&(pMSN->mutex_ServerSocket));
       gLog.info("Ping timeout, reconnecting...");
       pMSN->SetWaitingPingReply(false);
+      unsigned status = pMSN->status();
       pMSN->MSNLogoff();
-      pMSN->MSNLogon(pMSN->serverAddress().c_str(), pMSN->serverPort());
+      pMSN->Logon(status);
       pthread_mutex_unlock(&(pMSN->mutex_ServerSocket));
     }
     else if (pMSN->CanSendPing())

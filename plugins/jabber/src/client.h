@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -35,6 +35,7 @@
 namespace gloox
 {
 class Client;
+class ConnectionTCPClient;
 class RosterManager;
 }
 
@@ -46,6 +47,17 @@ class Handler;
 class SessionManager;
 class UserToVCard;
 
+class JClient : private boost::noncopyable,
+                public gloox::Client
+{
+public:
+  JClient(const gloox::JID& jid, const std::string& password, int port=-1);
+  virtual ~JClient();
+
+protected:
+  virtual bool checkStreamVersion(const std::string& version);
+};
+
 class Client : private boost::noncopyable,
                public gloox::ConnectionListener,
                public gloox::RosterListener,
@@ -54,7 +66,7 @@ class Client : private boost::noncopyable,
 {
 public:
   Client(const Config& config, Handler& handler, const std::string& user,
-         const std::string& password);
+      const std::string& password, const std::string& host, int port);
   virtual ~Client();
 
   int getSocket();
@@ -69,7 +81,7 @@ public:
   void changeStatus(unsigned status, bool notifyHandler = true);
   void getVCard(const std::string& user);
   void setOwnerVCard(const UserToVCard& wrapper);
-  void addUser(const std::string& user, bool notify);
+  void addUser(const std::string& user, const gloox::StringList& groupNames, bool notify);
   void changeUserGroups(const std::string& user,
                         const gloox::StringList& groups);
   void removeUser(const std::string& user);
@@ -119,7 +131,8 @@ private:
   Handler& myHandler;
   SessionManager* mySessionManager;
   gloox::JID myJid;
-  gloox::Client myClient;
+  JClient myClient;
+  gloox::ConnectionTCPClient* myTcpClient;
   gloox::RosterManager* myRosterManager;
   gloox::VCardManager myVCardManager;
 

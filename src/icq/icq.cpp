@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2010 Licq developers
+ * Copyright (C) 1998-2011 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -21,13 +20,11 @@
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/event.h>
-#include <licq/icqdefines.h>
 #include <licq/inifile.h>
 #include <licq/logging/log.h>
-#include <licq/logging/logservice.h>
-#include <licq/logging/logutils.h>
 #include <licq/statistics.h>
 #include <licq/oneventmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/proxy.h>
 #include <licq/translator.h>
@@ -35,8 +32,7 @@
 
 #include "../daemon.h"
 #include "../gettext.h"
-#include "../logging/filelogsink.h"
-#include "../support.h"
+#include "defines.h"
 #include "oscarservice.h"
 #include "packet.h"
 
@@ -46,8 +42,6 @@ using Licq::OnEventData;
 using Licq::gLog;
 using Licq::gOnEventManager;
 
-// Constants
-const char* const CICQDaemon::DefaultServerHost = "login.icq.com";
 
 std::list <CReverseConnectToUserData *> IcqProtocol::m_lReverseConnect;
 pthread_mutex_t IcqProtocol::mutex_reverseconnect = PTHREAD_MUTEX_INITIALIZER;
@@ -59,6 +53,7 @@ IcqProtocol gIcqProtocol;
 Licq::SocketManager gSocketManager;
 
 IcqProtocol::IcqProtocol()
+  : myDirectMode(true)
 {
   // Empty
 }
@@ -96,10 +91,6 @@ void IcqProtocol::initialize()
 
   licqConf.setSection("network");
 
-  // ICQ Server
-  licqConf.get("ICQServer", myIcqServer, DefaultServerHost);
-  licqConf.get("ICQServerPort", myIcqServerPort, DefaultServerPort);
-
   licqConf.get("MaxUsersPerPacket", myMaxUsersPerPacket, 100);
   licqConf.get("AutoUpdateInfo", m_bAutoUpdateInfo, true);
   licqConf.get("AutoUpdateInfoPlugins", m_bAutoUpdateInfoPlugins, true);
@@ -109,25 +100,6 @@ void IcqProtocol::initialize()
   Licq::Color::setDefaultForeground(nColor);
   licqConf.get("BackgroundColor", nColor, 0x00FFFFFF);
   Licq::Color::setDefaultBackground(nColor);
-
-  // Error log file
-  // TODO: Move this to the daemon
-  licqConf.get("Errors", myErrorFile, "log.errors");
-  licqConf.get("ErrorTypes", myErrorTypes, 0x4 | 0x2); // error and unknown
-  if (myErrorFile != "none")
-  {
-    string errorFile = Licq::gDaemon.baseDir() + myErrorFile;
-    boost::shared_ptr<LicqDaemon::FileLogSink> logSink(
-        new LicqDaemon::FileLogSink(errorFile));
-    logSink->setLogLevelsFromBitmask(
-        Licq::LogUtils::convertOldBitmaskToNew(myErrorTypes));
-    logSink->setLogPackets(true);
-    if (logSink->isOpen())
-      gDaemon.getLogService().registerLogSink(logSink);
-    else
-      gLog.error("Unable to open %s as error log:\n%s",
-                 errorFile.c_str(), strerror(errno));
-  }
 
   // Proxy
   m_xProxy = NULL;
@@ -158,9 +130,8 @@ bool IcqProtocol::start()
   m_nTCPSocketDesc = gDaemon.StartTCPServer(s);
   if (m_nTCPSocketDesc == -1)
   {
-     gLog.error(tr("%sUnable to allocate TCP port for local server (%s)!\n"),
-                L_ERRORxSTR, tr("No ports available"));
-     return false;
+    gLog.error(tr("Unable to allocate TCP port for local server (No ports available)!"));
+    return false;
   }
   gSocketManager.AddSocket(s);
   {
@@ -175,23 +146,18 @@ bool IcqProtocol::start()
   gSocketManager.DropSocket(s);
 
   gLog.info(tr("Spawning daemon threads"));
-  nResult = pthread_create(&thread_monitorsockets, NULL, &MonitorSockets_tep, this);
-  if (nResult != 0)
-  {
-    gLog.error("%sUnable to start socket monitor thread:\n%s%s.\n", L_ERRORxSTR, L_BLANKxSTR, strerror(nResult));
-    return false;
-  }
+
   nResult = pthread_create(&thread_ping, NULL, &Ping_tep, this);
   if (nResult != 0)
   {
-    gLog.error("%sUnable to start ping thread:\n%s%s.\n", L_ERRORxSTR, L_BLANKxSTR, strerror(nResult));
+    gLog.error(tr("Unable to start ping thread: %s."), strerror(nResult));
     return false;
   }
   
   nResult = pthread_create(&thread_updateusers, NULL, &UpdateUsers_tep, this);
   if (nResult != 0)
   {
-    gLog.error("%sUnable to start users update thread:\n%s%s.\n", L_ERRORxSTR, L_BLANKxSTR, strerror(nResult));
+    gLog.error(tr("Unable to start users update thread: %s."), strerror(nResult));
     return false;
   }
 
@@ -202,22 +168,18 @@ bool IcqProtocol::start()
                              &OscarServiceSendQueue_tep, m_xBARTService);
     if (nResult != 0)
     {
-      gLog.error(tr("%sUnable to start BART service thread:\n%s%s.\n"),
-                 L_ERRORxSTR, L_BLANKxSTR, strerror(nResult));
+      gLog.error(tr("Unable to start BART service thread: %s."), strerror(nResult));
       return false;
     }
   }
 
+  MonitorSockets_func();
   return true;
 }
 
 void IcqProtocol::save(Licq::IniFile& licqConf)
 {
   licqConf.setSection("network");
-
-  // ICQ Server
-  licqConf.set("ICQServer", myIcqServer);
-  licqConf.set("ICQServerPort", myIcqServerPort);
 
   licqConf.set("MaxUsersPerPacket", myMaxUsersPerPacket);
   licqConf.set("AutoUpdateInfo", m_bAutoUpdateInfo);
@@ -226,19 +188,15 @@ void IcqProtocol::save(Licq::IniFile& licqConf)
   licqConf.set("ForegroundColor", Licq::Color::defaultForeground());
   licqConf.set("BackgroundColor", Licq::Color::defaultBackground());
 
-  licqConf.set("Errors", myErrorFile);
-  licqConf.set("ErrorTypes", myErrorTypes);
-
   // Misc
   licqConf.set("UseSS", m_bUseSS); // server side list
   licqConf.set("UseBART", m_bUseBART); // server side buddy icons
   licqConf.set("ReconnectAfterUinClash", m_bReconnectAfterUinClash);
 }
 
-void CICQDaemon::SetDirectMode()
+void IcqProtocol::setDirectMode()
 {
-  bool bDirect = (!gDaemon.behindFirewall() || (gDaemon.behindFirewall() && gDaemon.tcpEnabled()));
-  CPacket::SetMode(bDirect ? MODE_DIRECT : MODE_INDIRECT);
+  myDirectMode = (!gDaemon.behindFirewall() || (gDaemon.behindFirewall() && gDaemon.tcpEnabled()));
 }
 
 void CICQDaemon::InitProxy()
@@ -255,7 +213,7 @@ unsigned short VersionToUse(unsigned short v_in)
 {
   /*if (ICQ_VERSION_TCP & 4 && v & 4) return 4;
   if (ICQ_VERSION_TCP & 2 && v & 2) return 2;
-  gLog.warning("%sUnknown TCP version %d.  Attempting v2.\n", L_WARNxSTR, v);
+  gLog.warning(tr("Unknown TCP version %d.  Attempting v2."), v);
   return 2;*/
   unsigned short v_out = v_in < ICQ_VERSION_TCP ? v_in : ICQ_VERSION_TCP;
   if (v_out < 2 || v_out == 5)
@@ -265,8 +223,7 @@ unsigned short VersionToUse(unsigned short v_in)
     else
       v_out = 6;
 
-    gLog.warning(tr("%sInvalid TCP version %d.  Attempting v%d.\n"), L_WARNxSTR, v_in,
-                                                              v_out);
+    gLog.warning(tr("Invalid TCP version %d.  Attempting v%d."), v_in, v_out);
   }
   return v_out;
 }
@@ -282,8 +239,7 @@ void IcqProtocol::SetUseServerSideBuddyIcons(bool b)
                                  &OscarServiceSendQueue_tep, m_xBARTService);
     if (nResult != 0)
     {
-      gLog.error(tr("%sUnable to start BART service thread:\n%s%s.\n"),
-                 L_ERRORxSTR, L_BLANKxSTR, strerror(nResult));
+      gLog.error(tr("Unable to start BART service thread:%s."), strerror(nResult));
     }
     else
       m_bUseBART = true;
@@ -292,9 +248,49 @@ void IcqProtocol::SetUseServerSideBuddyIcons(bool b)
     m_bUseBART = b;
 }
 
-void IcqProtocol::ChangeUserStatus(Licq::User* u, unsigned long s)
+void IcqProtocol::ChangeUserStatus(Licq::User* u, unsigned long s, time_t onlineSince)
 {
-  u->statusChanged(Licq::User::statusFromIcqStatus(s), s);
+  //This is the v6 way of telling us phone follow me status
+  if (s & ICQ_STATUS_FxPFM)
+  {
+    if (s & ICQ_STATUS_FxPFMxAVAILABLE)
+      u->setPhoneFollowMeStatus(IcqPluginActive);
+    else
+      u->setPhoneFollowMeStatus(IcqPluginBusy);
+  }
+  else if (u->Version() < 7)
+    u->setPhoneFollowMeStatus(IcqPluginInactive);
+
+  u->setWebPresence(s & ICQ_STATUS_FxWEBxPRESENCE);
+  u->setHideIp(s & ICQ_STATUS_FxHIDExIP);
+  u->setBirthdayFlag(s & ICQ_STATUS_FxBIRTHDAY);
+  u->setHomepageFlag(s & ICQ_STATUS_FxICQxHOMEPAGE);
+
+  if (s & ICQ_STATUS_FxDIRECTxDISABLED)
+    u->setDirectFlag(Licq::User::DirectDisabled);
+  else if (s & ICQ_STATUS_FxDIRECTxLISTED)
+    u->setDirectFlag(Licq::User::DirectListed);
+  else if (s & ICQ_STATUS_FxDIRECTxAUTH)
+    u->setDirectFlag(Licq::User::DirectAuth);
+  else
+    u->setDirectFlag(Licq::User::DirectAnyone);
+
+  u->statusChanged(statusFromIcqStatus(s), onlineSince);
+}
+
+unsigned IcqProtocol::eventCommandFromPacket(Licq::Packet* p)
+{
+  if (p->SubCommand() == ICQ_CMDxSUB_MSG)
+    return Licq::Event::CommandMessage;
+  if (p->SubCommand() == ICQ_CMDxSUB_URL)
+    return Licq::Event::CommandUrl;
+  if (p->SubCommand() == ICQ_CMDxSUB_FILE)
+    return Licq::Event::CommandFile;
+  if (p->SubCommand() == ICQ_CMDxSUB_CHAT)
+    return Licq::Event::CommandChatInvite;
+  if (p->SubCommand() == ICQ_CMDxSUB_SECURExOPEN)
+    return Licq::Event::CommandSecureOpen;
+  return Licq::Event::CommandOther;
 }
 
 /*----------------------------------------------------------------------------
@@ -308,9 +304,8 @@ void IcqProtocol::SendEvent_Server(CPacket *packet)
 #if 1
   unsigned long eventId = gDaemon.getNextEventId();
   Licq::Event* e = new Licq::Event(eventId, m_nTCPSrvSocketDesc, packet, Licq::Event::ConnectServer);
+  e->myCommand = eventCommandFromPacket(packet);
 
-  if (e == NULL)  return;
- 
   pthread_mutex_lock(&mutex_sendqueue_server);
   m_lxSendQueue_Server.push_back(e);
   pthread_mutex_unlock(&mutex_sendqueue_server);
@@ -319,8 +314,8 @@ void IcqProtocol::SendEvent_Server(CPacket *packet)
   int nResult = pthread_create(&e->thread_send, NULL, &ProcessRunningEvent_Server_tep, e);
   if (nResult != 0)
   {
-    gLog.error("%sUnable to start server event thread (#%hu):\n%s%s.\n", L_ERRORxSTR,
-       e->m_nSequence, L_BLANKxSTR, strerror(nResult));
+    gLog.error(tr("Unable to start server event thread (#%hu): %s."),
+        e->m_nSequence, strerror(nResult));
     e->m_eResult = Licq::Event::ResultError;
   }
 #else
@@ -329,7 +324,7 @@ void IcqProtocol::SendEvent_Server(CPacket *packet)
 }
 
 Licq::Event* IcqProtocol::SendExpectEvent_Server(unsigned long eventId, const Licq::UserId& userId,
-    Licq::Packet *packet, Licq::UserEvent *ue, bool bExtendedEvent)
+    CSrvPacketTcp *packet, Licq::UserEvent *ue, bool bExtendedEvent)
 {
   // If we are already shutting down, don't start any events
   if (gDaemon.shuttingDown())
@@ -339,11 +334,8 @@ Licq::Event* IcqProtocol::SendExpectEvent_Server(unsigned long eventId, const Li
     return NULL;
   }
 
-  if (ue != NULL)
-    ue->setIsReceiver(false);
   Licq::Event* e = new Licq::Event(eventId, m_nTCPSrvSocketDesc, packet, Licq::Event::ConnectServer, userId, ue);
-
-	if (e == NULL)  return NULL;
+  e->myCommand = eventCommandFromPacket(packet);
 
   if (bExtendedEvent) PushExtendedEvent(e);
 
@@ -369,7 +361,7 @@ Licq::Event* IcqProtocol::SendExpectEvent_Server(unsigned long eventId, const Li
 }
 
 Licq::Event* IcqProtocol::SendExpectEvent_Client(unsigned long eventId, const Licq::User* pUser,
-    Licq::Packet* packet, Licq::UserEvent *ue)
+    CPacketTcp* packet, Licq::UserEvent *ue)
 {
   // If we are already shutting down, don't start any events
   if (gDaemon.shuttingDown())
@@ -379,12 +371,10 @@ Licq::Event* IcqProtocol::SendExpectEvent_Client(unsigned long eventId, const Li
     return NULL;
   }
 
-  if (ue != NULL)
-    ue->setIsReceiver(false);
-  Licq::Event* e = new Licq::Event(eventId, pUser->SocketDesc(packet->Channel()), packet,
+  Licq::Event* e = new Licq::Event(eventId, pUser->socketDesc(packet->channel()), packet,
       Licq::Event::ConnectUser, pUser->id(), ue);
-
-  if (e == NULL) return NULL;
+  e->myCommand = eventCommandFromPacket(packet);
+  e->myFlags |= Licq::Event::FlagDirect;
 
   return SendExpectEvent(e, &ProcessRunningEvent_Client_tep);
 }
@@ -413,8 +403,8 @@ Licq::Event* IcqProtocol::SendExpectEvent(Licq::Event* e, void *(*fcn)(void *))
 
   if (nResult != 0)
   {
-    gLog.error("%sUnable to start event thread (#%hu):\n%s%s.\n", L_ERRORxSTR,
-       e->m_nSequence, L_BLANKxSTR, strerror(nResult));
+    gLog.error(tr("Unable to start event thread (#%hu): %s."),
+        e->m_nSequence, strerror(nResult));
     DoneEvent(e, Licq::Event::ResultError);
     if (e->m_nSocketDesc == m_nTCPSrvSocketDesc)
     {
@@ -735,7 +725,7 @@ void CICQDaemon::ProcessDoneEvent(Licq::Event* e)
   // Write the event to the history file if appropriate
   if (e->m_pUserEvent != NULL &&
       e->m_eResult == Licq::Event::ResultAcked &&
-      e->m_nSubResult != ICQ_TCPxACK_RETURN)
+      e->subResult != Licq::Event::SubResultReturn)
   {
     Licq::UserReadGuard(e->userId());
     if (u.isLocked())
@@ -777,8 +767,8 @@ void CICQDaemon::ProcessDoneEvent(Licq::Event* e)
   case ICQ_CMDxSND_VISIBLExLIST:
   case ICQ_CMDxSND_INVISIBLExLIST:
   case ICQ_CMDxSND_MODIFYxVIEWxLIST:
-    PushPluginEvent(e);
-    break;
+      Licq::gPluginManager.pushPluginEvent(e);
+      break;
 
   case ICQ_CMDxSND_SETxSTATUS:
       if (e->m_eResult == Licq::Event::ResultAcked)
@@ -786,8 +776,8 @@ void CICQDaemon::ProcessDoneEvent(Licq::Event* e)
         Licq::OwnerWriteGuard o(LICQ_PPID);
       ChangeUserStatus(o, ((CPU_SetStatus *)e->m_pPacket)->Status() );
       }
-    PushPluginEvent(e);
-    break;
+      Licq::gPluginManager.pushPluginEvent(e);
+      break;
 
   case ICQ_CMDxSND_SETxRANDOMxCHAT:
       if (e->m_eResult == Licq::Event::ResultAcked)
@@ -795,8 +785,8 @@ void CICQDaemon::ProcessDoneEvent(Licq::Event* e)
         Licq::OwnerWriteGuard o(LICQ_PPID);
       o->SetRandomChatGroup(((CPU_SetRandomChatGroup *)e->m_pPacket)->Group());
       }
-    PushPluginEvent(e);
-    break;
+      Licq::gPluginManager.pushPluginEvent(e);
+      break;
 
   // Extended events
   case ICQ_CMDxSND_LOGON:
@@ -817,25 +807,25 @@ void CICQDaemon::ProcessDoneEvent(Licq::Event* e)
         case Licq::Event::ResultFailed:
         case Licq::Event::ResultSuccess:
         case Licq::Event::ResultCancelled:
-        PushPluginEvent(e);
+          Licq::gPluginManager.pushPluginEvent(e);
           break;
         case Licq::Event::ResultAcked:  // push to extended event list
         PushExtendedEvent(e);
         break;
-      default:
-        gLog.error("%sInternal error: ProcessDoneEvents(): Invalid result for extended event (%d).\n",
-                   L_ERRORxSTR, e->m_eResult);
-        delete e;
-        return;
+        default:
+          gLog.error(tr("Internal error: ProcessDoneEvents(): Invalid result for extended event (%d)."),
+              e->m_eResult);
+          delete e;
+          return;
     }
     break;
   }
 
-  default:
-    gLog.error("%sInternal error: ProcessDoneEvents(): Unknown command (%04X).\n",
-               L_ERRORxSTR, e->m_nCommand);
-    delete e;
-    return;
+    default:
+      gLog.error(tr("Internal error: ProcessDoneEvents(): Unknown command (%04X)."),
+          e->m_nCommand);
+      delete e;
+      return;
   }
 
   // Some special commands to deal with
@@ -984,7 +974,7 @@ void IcqProtocol::CancelEvent(unsigned long t)
 
   if (eRun == NULL && eExt == NULL && eSrv == NULL)
   {
-    gLog.warning(tr("%sCancelled event not found.\n"), L_WARNxSTR);
+    gLog.warning(tr("Cancelled event not found."));
     return;
   }
 
@@ -995,11 +985,11 @@ void IcqProtocol::CancelEvent(Licq::Event* e)
 {
   e->m_eResult = Licq::Event::ResultCancelled;
 
-  if (e->m_nSubCommand == ICQ_CMDxSUB_CHAT)
+  if (e->command() == Licq::Event::CommandChatInvite)
     icqChatRequestCancel(e->userId(), e->m_nSequence);
-  else if (e->m_nSubCommand == ICQ_CMDxSUB_FILE)
+  else if (e->command() == Licq::Event::CommandFile)
     icqFileTransferCancel(e->userId(), e->m_nSequence);
-  else if (e->m_nSubCommand == ICQ_CMDxSUB_SECURExOPEN)
+  else if (e->command() == Licq::Event::CommandSecureOpen)
     icqOpenSecureChannelCancel(e->userId(), e->m_nSequence);
 
   ProcessDoneEvent(e);
@@ -1061,8 +1051,23 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
       fore = 0x000000;
     }
 
-      Licq::EventMsg* e = new Licq::EventMsg(Licq::gTranslator.serverToClient(message),
-          ICQ_CMDxRCV_SYSxMSGxONLINE, Licq::EventMsg::TimeNow, nFlags);
+      string m = Licq::gTranslator.serverToClient(message);
+
+      // Check if message is marked as UTF8
+      unsigned long guidlen;
+      packet >> guidlen;
+      if (guidlen == sizeof(ICQ_CAPABILITY_UTF8_STR)-1)
+      {
+        string guid = packet.unpackRawString(guidlen);
+        if (guid == ICQ_CAPABILITY_UTF8_STR)
+        {
+          // Message is UTF8
+          m = Licq::gTranslator.fromUnicode(m);
+        }
+      }
+      // TODO: Could there be multiple GUIDs that we need to check?
+
+      Licq::EventMsg* e = new Licq::EventMsg(m, Licq::EventMsg::TimeNow, nFlags);
     e->SetColor(fore, back);
 
     CPU_AckGeneral *p = new CPU_AckGeneral(u, nMsgID[0], nMsgID[1],
@@ -1139,7 +1144,7 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
 
   case ICQ_CMDxSUB_URL:
   {
-      Licq::EventUrl* e = Licq::EventUrl::Parse(message, ICQ_CMDxRCV_SYSxMSGxONLINE,
+      Licq::EventUrl* e = Licq::EventUrl::Parse(message,
           Licq::EventUrl::TimeNow, nFlags);
     CPU_AckGeneral *p = new CPU_AckGeneral(u, nMsgID[0], nMsgID[1],
                                            nSequence, ICQ_CMDxSUB_URL, true,
@@ -1155,7 +1160,7 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
   case ICQ_CMDxSUB_CONTACTxLIST:
   {
       Licq::EventContactList* e = Licq::EventContactList::Parse(message,
-          ICQ_CMDxRCV_SYSxMSGxONLINE, Licq::EventContactList::TimeNow, nFlags);
+          Licq::EventContactList::TimeNow, nFlags);
     CPU_AckGeneral *p = new CPU_AckGeneral(u, nMsgID[0], nMsgID[1],
                                            nSequence, ICQ_CMDxSUB_CONTACTxLIST,
                                            true, nLevel);
@@ -1179,22 +1184,21 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
       {
         u->setAutoResponse(message);
         u->SetShowAwayMsg(*message);
-        gLog.info(tr("%sAuto response from %s (#%lu).\n"), L_SRVxSTR, u->GetAlias(),
-                  nMsgID[1]);
+          gLog.info(tr("Auto response from %s (#%lu)."), u->getAlias().c_str(), nMsgID[1]);
         }
         Licq::Event* e = DoneServerEvent(nMsgID[1], Licq::Event::ResultAcked);
         if (e)
       {
         e->m_pExtendedAck = new Licq::ExtendedData(true, 0, message);
-        e->m_nSubResult = ICQ_TCPxACK_RETURN;
+          e->mySubResult = Licq::Event::SubResultReturn;
         ProcessDoneEvent(e);
       }
+        else
+          gLog.warning(tr("Ack for unknown event."));
+      }
       else
-        gLog.warning(tr("%sAck for unknown event.\n"), L_SRVxSTR);
-    }
-    else
-    {
-      gLog.info(tr("%s%s (%s) requested auto response.\n"), L_SRVxSTR,
+      {
+        gLog.info(tr("%s (%s) requested auto response."),
             u->getAlias().c_str(), u->accountId().c_str());
 
     CPU_AckGeneral *p = new CPU_AckGeneral(u, nMsgID[0], nMsgID[1],
@@ -1204,7 +1208,8 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
         Licq::gStatistics.increase(Licq::Statistics::AutoResponseCheckedCounter);
     u->SetLastCheckedAutoResponse();
 
-        gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+        Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+            Licq::PluginSignal::SignalUser,
             Licq::PluginSignal::UserEvents, u->id()));
       }
     return;
@@ -1237,7 +1242,7 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
 
     if (nCommand == 0)
     {
-        gLog.warning(tr("%sUnknown ICBM plugin type: %s\n"), L_SRVxSTR, plugin.c_str());
+        gLog.warning(tr("Unknown ICBM plugin type: %s"), plugin.c_str());
         return;
       }
 
@@ -1273,8 +1278,8 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
     if (pAckEvent)
     {
       pAckEvent->m_pExtendedAck = pExtendedAck;
-      pAckEvent->m_nSubResult = ICQ_TCPxACK_ACCEPT;
-      gLog.info(tr("%s%s accepted from %s (%s).\n"), L_SRVxSTR, szType,
+      pAckEvent->mySubResult = Licq::Event::SubResultAccept;
+      gLog.info(tr("%s accepted from %s (%s)."), szType,
           u->getAlias().c_str(), u->accountId().c_str());
       u->unlockWrite();
       ProcessDoneEvent(pAckEvent);
@@ -1282,7 +1287,7 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
     }
     else
     {
-      gLog.warning(tr("%sAck for unknown event.\n"), L_SRVxSTR);
+      gLog.warning(tr("Ack for unknown event."));
       delete pExtendedAck;
      }
   }
@@ -1295,19 +1300,19 @@ void IcqProtocol::ProcessMessage(Licq::User *u, CBuffer &packet, char *message,
       {
         if (gDaemon.ignoreType(Licq::Daemon::IgnoreNewUsers))
         {
-          gLog.info(tr("%s%s from new user (%s), ignoring.\n"), L_SRVxSTR,
+          gLog.info(tr("%s from new user (%s), ignoring."),
               szType, u->accountId().c_str());
           if (szType)  free(szType);
           gDaemon.rejectEvent(u->id(), pEvent);
           return;
         }
-        gLog.info(tr("%s%s from new user (%s).\n"), L_SRVxSTR, szType, u->accountId().c_str());
+        gLog.info(tr("%s from new user (%s)."), szType, u->accountId().c_str());
 
         // Don't delete user when we're done
         bNewUser = false;
       }
       else
-        gLog.info(tr("%s%s from %s (%s).\n"), L_SRVxSTR, szType, u->GetAlias(),
+        gLog.info(tr("%s from %s (%s)."), szType, u->getAlias().c_str(),
             u->accountId().c_str());
 
       if (gDaemon.addUserEvent(u, pEvent))
@@ -1337,7 +1342,7 @@ bool IcqProtocol::waitForReverseConnection(unsigned short id, const Licq::UserId
 
   if (iter == m_lReverseConnect.end())
   {
-    gLog.warning("%sFailed to find desired connection record.\n", L_WARNxSTR);
+    gLog.warning(tr("Failed to find desired connection record."));
     goto done;
   }
 
@@ -1353,8 +1358,7 @@ bool IcqProtocol::waitForReverseConnection(unsigned short id, const Licq::UserId
     {
       if (iter == m_lReverseConnect.end())
       {
-        gLog.warning("%sSomebody else removed our connection record.\n",
-          L_WARNxSTR);
+        gLog.warning(tr("Somebody else removed our connection record."));
         goto done;
       }
       if ((*iter)->nId == id && (*iter)->myIdString == userId.accountId())
@@ -1388,17 +1392,17 @@ done:
   return bSuccess;
 }
 
-Licq::Event* IcqProtocol::SendExpectEvent_Server(const Licq::UserId& userId, Licq::Packet* packet, Licq::UserEvent* ue, bool extendedEvent)
+Licq::Event* IcqProtocol::SendExpectEvent_Server(const Licq::UserId& userId, CSrvPacketTcp* packet, Licq::UserEvent* ue, bool extendedEvent)
 {
   return SendExpectEvent_Server(gDaemon.getNextEventId(), userId, packet, ue, extendedEvent);
 }
 
-Licq::Event* IcqProtocol::SendExpectEvent_Server(Licq::Packet* packet, Licq::UserEvent* ue, bool extendedEvent)
+Licq::Event* IcqProtocol::SendExpectEvent_Server(CSrvPacketTcp* packet, Licq::UserEvent* ue, bool extendedEvent)
 {
   return SendExpectEvent_Server(gDaemon.getNextEventId(), Licq::UserId(), packet, ue, extendedEvent);
 }
 
-Licq::Event* IcqProtocol::SendExpectEvent_Client(const Licq::User* user, Licq::Packet* packet, Licq::UserEvent* ue)
+Licq::Event* IcqProtocol::SendExpectEvent_Client(const Licq::User* user, CPacketTcp* packet, Licq::UserEvent* ue)
 {
   return SendExpectEvent_Client(gDaemon.getNextEventId(), user, packet, ue);
 }
@@ -1413,6 +1417,88 @@ string CICQDaemon::getXmlTag(const string& xmlSource, const string& tagName)
   if (startPos > endPos)
     return "";
   return xmlSource.substr(startPos, endPos - startPos);
+}
+
+unsigned short IcqProtocol::icqStatusFromStatus(unsigned status)
+{
+  if (status == Licq::User::OfflineStatus)
+    return ICQ_STATUS_OFFLINE;
+
+  unsigned short icqStatus;
+  if (status & Licq::User::DoNotDisturbStatus)
+    icqStatus = ICQ_STATUS_DND | ICQ_STATUS_AWAY | ICQ_STATUS_OCCUPIED;
+  else if (status & Licq::User::OccupiedStatus)
+    icqStatus = ICQ_STATUS_OCCUPIED | ICQ_STATUS_AWAY;
+  else if (status & Licq::User::NotAvailableStatus)
+    icqStatus = ICQ_STATUS_NA | ICQ_STATUS_AWAY;
+  else if (status & Licq::User::AwayStatus)
+    icqStatus = ICQ_STATUS_AWAY;
+  else if (status & Licq::User::FreeForChatStatus)
+    icqStatus = ICQ_STATUS_FREEFORCHAT;
+  else
+    icqStatus = ICQ_STATUS_ONLINE;
+
+  if (status & Licq::User::InvisibleStatus)
+    icqStatus |= ICQ_STATUS_FxPRIVATE;
+
+  return icqStatus;
+}
+
+unsigned IcqProtocol::statusFromIcqStatus(unsigned short icqStatus)
+{
+  // Build status from ICQ flags
+  if (icqStatus == ICQ_STATUS_OFFLINE)
+    return Licq::User::OfflineStatus;
+
+  unsigned status = Licq::User::OnlineStatus;
+  if (icqStatus & ICQ_STATUS_FxPRIVATE)
+    status |= Licq::User::InvisibleStatus;
+  if (icqStatus & ICQ_STATUS_DND)
+    status |= Licq::User::DoNotDisturbStatus;
+  else if (icqStatus & ICQ_STATUS_OCCUPIED)
+    status |= Licq::User::OccupiedStatus;
+  else if (icqStatus & ICQ_STATUS_NA)
+    status |= Licq::User::NotAvailableStatus;
+  else if (icqStatus & ICQ_STATUS_AWAY)
+    status |= Licq::User::AwayStatus;
+  if (icqStatus & ICQ_STATUS_FREEFORCHAT)
+    status |= Licq::User::FreeForChatStatus;
+
+  return status;
+}
+
+unsigned long IcqProtocol::addStatusFlags(unsigned long s, const Licq::User* u)
+{
+  s &= 0x0000FFFF;
+
+  if (u->webPresence())
+    s |= ICQ_STATUS_FxWEBxPRESENCE;
+  if (u->hideIp())
+    s |= ICQ_STATUS_FxHIDExIP;
+  if (u->birthdayFlag())
+    s |= ICQ_STATUS_FxBIRTHDAY;
+  if (u->homepageFlag())
+    s |= ICQ_STATUS_FxICQxHOMEPAGE;
+
+  if (u->phoneFollowMeStatus() != IcqPluginInactive)
+    s |= ICQ_STATUS_FxPFM;
+  if (u->phoneFollowMeStatus() == IcqPluginActive)
+    s |= ICQ_STATUS_FxPFMxAVAILABLE;
+
+  switch (u->directFlag())
+  {
+    case Licq::User::DirectDisabled:
+      s |= ICQ_STATUS_FxDIRECTxDISABLED;
+      break;
+    case Licq::User::DirectListed:
+      s |= ICQ_STATUS_FxDIRECTxLISTED;
+      break;
+    case Licq::User::DirectAuth:
+      s |= ICQ_STATUS_FxDIRECTxAUTH;
+      break;
+  }
+
+  return s;
 }
 
 

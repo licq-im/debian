@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 1999-2011 Licq developers
@@ -27,11 +26,6 @@
 
 #include "contactlist/contactlist.h"
 
-#include "userevents/usersendcontactevent.h"
-#include "userevents/usersendfileevent.h"
-#include "userevents/usersendmsgevent.h"
-#include "userevents/usersendurlevent.h"
-
 #include "config/contactlist.h"
 #include "config/skin.h"
 
@@ -44,13 +38,13 @@
 
 using namespace LicqQtGui;
 
-UserViewBase::UserViewBase(ContactListModel* contactList, QWidget* parent)
+UserViewBase::UserViewBase(ContactListModel* contactList, bool useSkin, QWidget* parent)
   : QTreeView(parent),
     myContactList(contactList),
     myIsMainView(false),
     myAllowScrollTo(false)
 {
-  setItemDelegate(new ContactDelegate(this, this));
+  setItemDelegate(new ContactDelegate(this, useSkin, this));
   setEditTriggers(EditKeyPressed);
 
   // Look'n'Feel
@@ -59,12 +53,15 @@ UserViewBase::UserViewBase(ContactListModel* contactList, QWidget* parent)
   setAcceptDrops(true);
   setRootIsDecorated(false);
   setAllColumnsShowFocus(true);
-  applySkin();
 
   connect(this, SIGNAL(doubleClicked(const QModelIndex&)),
       SLOT(slotDoubleClicked(const QModelIndex&)));
 
-  connect(Config::Skin::active(), SIGNAL(frameChanged()), SLOT(applySkin()));
+  if (useSkin)
+  {
+    applySkin();
+    connect(Config::Skin::active(), SIGNAL(frameChanged()), SLOT(applySkin()));
+  }
 }
 
 UserViewBase::~UserViewBase()
@@ -225,10 +222,8 @@ void UserViewBase::dropEvent(QDropEvent* event)
           Licq::OwnerListGuard ownerList;
           BOOST_FOREACH(Licq::Owner* owner, **ownerList)
           {
-            unsigned long ppid = owner->ppid();
-            char ppidStr[5];
-            Licq::protocolId_toStr(ppidStr, ppid);
-            if (text.startsWith(ppidStr))
+            unsigned long ppid = owner->protocolId();
+            if (text.startsWith(Licq::protocolId_toString(ppid).c_str()))
             {
               dropPpid = ppid;
               break;
@@ -240,7 +235,7 @@ void UserViewBase::dropEvent(QDropEvent* event)
           return;
 
         QString dropId = text.mid(4);
-        Licq::UserId dropUserId(dropId.toLatin1().data(), dropPpid);
+        Licq::UserId dropUserId(dropId.toLatin1().constData(), dropPpid);
 
         if (dropUserId.isValid())
         {

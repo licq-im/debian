@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,16 +24,16 @@
 #include <QApplication>
 #include <QSocketNotifier>
 
-#include <licq/icqdefines.h>
 #include <licq/logging/log.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/daemon.h>
 #include <licq/event.h>
-#include <licq/plugin.h>
+#include <licq/plugin/generalplugin.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
 
 #include "dialogs/ownereditdlg.h"
+
+#include "plugin.h"
 
 using Licq::gLog;
 using Licq::gProtocolManager;
@@ -42,11 +41,13 @@ using namespace LicqQtGui;
 
 SignalManager* LicqQtGui::gGuiSignalManager = NULL;
 
-SignalManager::SignalManager(int pipe)
-  : myPipe(pipe)
+SignalManager::SignalManager()
+  : myPipe(gQtGuiPlugin->getReadPipe())
 {
   assert(gGuiSignalManager == NULL);
   gGuiSignalManager = this;
+
+  gQtGuiPlugin->setSignalMask(Licq::PluginSignal::SignalAll);
 
   sn = new QSocketNotifier(myPipe, QSocketNotifier::Read);
   connect(sn, SIGNAL(activated(int)), SLOT(process()));
@@ -152,60 +153,10 @@ void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
 
 void SignalManager::ProcessEvent(Licq::Event* ev)
 {
-  if (ev->Command() == ICQ_CMDxTCP_START) // direct connection check
-  {
+  if (ev->command() == Licq::Event::CommandSearch)
+    emit searchResult(ev);
+  else
     emit doneUserFcn(ev);
-    delete ev;
-    return;
-  }
-
-  if (ev->SNAC() == 0)
-  {
-    // Not from ICQ
-    emit doneUserFcn(ev); //FIXME
-    return;
-  }
-
-  switch (ev->SNAC())
-  {
-    // Event commands for a user
-    case MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SERVERxMESSAGE):
-    case MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SERVERxREPLYxMSG):
-    case MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SENDxSERVER):
-    case MAKESNAC(ICQ_SNACxFAM_LOCATION, ICQ_SNACxREQUESTxUSERxINFO):
-    case MAKESNAC(ICQ_SNACxFAM_LOCATION, ICQ_SNACxLOC_INFOxREQ):
-    case MAKESNAC(ICQ_SNACxFAM_BART, ICQ_SNACxBART_DOWNLOADxREQUEST):
-      emit doneUserFcn(ev);
-      break;
-
-    // The all being meta snac
-    case MAKESNAC(ICQ_SNACxFAM_VARIOUS, ICQ_SNACxMETA):
-      if (ev->SubCommand() == ICQ_CMDxMETA_SEARCHxWPxLAST_USER ||
-          ev->SubCommand() == ICQ_CMDxMETA_SEARCHxWPxFOUND)
-        emit searchResult(ev);
-      else
-        if (ev->SubCommand() == ICQ_CMDxSND_SYSxMSGxREQ ||
-            ev->SubCommand() == ICQ_CMDxSND_SYSxMSGxDONExACK)
-          emit doneOwnerFcn(ev);
-        else
-          emit doneUserFcn(ev);
-      break;
-
-    // Commands related to the basic operation
-    case MAKESNAC(ICQ_SNACxFAM_SERVICE, ICQ_SNACxSRV_SETxSTATUS):
-    case MAKESNAC(ICQ_SNACxFAM_BUDDY, ICQ_SNACxBDY_ADDxTOxLIST):
-    case MAKESNAC(ICQ_SNACxFAM_BUDDY, ICQ_SNACxBDY_REMOVExFROMxLIST):
-    case MAKESNAC(ICQ_SNACxFAM_AUTH, ICQ_SNACxREGISTER_USER):
-      emit doneOwnerFcn(ev);
-      break;
-
-    default:
-      gLog.warning("Internal error: SignalManager::ProcessEvent(): "
-          "Unknown event SNAC received from daemon: 0x%08lX",
-          ev->SNAC());
-      break;
-  }
-
   delete ev;
 }
 
@@ -219,14 +170,14 @@ void SignalManager::process()
   {
     case Licq::GeneralPlugin::PipeSignal:
     {
-      Licq::PluginSignal* s = Licq::gDaemon.popPluginSignal();
+      Licq::PluginSignal* s = gQtGuiPlugin->popSignal();
       ProcessSignal(s);
       break;
     }
 
     case Licq::GeneralPlugin::PipeEvent:
     {
-      Licq::Event* e = Licq::gDaemon.PopPluginEvent();
+      Licq::Event* e = gQtGuiPlugin->popEvent();
       ProcessEvent(e);
       break;
     }

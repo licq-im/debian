@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2010 Licq developers
+ * Copyright (C) 2004-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/oneventmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/socket.h>
 #include <licq/statistics.h>
@@ -77,7 +78,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
           u->SetEnableSave(false);
           u->setUserEncoding("UTF-8");
           u->SetEnableSave(true);
-          u->SaveLicqInfo();
+          u->save(Licq::User::SaveLicqInfo);
         }
       }
 
@@ -88,18 +89,20 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       convo->addUser(userId);
 
       // Notify the plugins of the new CID
-      Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+      Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalConversation,
           Licq::PluginSignal::ConvoCreate, userId, 0, SocketToCID(nSock)));
 
-      Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+      Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalConversation,
           Licq::PluginSignal::ConvoJoin, userId, 0, SocketToCID(nSock)));
 
       gLog.info("%s joined the conversation", userId.toString().c_str());
     }
     else if (strCmd == "ANS")
     {
-      // just OK, ready to talk
-      // we can ignore this
+      // Send our capabilities
+      Send_SB_Packet(Licq::UserId(), new CPS_MsnClientCaps(), nSock);
     }
     else if (strCmd == "MSG")
     {
@@ -124,7 +127,8 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         if (u.isLocked())
         {
           u->setIsTyping(true);
-          Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+          Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+              Licq::PluginSignal::SignalUser,
               Licq::PluginSignal::UserTyping, u->id(), SocketToCID(nSock)));
         }
       }
@@ -133,13 +137,9 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         gLog.info("Message from %s", strUser.c_str());
 
         bSkipPacket = false;  
-        char szMsg[nSize + 1];
-        int i;
-        for (i = 0; i < nSize; i++)
-          (*packet) >> szMsg[i];
-        szMsg[i] = '\0';
+        string msg = packet->unpackRawString(nSize);
 
-        Licq::EventMsg* e = new Licq::EventMsg(Licq::gTranslator.serverToClient(szMsg), ICQ_CMDxRCV_SYSxMSGxOFFLINE,
+        Licq::EventMsg* e = new Licq::EventMsg(Licq::gTranslator.serverToClient(msg),
             time(0), 0, SocketToCID(nSock));
         Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
         if (u.isLocked())
@@ -197,6 +197,19 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
 	  }
 	}
       }
+      else if (strncmp(strType.c_str(), "text/x-clientcaps", 17) == 0)
+      {
+        packet->SkipRN();
+        packet->ParseHeaders();
+        string userClient = packet->GetValue("Client-Name");
+        if (!userClient.empty())
+        {
+          gLog.info("Identified user client as %s", userClient.c_str());
+
+          Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
+          u->setClientInfo(userClient);
+        }
+      }
       else
       {
         gLog.info("Message from %s with unknown content type (%s)",
@@ -242,7 +255,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
           }
           Licq::gStatistics.increase(Licq::Statistics::EventsSentCounter);
         }
-	Licq::gDaemon.PushPluginEvent(e);
+	Licq::gPluginManager.pushPluginEvent(e);
       }
       else
       {
@@ -289,7 +302,10 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
           break;
         }
       }
-      
+
+      // Send our capabilities
+      Send_SB_Packet(userId, new CPS_MsnClientCaps(), nSock);
+
       if ((pStart && pStart->m_bDataConnection == false) || pStart == 0)
       {
         // Add the user to the conversation
@@ -299,11 +315,13 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         convo->addUser(userId);
 
         // Notify the plugins of the new CID
-        Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+        Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+            Licq::PluginSignal::SignalConversation,
             Licq::PluginSignal::ConvoCreate, userId, 0, SocketToCID(nSock)));
 
         // Notify the plugins
-        Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+        Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+            Licq::PluginSignal::SignalConversation,
             Licq::PluginSignal::ConvoJoin, userId, 0, SocketToCID(nSock)));
       }
 
@@ -324,7 +342,8 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       UserId userId(packet->GetParameter(), MSN_PPID);
       gLog.info("Connection with %s closed", userId.toString().c_str());
 
-      Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+      Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalConversation,
           Licq::PluginSignal::ConvoLeave, userId, 0, SocketToCID(nSock)));
 
       Conversation* convo = gConvoManager.getFromSocket(nSock);
@@ -367,7 +386,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
           gLog.error("User not online");
           pStart = *it;
           pStart->m_pEvent->m_eResult = Licq::Event::ResultFailed;
-          Licq::gDaemon.PushPluginEvent(pStart->m_pEvent);
+          Licq::gPluginManager.pushPluginEvent(pStart->m_pEvent);
           m_lStart.erase(it);
           break; 
         }
@@ -408,11 +427,12 @@ void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket *p, int nSocket, bool
     s = gSocketMan.FetchSocket(nSocket);
   if (!s) return;
   Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
-  if (!sock->SendRaw(p->getBuffer()))
+  if (!sock->SendRaw(p->getBuffer()) && userId.isValid())
   {
     gLog.info("Connection with %s lost", userId.toString().c_str());
 
-    Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+    Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+        Licq::PluginSignal::SignalConversation,
         Licq::PluginSignal::ConvoLeave, userId, 0, SocketToCID(nSock)));
 
     Conversation* convo = gConvoManager.getFromSocket(nSock);
@@ -496,8 +516,8 @@ bool CMSN::MSNSBConnectStart(const string &strServer, const string &strCookie)
     if (u.isLocked())
     {
       if (pStart->m_bDataConnection)
-        sock->SetChannel(ICQ_CHNxINFO);
-      u->SetSocketDesc(sock);
+        sock->setChannel(Licq::TCPSocket::ChannelInfo);
+      u->setSocketDesc(sock);
     }
   }
   gSocketMan.DropSocket(sock);
@@ -547,13 +567,13 @@ bool CMSN::MSNSBConnectAnswer(const string& strServer, const string& strSessionI
   {
     bool newUser = false;
     Licq::UserWriteGuard u(userId, true, &newUser);
-    u->SetSocketDesc(sock);
+    u->setSocketDesc(sock);
     if (newUser)
     {
       u->SetEnableSave(false);
       u->setUserEncoding("UTF-8");
       u->SetEnableSave(true);
-      u->SaveLicqInfo();
+      u->save(Licq::User::SaveLicqInfo);
     }
   }
 
@@ -600,9 +620,9 @@ void CMSN::MSNSendMessage(unsigned long eventId, const UserId& userId, const str
 
   string msgDos = Licq::gTranslator.returnToDos(message);
   CMSNPacket* pSend = new CPS_MSNMessage(msgDos.c_str());
-  Licq::EventMsg* m = new Licq::EventMsg(msgDos, 0, Licq::UserEvent::TimeNow, 0);
-  m->setIsReceiver(false);
+  Licq::EventMsg* m = new Licq::EventMsg(msgDos, Licq::UserEvent::TimeNow, Licq::EventMsg::FlagSender);
   Licq::Event* e = new Licq::Event(eventId, 0, pSend, Licq::Event::ConnectServer, userId, m);
+  e->myCommand = Licq::Event::CommandMessage;
   e->thread_plugin = _tPlugin;  
 
   if (nSocket > 0)
@@ -661,7 +681,8 @@ void CMSN::killConversation(int sock)
     BOOST_FOREACH(const UserId& userId, users)
     {
       // Signal that user is removed
-      Licq::gDaemon.pushPluginSignal(new Licq::PluginSignal(Licq::PluginSignal::SignalConversation,
+      Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalConversation,
           Licq::PluginSignal::ConvoLeave, userId, 0, convoId));
 
       // Remove user from the conversation

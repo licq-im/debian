@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 1999-2011 Licq developers
@@ -27,7 +26,7 @@
 #include <QLineEdit>
 
 #include <licq/contactlist/usermanager.h>
-#include <licq/icq.h>
+#include <licq/icq/icq.h>
 
 #include "config/contactlist.h"
 #include "contactlist/contactlist.h"
@@ -99,7 +98,7 @@ AddUserDlg::AddUserDlg(const Licq::UserId& userId, QWidget* parent)
 void AddUserDlg::ok()
 {
   QString accountId = myId->text().trimmed();
-  Licq::UserId userId(accountId.toLatin1().data(), myProtocol->currentPpid());
+  Licq::UserId userId(accountId.toLatin1().constData(), myProtocol->currentPpid());
   int group = myGroup->currentGroupId();
   bool notify = myNotify->isChecked();
   bool added = false;

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,21 +33,22 @@ namespace Licq
 class Owner : public virtual User
 {
 public:
-  bool Exception() const                        { return m_bException; }
-
   // Owner specific functions
   const std::string& password() const           { return myPassword; }
-  void setPassword(const std::string& s)        { myPassword = s; SaveLicqInfo(); }
-  void SetWebAware(bool b)     {  m_bWebAware = b; SaveLicqInfo(); }
+  void setPassword(const std::string& s)        { myPassword = s; save(SaveOwnerInfo); }
+  void SetWebAware(bool b)     {  m_bWebAware = b; save(SaveOwnerInfo); }
   virtual void SetWebAwareStatus(char c) { SetWebAware(c); }
-  void SetHideIp(bool b)       {  m_bHideIp = b; SaveLicqInfo(); }
-  void SetSavePassword(bool b) {  m_bSavePassword = b; SaveLicqInfo(); }
-  void SetRandomChatGroup(unsigned long n)  { m_nRandomChatGroup = n; SaveLicqInfo(); }
+  void SetHideIp(bool b)       {  m_bHideIp = b; save(SaveOwnerInfo); }
+  void SetSavePassword(bool b) {  m_bSavePassword = b; save(SaveOwnerInfo); }
   bool WebAware() const                         { return m_bWebAware; }
   bool HideIp() const                           { return m_bHideIp; }
   bool SavePassword() const                     { return m_bSavePassword; }
-  unsigned long RandomChatGroup() const         { return m_nRandomChatGroup; }
-  unsigned long AddStatusFlags(unsigned long nStatus) const;
+
+  /// Current random chat group (ICQ specific, 0=none)
+  unsigned randomChatGroup() const              { return myRandomChatGroup; }
+
+  /// Set current random chat group, use IcqProtocol::setRandomChatGroup() from plugins
+  void setRandomChatGroup(unsigned n)           { myRandomChatGroup = n; save(SaveOwnerInfo); }
 
   /**
    * Get status to change to at startup
@@ -61,19 +62,30 @@ public:
   void setStartupStatus(unsigned status)
   { myStartupStatus = status; }
 
+  /// Get server to connect to
+  const std::string& serverHost() const         { return myServerHost; }
+
+  /// Get server port to connect to
+  int serverPort() const                        { return myServerPort; }
+
+  /**
+   * Set server to use when connecting
+   *
+   * @param host Host to connect to
+   * @param port Port to connect to
+   */
+  void setServer(const std::string& host, int port)
+  { myServerHost = host; myServerPort = port; save(SaveOwnerInfo); }
+
   // Server Side List functions
   time_t GetSSTime() const                      { return m_nSSTime; }
   void SetSSTime(time_t t)            { m_nSSTime = t; }
   unsigned short GetSSCount() const             { return mySsCount; }
   void SetSSCount(unsigned short n)             { mySsCount = n; }
   unsigned short GetPDINFO() const              { return myPDINFO; }
-  void SetPDINFO(unsigned short n)              { myPDINFO = n; SaveLicqInfo(); }
+  void SetPDINFO(unsigned short n)              { myPDINFO = n; save(SaveOwnerInfo); }
 
   void SetPicture(const char *f);
-
-  // Virtual overloaded functions
-  virtual void SaveLicqInfo() = 0;
-  virtual void SetStatusOffline();
 
   virtual bool isUser() const                   { return false; }
 protected:
@@ -81,11 +93,12 @@ protected:
 
   std::string myPassword;
   unsigned myStartupStatus;
-  bool m_bException,
-       m_bWebAware,
+  std::string myServerHost;
+  int myServerPort;
+  bool m_bWebAware,
        m_bHideIp,
        m_bSavePassword;
-  unsigned long  m_nRandomChatGroup;
+  unsigned myRandomChatGroup;
   unsigned mySsCount;
   time_t m_nSSTime;
   unsigned myPDINFO;

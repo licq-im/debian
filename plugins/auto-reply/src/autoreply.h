@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2010 Licq developers
+ * Copyright (C) 2000-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 #ifndef LICQAUTOREPLY_H
 #define LICQAUTOREPLY_H
 
+#include <licq/plugin/generalplugin.h>
+
 #include <string>
 
 
@@ -31,19 +33,31 @@ class UserEvent;
 class UserId;
 }
 
-class CLicqAutoReply
+class CLicqAutoReply : public Licq::GeneralPlugin
 {
 public:
-  CLicqAutoReply(bool, bool, char *);
+  CLicqAutoReply(Params& p);
   ~CLicqAutoReply();
-  int Run();
-  void Shutdown();
-  bool Enabled() { return m_bEnabled; }
+
+  // From Licq::GeneralPlugin
+  std::string name() const;
+  std::string version() const;
+  std::string description() const;
+  std::string usage() const;
+  std::string configFile() const;
+  bool isEnabled() const;
 
 protected:
+  // From Licq::GeneralPlugin
+  bool init(int argc, char** argv);
+  int run();
+  void destructor();
+
   int m_nPipe;
-  bool m_bExit, m_bEnabled, m_bDelete;
-  char *m_szStatus;
+  bool m_bExit;
+  bool myIsEnabled;
+  bool myMarkAsRead;
+  std::string myStartupStatus;
   std::string myProgram;
   std::string myArguments;
   bool m_bPassMessage, m_bFailOnExitCode, m_bAbortDeleteOnExitCode,

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,6 @@
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
-#include <licq/icqdefines.h>
 #include <licq/inifile.h>
 #include <licq/thread/mutexlocker.h>
 
@@ -42,7 +41,8 @@ const char* const Licq::OnEventData::Default = "default";
 
 OnEventData::OnEventData(const string& iniSection, bool isGlobal) :
   myIniSection(iniSection),
-  myIsGlobal(isGlobal)
+  myIsGlobal(isGlobal),
+  myHasChanged(false)
 {
   // Empty
 }
@@ -77,8 +77,46 @@ void OnEventData::load(Licq::IniFile& conf)
   conf.get("MsgSent", myParameters[OnEventMsgSent], myIsGlobal ? (soundDir + "Message.wav") : Default);
 }
 
+void OnEventData::setEnabled(int enabled)
+{
+  if (enabled == myEnabled)
+    return;
+
+  myEnabled = enabled;
+  myHasChanged = true;
+}
+
+void OnEventData::setAlwaysOnlineNotify(int alwaysOnlineNotify)
+{
+  if (alwaysOnlineNotify == myAlwaysOnlineNotify)
+    return;
+
+  myAlwaysOnlineNotify = alwaysOnlineNotify;
+  myHasChanged = true;
+}
+
+void OnEventData::setCommand(const std::string& command)
+{
+  if (command == myCommand)
+    return;
+
+  myCommand = command;
+  myHasChanged = true;
+}
+
+void OnEventData::setParameter(int event, const std::string& parameter)
+{
+  if (parameter == myParameters[event])
+    return;
+
+  myParameters[event] = parameter;
+  myHasChanged = true;
+}
+
 void OnEventData::save(Licq::IniFile& conf) const
 {
+  myHasChanged = false;
+
   bool allDefault = (myEnabled == EnabledDefault && myAlwaysOnlineNotify == -1
       && myCommand == Default);
   for (int i = 0; i < NumOnEventTypes; ++i)
@@ -221,6 +259,7 @@ Licq::OnEventData* OnEventManager::lockGroup(int groupId, bool create)
     std::ostringstream section;
     section << "Group." << groupId;
     data = new OnEventData(section.str());
+    data->loadDefaults();
     myGroupData[groupId] = data;
   }
   else
@@ -243,6 +282,7 @@ Licq::OnEventData* OnEventManager::lockUser(const UserId& userId, bool create)
       return NULL;
 
     data = new OnEventData("User." + userId.toString());
+    data->loadDefaults();
     data->setUserId(userId);
     myUserData[userId] = data;
   }
@@ -260,15 +300,17 @@ void OnEventManager::unlock(const Licq::OnEventData* data, bool save)
   if (data == NULL)
     return;
 
-  if (save)
+  const OnEventData* realData = dynamic_cast<const OnEventData*>(data);
+
+  if (save && realData->hasChanged())
   {
     Licq::IniFile conf("onevent.conf");
     conf.loadFile();
-    dynamic_cast<const OnEventData*>(data)->save(conf);
+    realData->save(conf);
     conf.writeFile();
   }
 
-  dynamic_cast<const OnEventData*>(data)->unlockWrite();
+  realData->unlockWrite();
 }
 
 Licq::OnEventData* OnEventManager::getEffectiveUser(const Licq::User* user)
@@ -363,7 +405,7 @@ void OnEventManager::performOnEvent(OnEventData::OnEventType event, const Licq::
     if (user->isUser())
     {
       // Get owner for this user
-      Licq::OwnerReadGuard o(user->ppid());
+      Licq::OwnerReadGuard o(user->protocolId());
       ownerStatus = o->status();
     }
     else

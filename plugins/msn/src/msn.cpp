@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2010 Licq developers
+ * Copyright (C) 2004-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,14 +34,13 @@
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/conversation.h>
-#include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/inifile.h>
-#include <licq/plugin.h>
 #include <licq/protocolsignal.h>
 
 #include "msn.h"
 #include "msnpacket.h"
+#include "pluginversion.h"
 
 using namespace std;
 using Licq::gConvoManager;
@@ -75,35 +74,22 @@ Licq::SocketManager gSocketMan;
 
 void *MSNPing_tep(void *);
 
-CMSN::CMSN(int _nPipe) : m_vlPacketBucket(211)
+
+CMSN::CMSN(Licq::ProtocolPlugin::Params& p)
+  : Licq::ProtocolPlugin(p),
+    m_vlPacketBucket(211)
 {
   m_bExit = false;
   m_bWaitingPingReply = m_bCanPing = false;
-  m_nPipe = _nPipe;
   m_nSSLSocket = m_nServerSocket = m_nNexusSocket = -1;
   m_pPacketBuf = 0;
   m_pNexusBuff = 0;
   m_pSSLPacket = 0;
   myStatus = Licq::User::OfflineStatus;
-  myOldStatus = Licq::User::OnlineStatus;
   m_szUserName = 0;
   myPassword = "";
   m_nSessionStart = 0;
 
-  // Config file
-  Licq::IniFile msnConf("licq_msn.conf");
-  msnConf.loadFile();
-
-  msnConf.setSection("network");
-  msnConf.get("ListVersion", m_nListVersion, 0);
-  msnConf.get("MsnServerAddress", myServerAddress, MSN_DEFAULT_SERVER_ADDRESS);
-  msnConf.get("MsnServerPort", myServerPort, MSN_DEFAULT_SERVER_PORT);
-
-  // pthread stuff now
-  pthread_mutex_init(&mutex_StartList, 0);
-  pthread_mutex_init(&mutex_MSNEventList, 0);
-  pthread_mutex_init(&mutex_ServerSocket, 0);
-  pthread_mutex_init(&mutex_Bucket, 0);
 }
 
 CMSN::~CMSN()
@@ -116,6 +102,44 @@ CMSN::~CMSN()
   saveConfig();
 }
 
+std::string CMSN::name() const
+{
+  return "MSN";
+}
+
+std::string CMSN::version() const
+{
+  return PLUGIN_VERSION_STRING;
+}
+
+unsigned long CMSN::protocolId() const
+{
+  return MSN_PPID;
+}
+
+unsigned long CMSN::capabilities() const
+{
+  return Licq::ProtocolPlugin::CanSendMsg |
+      Licq::ProtocolPlugin::CanSendAuth |
+      Licq::ProtocolPlugin::CanSendAuthReq;
+}
+
+std::string CMSN::defaultServerHost() const
+{
+  return "messenger.hotmail.com";
+}
+
+int CMSN::defaultServerPort() const
+{
+  return 1863;
+}
+
+bool CMSN::init(int, char**)
+{
+  return true;
+}
+
+
 void CMSN::saveConfig()
 {
   // Config file
@@ -123,8 +147,6 @@ void CMSN::saveConfig()
   msnConf.loadFile();
   msnConf.setSection("network");
   msnConf.set("ListVersion", m_nListVersion);
-  msnConf.set("MsnServerAddress", myServerAddress);
-  msnConf.set("MsnServerPort", myServerPort);
   msnConf.writeFile();
 }
 
@@ -383,18 +405,31 @@ string CMSN::Encode(const string &strIn)
 
   return strOut;
 }
-void CMSN::Run()
+
+int CMSN::run()
 {
   int nNumDesc;
   int nCurrent; 
   fd_set f;
+
+  // Config file
+  Licq::IniFile msnConf("licq_msn.conf");
+  msnConf.loadFile();
+  msnConf.setSection("network");
+  msnConf.get("ListVersion", m_nListVersion, 0);
+
+  pthread_mutex_init(&mutex_StartList, 0);
+  pthread_mutex_init(&mutex_MSNEventList, 0);
+  pthread_mutex_init(&mutex_ServerSocket, 0);
+  pthread_mutex_init(&mutex_Bucket, 0);
 
   int nResult = pthread_create(&m_tMSNPing, NULL, &MSNPing_tep, this);
   if (nResult)
   {
     gLog.error("Unable to start ping thread: %s", strerror(nResult));
   }
-  
+
+  int m_nPipe = getReadPipe();
   nResult = 0;
   
   while (!m_bExit)
@@ -456,7 +491,7 @@ void CMSN::Run()
             m_nServerSocket = -1;
             gSocketMan.DropSocket(sock);
             gSocketMan.CloseSocket(nSD);
-            MSNLogon(myServerAddress.c_str(), myServerPort, myStatus);
+            Logon(myStatus);
           }
         }
         
@@ -524,17 +559,23 @@ void CMSN::Run()
   pthread_cancel(m_tMSNPing);
   MSNLogoff();
   pthread_join(m_tMSNPing, NULL);
+  return 0;
+}
+
+void CMSN::destructor()
+{
+  delete this;
 }
 
 void CMSN::ProcessPipe()
 {
   char buf[16];
-  read(m_nPipe, buf, 1);
+  read(getReadPipe(), buf, 1);
   switch (buf[0])
   {
     case Licq::ProtocolPlugin::PipeSignal:
     {
-      Licq::ProtocolSignal* s = Licq::gDaemon.PopProtoSignal();
+      Licq::ProtocolSignal* s = popSignal();
       ProcessSignal(s);
       break;
     }
@@ -561,7 +602,7 @@ void CMSN::ProcessSignal(Licq::ProtocolSignal* s)
       if (m_nServerSocket < 0)
       {
         Licq::ProtoLogonSignal* sig = static_cast<Licq::ProtoLogonSignal*>(s);
-        MSNLogon(myServerAddress.c_str(), myServerPort, sig->status());
+        Logon(sig->status());
       }
       break;
     }
@@ -727,9 +768,4 @@ CMSNDataEvent *CMSN::FetchStartDataEvent(const string &_strUser)
   }
 
   return pReturn;  
-}
-
-void CMSN::pushPluginSignal(Licq::PluginSignal* p)
-{
-  Licq::gDaemon.pushPluginSignal(p);
 }

@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,9 +33,9 @@
 
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/icqdefines.h>
-#include <licq/pluginmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
+#include <licq/userevents.h>
 
 #include "config/chat.h"
 #include "config/iconmanager.h"
@@ -75,8 +74,8 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
     Licq::UserReadGuard user(userId);
     if (user.isLocked())
     {
-      myId = user->realAccountId().c_str();
-      myPpid = user->ppid();
+      myId = user->accountId().c_str();
+      myPpid = user->protocolId();
     }
   }
 
@@ -84,7 +83,7 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
   mySendFuncs = 0;
   Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(myPpid);
   if (protocol.get() != NULL)
-    mySendFuncs = protocol->getSendFunctions();
+    mySendFuncs = protocol->capabilities();
 
   myCodec = QTextCodec::codecForLocale();
   myIsOwner = Licq::gUserManager.isOwner(myUsers.front());
@@ -145,7 +144,7 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
         setWindowIcon(IconManager::instance()->iconForUser(*u));
       else
       {
-        setWindowIcon(IconManager::instance()->iconForEvent(ICQ_CMDxSUB_MSG));
+        setWindowIcon(IconManager::instance()->iconForEvent(Licq::UserEvent::TypeMessage));
         flashTaskbar();
       }
 
@@ -322,18 +321,18 @@ void UserEventCommon::updateWidgetInfo(const Licq::User* u)
   QString tmp = codec->toUnicode(u->getFullName().c_str());
   if (!tmp.isEmpty())
     tmp = " (" + tmp + ")";
-  myBaseTitle = QString::fromUtf8(u->GetAlias()) + tmp;
+  myBaseTitle = QString::fromUtf8(u->getAlias().c_str()) + tmp;
 
   UserEventTabDlg* tabDlg = gLicqGui->userEventTabDlg();
   if (tabDlg != NULL && tabDlg->tabIsSelected(this))
   {
     tabDlg->setWindowTitle(myBaseTitle);
-    tabDlg->setWindowIconText(QString::fromUtf8(u->GetAlias()));
+    tabDlg->setWindowIconText(QString::fromUtf8(u->getAlias().c_str()));
   }
   else
   {
     setWindowTitle(myBaseTitle);
-    setWindowIconText(QString::fromUtf8(u->GetAlias()));
+    setWindowIconText(QString::fromUtf8(u->getAlias().c_str()));
   }
 }
 
@@ -381,9 +380,9 @@ void UserEventCommon::setEncoding(QAction* action)
       if (u.isLocked())
       {
         u->SetEnableSave(false);
-        u->setUserEncoding(encoding.toLatin1().data());
+        u->setUserEncoding(encoding.toLatin1().constData());
         u->SetEnableSave(true);
-        u->SaveLicqInfo();
+        u->save(Licq::User::SaveLicqInfo);
       }
     }
 
@@ -491,7 +490,7 @@ void UserEventCommon::updatedUser(const Licq::UserId& userId, unsigned long subS
         setWindowIcon(IconManager::instance()->iconForUser(*u));
       else
       {
-        setWindowIcon(IconManager::instance()->iconForEvent(ICQ_CMDxSUB_MSG));
+        setWindowIcon(IconManager::instance()->iconForEvent(Licq::UserEvent::TypeMessage));
         flashTaskbar();
       }
 

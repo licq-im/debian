@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -20,50 +20,14 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "config.h"
+#include <licq/plugin/protocolbase.h>
+#include <licq/version.h>
+
 #include "plugin.h"
-#include "pluginversion.h"
 
-#include <licq/pluginmanager.h>
-#include <licq/protocolbase.h>
-
-char* LProto_Name()
+Licq::ProtocolPlugin* JabberPluginFactory(Licq::ProtocolPlugin::Params& p)
 {
-  static char name[] = "Jabber";
-  return name;
+  return new Jabber::Plugin(p);
 }
 
-char* LProto_Version()
-{
-  static char version[] = PLUGIN_VERSION_STRING;
-  return version;
-}
-
-char* LProto_PPID()
-{
-  static char ppid[] = "XMPP";
-  return ppid;
-}
-
-bool LProto_Init()
-{
-  return true;
-}
-
-unsigned long LProto_SendFuncs()
-{
-  return Licq::ProtocolPlugin::CanSendMsg
-      | Licq::ProtocolPlugin::CanHoldStatusMsg
-      | Licq::ProtocolPlugin::CanSendAuth
-      | Licq::ProtocolPlugin::CanSendAuthReq;
-}
-
-int LProto_Main()
-{
-  Jabber::Config config("licq_jabber.conf");
-
-  int pipe = Licq::gPluginManager.registerProtocolPlugin();
-  int res = Jabber::Plugin(config).run(pipe);
-  Licq::gPluginManager.unregisterProtocolPlugin();
-  return res;
-}
+LICQ_PROTOCOL_PLUGIN_DATA(&JabberPluginFactory);

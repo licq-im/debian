@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ void* OscarServiceSendQueue_tep(void* p);
 
 namespace LicqDaemon
 {
-class PluginEventHandler;
+class PluginManager;
 }
 
 namespace Licq
@@ -155,53 +155,64 @@ class Event
 public:
   enum ConnectType
   {
-    ConnectServer,
-    ConnectUser,
-    ConnectNone,
+    ConnectNone         = 0,
+    ConnectServer       = 1,
+    ConnectUser         = 2,
   };
 
   enum ResultType
   {
-    ResultAcked,        // Event acked by reciepient
-    ResultSuccess,      // Event successfully sent
-    ResultFailed,       // Event failed
-    ResultTimedout,     // Time out while communicating with remote socket
-    ResultError,        // Other error
-    ResultCancelled,    // Event cancelled by the user
+    ResultAcked         = 1,    // Event acked by reciepient
+    ResultSuccess       = 2,    // Event successfully sent
+    ResultFailed        = 3,    // Event failed
+    ResultTimedout      = 4,    // Time out while communicating with remote socket
+    ResultError         = 5,    // Other error
+    ResultCancelled     = 6,    // Event cancelled by the user
+  };
+
+  enum SubResultType
+  {
+    SubResultAccept     = 1,    // Event was accepted by recipient
+    SubResultRefuse     = 2,    // Event was rejected by recipient
+    SubResultReturn     = 3,    // Recipient is DND/Occupied, message needs to be resent with flags for urgent or to contact list
+  };
+
+  enum Commands
+  {
+    CommandOther        = 0,            // Command not in this list
+    CommandMessage      = 1,            // Plain text message
+    CommandUrl          = 2,            // URL message
+    CommandFile         = 3,            // File transfer proposal
+    CommandChatInvite   = 4,            // Chat invitation
+    CommandSearch       = 5,            // Search (last event)
+    CommandSecureOpen   = 6,            // Open secure channel
+  };
+
+  enum Flags
+  {
+    FlagDirect          = 0x0001,       // Message/Url/... was sent direct
+    FlagSearchDone      = 0x0002,       // This is the last search result
   };
 
   // Accessors
 
+  /// One of CommandType above
+  unsigned command() const { return myCommand; }
+
+  /// Bitmask from Flags above
+  unsigned flags() const { return myFlags; }
+
   //!This is the result of the event.
   ResultType Result() const { return m_eResult; }
 
-  //!This will be either ICQ_TCPxACK_ACCEPT if the event was accepted by
-  //!the other side, ICQ_TCPxACK_REJECT if the event was rejected by the
-  //!other side (should never happen really), or ICQ_TCPxACK_RETURN if the
-  //!other side returned the event (meaning they are in occupied or dnd so
-  //!the message would need to be sent urgent or to contact list).  This
-  //!field is only relevant if the command was ICQ_CMDxTCP_START (ie the
-  //!message was sent direct).
-  int SubResult() const { return m_nSubResult; }
-
-  //!This is used to identify what channel the event was sent on.  This is
-  //!only non-zero for server events.
-  unsigned char Channel() const { return m_nChannel; }
+  /// One of SubResultType above. This field is only relevant if the command
+  /// was ICQ_CMDxTCP_START (ie the message was sent direct).
+  unsigned subResult() const { return mySubResult; }
 
   //!The SNAC returned as an unsigned long.  The upper 2 bytes is the family
   //!and the lower 2 bytes is the subtype.  To compare SNAC's use the SNAC
   //!macro to convert it to an unsigned long: MAKESNAC(family, subtype).
   unsigned long SNAC() const { return m_nSNAC; }
-
-  //!The command, for example ICQ_CMDxTCP_START.  This is only non-zero
-  //!for direct connection events.
-  unsigned short Command() const { return m_nCommand; }
-
-  //!The subcommand, relevant only if this was a message/url/chat/file,
-  //!in which case Command() will be ICQ_CMDxTCP_START or SNAC() will be
-  //!MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_CMDxSND_THRU_SERVER) and this
-  //!field will be ICQ_CMDxSUB_MSG...
-  unsigned short SubCommand() const { return m_nSubCommand; }
 
   //!This is used to identify events internally, but is necessary for
   //!accepting/rejecting chat or file requests.
@@ -262,15 +273,14 @@ protected:
   unsigned long EventId() const;
 
   ConnectType    m_eConnect;
+  unsigned myCommand;
+  unsigned myFlags;
   ResultType m_eResult;
-  int            m_nSubResult;
+  unsigned mySubResult;
   bool           m_bCancelled : 1;
   bool           m_Deleted : 1;
   bool           m_NoAck : 1;
-  unsigned char  m_nChannel;
   unsigned long  m_nSNAC;
-  unsigned short m_nCommand;
-  unsigned short m_nSubCommand;
   unsigned short m_nSequence;
   unsigned short m_nSubSequence;
   unsigned short m_nSubType;
@@ -292,11 +302,10 @@ protected:
   friend class ::CMSN;
   friend class ::IcqProtocol;
   friend class Jabber::Plugin;
-  friend class LicqDaemon::PluginEventHandler;
+  friend class LicqDaemon::PluginManager;
   friend void* ::ProcessRunningEvent_Client_tep(void* p);
   friend void* ::ProcessRunningEvent_Server_tep(void* p);
   friend void* ::OscarServiceSendQueue_tep(void* p);
-//friend void *MonitorSockets_tep(void *p);
 };
 
 } // namespace Licq

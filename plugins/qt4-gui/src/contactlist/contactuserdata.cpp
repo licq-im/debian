@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +30,7 @@
 
 // Licq
 #include <licq/contactlist/user.h>
-#include <licq/icqdefines.h>
+#include <licq/icq/icq.h>
 #include <licq/pluginsignal.h>
 #include <licq/socket.h>
 #include <licq/userevents.h>
@@ -73,8 +72,6 @@ ContactUserData::ContactUserData(const Licq::User* licqUser, QObject* parent)
     myUserIcon(NULL)
 {
   myUserId = licqUser->id();
-  myPpid = licqUser->protocolId();
-  myAccountId = licqUser->realAccountId().c_str();
 
   if (myRefreshTimer == NULL)
   {
@@ -151,9 +148,9 @@ void ContactUserData::update(const Licq::User* u, unsigned long subSignal)
 
   if (subSignal == 0 || subSignal == Licq::PluginSignal::UserPluginStatus)
   {
-    myPhoneFollowMeStatus = u->PhoneFollowMeStatus();
-    myIcqPhoneStatus = u->ICQphoneStatus();
-    mySharedFilesStatus = u->SharedFilesStatus();
+    myPhoneFollowMeStatus = u->phoneFollowMeStatus();
+    myIcqPhoneStatus = u->icqPhoneStatus();
+    mySharedFilesStatus = u->sharedFilesStatus();
   }
 
   if (subSignal == 0 || subSignal == Licq::PluginSignal::UserInfo)
@@ -261,32 +258,35 @@ void ContactUserData::updateEvents(const Licq::User* u)
     myEvents = myNewMessages;
   }
 
-  myEventSubCommand = 0;
+  myEventType = 0;
 
   if (myNewMessages > 0)
   {
     for (unsigned short i = 0; i < myNewMessages; i++)
     {
-      switch (u->EventPeek(i)->SubCommand())
+      switch (u->EventPeek(i)->eventType())
       {
-        case ICQ_CMDxSUB_FILE:
-          myEventSubCommand = ICQ_CMDxSUB_FILE;
+        case Licq::UserEvent::TypeFile:
+          myEventType = Licq::UserEvent::TypeFile;
           break;
-        case ICQ_CMDxSUB_CHAT:
-          if (myEventSubCommand != ICQ_CMDxSUB_FILE)
-            myEventSubCommand = ICQ_CMDxSUB_CHAT;
+        case Licq::UserEvent::TypeChat:
+          if (myEventType != Licq::UserEvent::TypeFile)
+            myEventType = Licq::UserEvent::TypeChat;
           break;
-        case ICQ_CMDxSUB_URL:
-          if (myEventSubCommand != ICQ_CMDxSUB_FILE && myEventSubCommand != ICQ_CMDxSUB_CHAT)
-            myEventSubCommand = ICQ_CMDxSUB_URL;
+        case Licq::UserEvent::TypeUrl:
+          if (myEventType != Licq::UserEvent::TypeFile &&
+              myEventType != Licq::UserEvent::TypeChat)
+            myEventType = Licq::UserEvent::TypeUrl;
           break;
-        case ICQ_CMDxSUB_CONTACTxLIST:
-          if(myEventSubCommand != ICQ_CMDxSUB_FILE && myEventSubCommand != ICQ_CMDxSUB_CHAT && myEventSubCommand != ICQ_CMDxSUB_URL)
-            myEventSubCommand = ICQ_CMDxSUB_CONTACTxLIST;
-        case ICQ_CMDxSUB_MSG:
+        case Licq::UserEvent::TypeContactList:
+          if(myEventType != Licq::UserEvent::TypeFile &&
+              myEventType != Licq::UserEvent::TypeChat &&
+              myEventType != Licq::UserEvent::TypeUrl)
+            myEventType = Licq::UserEvent::TypeContactList;
+        case Licq::UserEvent::TypeMessage:
         default:
-          if (myEventSubCommand == 0)
-            myEventSubCommand = ICQ_CMDxSUB_MSG;
+          if (myEventType == 0)
+            myEventType = Licq::UserEvent::TypeMessage;
           break;
       }
       if (u->EventPeek(i)->IsUrgent())
@@ -317,20 +317,20 @@ void ContactUserData::updateExtendedStatus()
   if (myStatusInvisible)
     myExtendedStatus |= ContactListModel::InvisibleStatus;
 
-  if (myStatusTyping && myPpid == LICQ_PPID)
+  if (myStatusTyping && myUserId.protocolId() == LICQ_PPID)
     myExtendedStatus |= ContactListModel::TypingStatus;
 
-  if (myPhoneFollowMeStatus == ICQ_PLUGIN_STATUSxACTIVE)
+  if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginActive)
     myExtendedStatus |= ContactListModel::PhoneFollowMeActiveStatus;
-  else if (myPhoneFollowMeStatus == ICQ_PLUGIN_STATUSxBUSY)
+  else if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginBusy)
     myExtendedStatus |= ContactListModel::PhoneFollowMeBusyStatus;
 
-  if (myIcqPhoneStatus == ICQ_PLUGIN_STATUSxACTIVE)
+  if (myIcqPhoneStatus == CICQDaemon::IcqPluginActive)
     myExtendedStatus |= ContactListModel::IcqPhoneActiveStatus;
-  else if (myIcqPhoneStatus == ICQ_PLUGIN_STATUSxBUSY)
+  else if (myIcqPhoneStatus == CICQDaemon::IcqPluginBusy)
     myExtendedStatus |= ContactListModel::IcqPhoneBusyStatus;
 
-  if (mySharedFilesStatus == ICQ_PLUGIN_STATUSxACTIVE)
+  if (mySharedFilesStatus == CICQDaemon::IcqPluginActive)
     myExtendedStatus |= ContactListModel::SharedFilesStatus;
 
   if (myCustomAR)
@@ -495,8 +495,8 @@ bool ContactUserData::setData(const QVariant& value, int role)
       return false;
 
     myAlias = value.toString();
-    u->setAlias(myAlias.toUtf8().data());
     u->SetKeepAliasOnUpdate(true);
+    u->setAlias(myAlias.toUtf8().data());
 
     // Daemon doesn't send signal when alias is changed so trigger update from here
     updateText(*u);
@@ -621,10 +621,10 @@ QVariant ContactUserData::data(int column, int role) const
       return QVariant::fromValue(myUserId);
 
     case ContactListModel::AccountIdRole:
-      return myAccountId;
+      return myUserId.accountId().c_str();
 
     case ContactListModel::PpidRole:
-      return static_cast<unsigned int>(myPpid);
+      return static_cast<unsigned int>(myUserId.protocolId());
 
     case ContactListModel::ItemTypeRole:
       return ContactListModel::UserItem;
@@ -653,8 +653,8 @@ QVariant ContactUserData::data(int column, int role) const
         return *myUserIcon;
       break;
 
-    case ContactListModel::EventSubCommandRole:
-      return myEventSubCommand;
+    case ContactListModel::EventTypeRole:
+      return myEventType;
 
     case ContactListModel::CarAnimationRole:
       if (myCarCounter > 0)
@@ -718,17 +718,17 @@ QString ContactUserData::tooltip() const
   {
     if (myStatusTyping)
       s += "<br>" + tr("Typing a message");
-    if (myPhoneFollowMeStatus == ICQ_PLUGIN_STATUSxACTIVE)
+    if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginActive)
       s += "<br>" + tr("Phone &quot;Follow Me&quot;: Available");
-    else if (myPhoneFollowMeStatus == ICQ_PLUGIN_STATUSxBUSY)
+    else if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginBusy)
       s += "<br>" + tr("Phone &quot;Follow Me&quot;: Busy");
 
-    if (myIcqPhoneStatus == ICQ_PLUGIN_STATUSxACTIVE)
+    if (myIcqPhoneStatus == CICQDaemon::IcqPluginActive)
       s += "<br>" + tr("ICQphone: Available");
-    else if (myIcqPhoneStatus == ICQ_PLUGIN_STATUSxBUSY)
+    else if (myIcqPhoneStatus == CICQDaemon::IcqPluginBusy)
       s += "<br>" + tr("ICQphone: Busy");
 
-    if (mySharedFilesStatus == ICQ_PLUGIN_STATUSxACTIVE)
+    if (mySharedFilesStatus == CICQDaemon::IcqPluginActive)
       s += "<br>" + tr("File Server: Enabled");
   }
 
@@ -788,49 +788,14 @@ QString ContactUserData::tooltip() const
     s += "<br>" + tr("O: ") + t.toString();
   }
 
-  if (config->popupOnlineSince() && u->isOnline())
-  {
-    time_t nLoggedIn = (time(0) > u->OnlineSince() ? time(0) - u->OnlineSince() : 0);
-    unsigned long nWeek, nDay, nHour, nMinute;
-    nWeek = nLoggedIn / 604800;
-    nDay = (nLoggedIn % 604800) / 86400;
-    nHour = (nLoggedIn % 86400) / 3600;
-    nMinute = (nLoggedIn % 3600) / 60;
+  if (config->popupOnlineSince() && u->isOnline() && u->OnlineSince() > 0 && u->OnlineSince() <= time(0))
+    s += "<br>" + tr("Logged In: ") + User::RelativeStrTime(u->OnlineSince()).c_str();
 
-    QString ds, temp;
-    if (nWeek != 0)
-    {
-      ds += temp.setNum(nWeek);
-      ds += " ";
-      ds += (nWeek > 1 ? tr(" weeks") : tr(" week"));
-    }
-    if (nDay != 0)
-    {
-      if (nWeek != 0) ds += " ";
-      ds += temp.setNum(nDay);
-      ds += " ";
-      ds += (nDay > 1 ? tr(" days") : tr(" day"));
-    }
-    if (nHour != 0)
-    {
-      if (nWeek != 0 || nDay != 0) ds += " ";
-      ds += temp.setNum(nHour);
-      ds += (nHour > 1 ? tr(" hours") : tr(" hour"));
-    }
-    if (nMinute != 0)
-    {
-      if (nWeek != 0 || nDay != 0 || nHour != 0) ds += " ";
-      ds += temp.setNum(nMinute);
-      ds += (nMinute > 1 ? tr(" minutes") : tr(" minute"));
-    }
-    if (nWeek == 0 && nDay == 0 && nHour == 0 && nMinute == 0)
-      ds += tr("0 minutes");
-
-    s += "<br>" + tr("Logged In: ") + ds;
-  }
+  if (config->popupAwayTime() && (myStatus & User::AwayStatuses) && u->awaySince())
+    s += "<br>" + tr("Away: ") + User::RelativeStrTime(u->awaySince()).c_str();
 
   if (config->popupIdleTime() && u->IdleSince())
-    s += "<br>" + tr("Idle: ") + u->usprintf("%I").c_str();
+    s += "<br>" + tr("Idle: ") + User::RelativeStrTime(u->IdleSince()).c_str();
 
   if (config->popupLocalTime())
     s += "<br>" + tr("Local time: ") + u->usprintf("%F").c_str();

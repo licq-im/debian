@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2010 Licq developers
+ * Copyright (C) 1998-2011 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -9,10 +8,12 @@
 #include "config.h"
 
 #include <boost/foreach.hpp>
+#include <boost/scoped_array.hpp>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -35,14 +36,14 @@
 #include "contactlist/usermanager.h"
 #include "daemon.h"
 #include "fifo.h"
+#include "filter.h"
 #include "gettext.h"
-#include "icq/icq.h"
+#include "logging/logservice.h"
 #include "logging/streamlogsink.h"
 #include "oneventmanager.h"
-#include "plugins/pluginmanager.h"
+#include "plugin/pluginmanager.h"
 #include "sarmanager.h"
 #include "statistics.h"
-#include "support.h"
 
 using namespace std;
 using Licq::GeneralPlugin;
@@ -51,6 +52,8 @@ using LicqDaemon::Daemon;
 using LicqDaemon::PluginManager;
 using LicqDaemon::gDaemon;
 using LicqDaemon::gFifo;
+using LicqDaemon::gFilterManager;
+using LicqDaemon::gLogService;
 using LicqDaemon::gOnEventManager;
 using LicqDaemon::gSarManager;
 using LicqDaemon::gPluginManager;
@@ -225,22 +228,6 @@ void handleExitSignal(int signal)
   gDaemon.Shutdown();
 }
 
-/*-----Helper functions for CLicq::UpgradeLicq-----------------------------*/
-int SelectUserUtility(const struct dirent *d)
-{
-  const char* pcDot = strrchr(d->d_name, '.');
-  if (pcDot == NULL) return (0);
-  return (strcmp(pcDot, ".uin") == 0);
-}
-
-int SelectHistoryUtility(const struct dirent *d)
-{
-  const char* pcDot = strchr(d->d_name, '.');
-  if (pcDot == NULL) return (0);
-  return (strcmp(pcDot, ".history") == 0 ||
-          strcmp(pcDot, ".history.removed") == 0);
-}
-
 char **global_argv = NULL;
 int global_argc = 0;
 
@@ -254,7 +241,9 @@ bool CLicq::Init(int argc, char **argv)
   myConsoleLog.reset(new LicqDaemon::StreamLogSink(std::cerr));
   myConsoleLog->setLogLevel(Licq::Log::Error, true);
   myConsoleLog->setLogLevel(Licq::Log::Warning, true);
-  myLogService.registerDefaultLogSink(myConsoleLog);
+  gLogService.registerDefaultLogSink(myConsoleLog);
+
+  gDaemon.preInitialize(this);
 
   char *szRedirect = NULL;
   vector <char *> vszPlugins;
@@ -336,7 +325,10 @@ bool CLicq::Init(int argc, char **argv)
   // See if redirection works, set bUseColor to false if we redirect
   // to a file.
   if (szRedirect)
-    bRedirect_ok = Redirect(szRedirect);
+  {
+    int fd = open(szRedirect, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    bRedirect_ok = (fd != -1 && dup2(fd, STDERR_FILENO) != -1);
+  }
 
   if(!isatty(STDERR_FILENO))
     bUseColor = false;
@@ -389,11 +381,8 @@ bool CLicq::Init(int argc, char **argv)
       return false;
     if (bHelp)
     {
-      fprintf(stderr,
-              "----------\nLicq Plugin: %s %s\n%s\n",
-              plugin->getName(),
-              plugin->getVersion(),
-              plugin->getUsage());
+      fprintf(stderr, "----------\nLicq Plugin: %s %s\n%s\n",
+          plugin->name().c_str(), plugin->version().c_str(), plugin->usage().c_str());
     }
     free(*iter);
   }
@@ -404,10 +393,8 @@ bool CLicq::Init(int argc, char **argv)
       return false;
     if (bHelp)
     {
-      fprintf(stderr,
-              "----------\nLicq Protocol Plugin: %s %s\n",
-              plugin->getName(),
-              plugin->getVersion());
+      fprintf(stderr, "----------\nLicq Protocol Plugin: %s %s\n",
+          plugin->name().c_str(), plugin->version().c_str());
     }
     free(*iter);
   }
@@ -455,8 +442,7 @@ bool CLicq::Init(int argc, char **argv)
       else
       {
         snprintf(error, ERR_SIZE,
-                 tr("%sLicq: Unable to determine pid of running Licq instance.\n"),
-                 L_ERRORxSTR);
+            tr("Licq: Unable to determine pid of running Licq instance."));
       }
 
       error[ERR_SIZE] = '\0';
@@ -482,14 +468,12 @@ bool CLicq::Init(int argc, char **argv)
       if (fcntl(pidFile, F_GETLK, &lock) != 0)
       {
         snprintf(error, ERR_SIZE,
-                tr("%sLicq: Unable to determine pid of running Licq instance.\n"),
-                L_ERRORxSTR);
+            tr("Licq: Unable to determine pid of running Licq instance."));
       }
       else
       {
         snprintf(error, ERR_SIZE,
-                tr("%sLicq: Already running at pid %d.\n"),
-                L_ERRORxSTR, (int)lock.l_pid);
+            tr("Licq: Already running at pid %d."), (int)lock.l_pid);
       }
 
       error[ERR_SIZE] = '\0';
@@ -575,12 +559,12 @@ bool CLicq::Init(int argc, char **argv)
         // Make upgrade from 1.3.x and older easier by automatically switching from kde/qt-gui to kde4/qt4-gui
         if (!loaded && pluginName == "kde-gui")
         {
-          gLog.warning(tr("%sPlugin kde-gui is no longer available, trying to load kde4-gui instead.\n"), L_WARNxSTR);
+          gLog.warning(tr("Plugin kde-gui is no longer available, trying to load kde4-gui instead."));
           loaded = LoadPlugin("kde4-gui", argc, argv);
         }
         if (!loaded && (pluginName == "qt-gui" || pluginName == "kde-gui"))
         {
-          gLog.warning(tr("%sPlugin %s is no longer available, trying to load qt4-gui instead.\n"), L_WARNxSTR, pluginName.c_str());
+          gLog.warning(tr("Plugin %s is no longer available, trying to load qt4-gui instead."), pluginName.c_str());
           loaded = LoadPlugin("qt4-gui", argc, argv);
         }
 
@@ -625,14 +609,12 @@ bool CLicq::Init(int argc, char **argv)
   // Start things going
   if (!LicqDaemon::gUserManager.Load())
     return false;
-  gDaemon.initialize(this);
+  gDaemon.initialize();
   gOnEventManager.initialize();
   gSarManager.initialize();
   gStatistics.initialize();
+  gFilterManager.initialize();
   gUtilityManager.loadUtilities(gDaemon.shareDir() + Daemon::UtilityDir);
-
-  // Create the daemon
-  gIcqProtocol.initialize();
 
   return true;
 }
@@ -641,7 +623,7 @@ CLicq::~CLicq()
 {
   gFifo.shutdown();
 
-  myLogService.unregisterLogSink(myConsoleLog);
+  gLogService.unregisterLogSink(myConsoleLog);
 }
 
 
@@ -689,46 +671,65 @@ bool CLicq::upgradeLicq128(Licq::IniFile& licqConf)
     return false;
 
   // Update all the user files and update users.conf
-  struct dirent **UinFiles;
   string strUserDir = strBaseDir + "users";
-  int n = scandir_alpha_r(strUserDir.c_str(), &UinFiles, SelectUserUtility);
-  if (n != 0)
+  DIR* userDir = opendir(strUserDir.c_str());
+  if (userDir != NULL)
   {
     Licq::IniFile userConf("users.conf");
     if (!userConf.loadFile())
       return false;
     userConf.setSection("users");
-    userConf.set("NumOfUsers", n);
-    for (int i = 0; i < n; i++)
+    int n = 0;
+
+    boost::scoped_array<char> ent(new char[offsetof(struct dirent, d_name) +
+        pathconf(strUserDir.c_str(), _PC_NAME_MAX) + 1]);
+    struct dirent* res;
+
+    while (readdir_r(userDir, (struct dirent*)ent.get(), &res) == 0 && res != NULL)
     {
+      const char* dot = strrchr(res->d_name, '.');
+      if (dot == NULL || strcmp(dot, ".uin") != 0)
+        continue;
+
       char szKey[20];
-      snprintf(szKey, sizeof(szKey), "User%d", i+1);
-      string strFileName = strUserDir + "/" + UinFiles[i]->d_name;
-      string strNewName = UinFiles[i]->d_name;
+      snprintf(szKey, sizeof(szKey), "User%d", n+1);
+      string strFileName = strUserDir + "/" + res->d_name;
+      string strNewName = res->d_name;
       strNewName.replace(strNewName.find(".uin", 0), 4, ".Licq");
       string strNewFile = strUserDir + "/" + strNewName;
       if (rename(strFileName.c_str(), strNewFile.c_str()))
         return false;
       userConf.set(szKey, strNewName);
+      ++n;
     }
+    userConf.set("NumOfUsers", n);
     userConf.writeFile();
+    closedir(userDir);
   }
 
+
   // Rename the history files
-  struct dirent **HistoryFiles;
   string strHistoryDir = strBaseDir + "history";
-  int nNumHistory = scandir_alpha_r(strHistoryDir.c_str(), &HistoryFiles,
-    SelectHistoryUtility);
-  if (nNumHistory)
+  DIR* historyDir = opendir(strHistoryDir.c_str());
+  if (historyDir != NULL)
   {
-    for (unsigned short i = 0; i < nNumHistory; i++)
+    boost::scoped_array<char> ent(new char[offsetof(struct dirent, d_name) +
+        pathconf(strHistoryDir.c_str(), _PC_NAME_MAX) + 1]);
+    struct dirent* res;
+
+    while (readdir_r(historyDir, (struct dirent*)ent.get(), &res) == 0 && res != NULL)
     {
-      string strFileName = strHistoryDir + "/" + HistoryFiles[i]->d_name;
-      string strNewFile = strHistoryDir + "/" + HistoryFiles[i]->d_name;
+      const char* dot = strrchr(res->d_name, '.');
+      if (dot == NULL || (strcmp(dot, ".history") != 0 && strcmp(dot, ".history.removed") != 0))
+        continue;
+
+      string strFileName = strHistoryDir + "/" + res->d_name;
+      string strNewFile = strHistoryDir + "/" + res->d_name;
       strNewFile.replace(strNewFile.find(".history", 0), 8, ".Licq.history");
       if (rename(strFileName.c_str(), strNewFile.c_str()))
         return false;
     }
+    closedir(historyDir);
   }
   
   return true;
@@ -781,9 +782,6 @@ int CLicq::Main()
 
   gFifo.initialize();
 
-  if (!gIcqProtocol.start())
-    return 1;
-
   // Run the plugins
   gPluginManager.startAllPlugins();
 
@@ -801,10 +799,10 @@ int CLicq::Main()
     while (true)
     {
       if (bDaemonShutdown)
-        gPluginManager.waitForPluginExit(PluginManager::MaxWaitPlugin);
+        gPluginManager.waitForPluginExit(PluginManager::MAX_WAIT_PLUGIN);
       else
       {
-        if (gPluginManager.waitForPluginExit() == PluginManager::DaemonId)
+        if (gPluginManager.waitForPluginExit() == PluginManager::DAEMON_ID)
         {
           bDaemonShutdown = true;
           continue;
@@ -868,7 +866,7 @@ void CLicq::SaveLoadedPlugins()
   BOOST_FOREACH(GeneralPlugin::Ptr plugin, general)
   {
     sprintf(szKey, "Plugin%d", i++);
-    licqConf.set(szKey, plugin->getLibraryName());
+    licqConf.set(szKey, plugin->libraryName());
   }
 
   Licq::ProtocolPluginsList protocols;
@@ -881,10 +879,10 @@ void CLicq::SaveLoadedPlugins()
   BOOST_FOREACH(ProtocolPlugin::Ptr plugin, protocols)
   {
     // ICQ-PLUGIN: Remove if
-    if (!plugin->getLibraryName().empty())
+    if (!plugin->libraryName().empty())
     {
       sprintf(szKey, "ProtoPlugin%d", i++);
-      licqConf.set(szKey, plugin->getLibraryName());
+      licqConf.set(szKey, plugin->libraryName());
     }
   }
 

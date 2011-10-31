@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008-2010 Licq developers
+ * Copyright (C) 2008-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +38,7 @@
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
 #include <licq/oneventmanager.h>
-#include <licq/pluginmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
 
@@ -297,7 +296,7 @@ void UserPages::Settings::load(const Licq::User* user)
   unsigned long sendFuncs = 0;
   Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(ppid);
   if (protocol.get() != NULL)
-    sendFuncs = protocol->getSendFunctions();
+    sendFuncs = protocol->capabilities();
 
   myAutoAcceptFileCheck->setEnabled(sendFuncs & Licq::ProtocolPlugin::CanSendFile);
   myAutoAcceptChatCheck->setEnabled(sendFuncs & Licq::ProtocolPlugin::CanSendChat);
@@ -385,7 +384,7 @@ void UserPages::Settings::apply(Licq::User* user)
   user->setStatusToUser(statusToUser);
 
   // Set auto response (empty string will disable custom auto response)
-  user->setCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toLocal8Bit().data());
+  user->setCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toLocal8Bit().constData());
 
   // Save onevent settings
   Licq::OnEventData* userData = Licq::gOnEventManager.lockUser(user->id(), true);

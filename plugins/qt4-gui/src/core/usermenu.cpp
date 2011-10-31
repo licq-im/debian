@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 2007-2011 Licq developers
@@ -29,9 +28,9 @@
 
 #include <licq/contactlist/group.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/icq.h>
+#include <licq/icq/icq.h>
 #include <licq/daemon.h>
-#include <licq/pluginmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/utility.h>
 
@@ -301,7 +300,7 @@ void UserMenu::aboutToShowMenu()
 
   Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(myPpid);
   if (protocol.get() != NULL)
-    sendFuncs = protocol->getSendFunctions();
+    sendFuncs = protocol->capabilities();
 
   mySendActions[SendMessage]->setVisible(sendFuncs & Licq::ProtocolPlugin::CanSendMsg);
   mySendActions[SendUrl]->setVisible(sendFuncs & Licq::ProtocolPlugin::CanSendUrl);
@@ -467,7 +466,7 @@ void UserMenu::send(QAction* action)
       break;
 
     case SendReqAuthorize:
-      new ReqAuthDlg(myId, myPpid);
+      new ReqAuthDlg(myUserId);
       break;
 
     case SendKey:

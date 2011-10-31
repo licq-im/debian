@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 1999-2011 Licq developers
@@ -38,7 +37,7 @@ using Licq::UserId;
 using namespace LicqQtGui;
 
 UserView::UserView(ContactListModel* contactList, QWidget* parent)
-  : UserViewBase(contactList, parent)
+  : UserViewBase(contactList, true, parent)
 {
   myRemovedUserTimer = new QTimer(this);
   myRemovedUserTimer->setSingleShot(true);
@@ -366,9 +365,7 @@ void UserView::mouseMoveEvent(QMouseEvent* event)
   if ((event->buttons() & Qt::LeftButton) && !myMousePressPos.isNull() &&
       (QPoint(event->pos() - myMousePressPos).manhattanLength() >= QApplication::startDragDistance()))
   {
-    char p[5];
-    Licq::protocolId_toStr(p, ppid);
-    QString data(p);
+    QString data(Licq::protocolId_toString(ppid).c_str());
     data += id;
 
     QDrag* drag = new QDrag(this);

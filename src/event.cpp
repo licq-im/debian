@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2010 Licq developers
+ * Copyright (C) 1998-2011 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -31,10 +30,7 @@ Event::Event(unsigned long id, int _nSocketDesc, Licq::Packet* p,
   if (p)
   {
     m_pPacket = p;
-    m_nChannel = p->Channel();
-    m_nCommand = p->Command();
     m_nSNAC = p->SNAC();
-    m_nSubCommand = p->SubCommand();
     m_nSequence = p->Sequence();
     m_nSubSequence = p->SubSequence();
     m_nSubType = (p->SNAC() & 0xFFFF);
@@ -42,22 +38,21 @@ Event::Event(unsigned long id, int _nSocketDesc, Licq::Packet* p,
   } else
   {
     m_pPacket = NULL;
-    m_nChannel = 0;
-    m_nCommand = 0;
     m_nSNAC = 0;
-    m_nSubCommand = 0;
     m_nSequence = 0;
     m_nSubSequence = 0;
     m_nSubType = 0;
     m_nExtraInfo = 0;
   }
+  myCommand = CommandOther;
+  myFlags = 0;
   myUserId = userId;
   m_eConnect = _eConnect;
   m_pUserEvent = e;
   m_nSocketDesc = _nSocketDesc;
   m_pExtendedAck = NULL;
   m_pSearchAck = NULL;
-  m_nSubResult = ICQ_TCPxACK_ACCEPT;
+  mySubResult = SubResultAccept;
   thread_plugin = pthread_self();
   thread_running = false;
 
@@ -75,18 +70,17 @@ Event::Event(const Event* e)
   m_Deleted = false;
   m_NoAck = false;
   m_bCancelled = e->m_bCancelled;
-  m_nChannel = e->m_nChannel;
   m_nSNAC = e->m_nSNAC;
-  m_nCommand = e->m_nCommand;
-  m_nSubCommand = e->m_nSubCommand;
   m_nSequence = e->m_nSequence;
   m_nSubSequence = e->m_nSubSequence;
   m_nSubType = e->m_nSubType;
   m_nExtraInfo = e->m_nExtraInfo;
+  myCommand = e->myCommand;
+  myFlags = e->myFlags;
   myUserId = e->myUserId;
   m_eConnect = e->m_eConnect;
   m_eResult = e->m_eResult;
-  m_nSubResult = e->m_nSubResult;
+  mySubResult = e->mySubResult;
   if (e->m_pUserEvent != NULL)
     m_pUserEvent = e->m_pUserEvent->Copy();
   else
@@ -119,10 +113,7 @@ Event::~Event()
 void Event::AttachPacket(Licq::Packet* p)
 {
   m_pPacket = p;
-  m_nChannel = p->Channel();
-  m_nCommand = p->Command();
   m_nSNAC = p->SNAC();
-  m_nSubCommand = p->SubCommand();
   m_nSequence = p->Sequence();
   m_nSubSequence = p->SubSequence();
   m_nSubType = (p->SNAC() & 0xFFFF);

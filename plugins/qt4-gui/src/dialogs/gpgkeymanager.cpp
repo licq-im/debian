@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2010 Licq developers
+ * Copyright (C) 2005-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,6 +74,7 @@ GPGKeyManager::GPGKeyManager(QWidget* parent)
   connect(lst_keyList, SIGNAL(itemDoubleClicked(QTreeWidgetItem*, int)),
       SLOT(slot_doubleClicked(QTreeWidgetItem*)));
   lay_main->addWidget(lst_keyList);
+  connect(lst_keyList, SIGNAL(itemSelectionChanged()), SLOT(keySelectionChanged()));
 
   myUsersMenu = new QMenu(this);
   connect(myUsersMenu, SIGNAL(aboutToShow()), SLOT(showAddMenu()));
@@ -82,23 +83,22 @@ GPGKeyManager::GPGKeyManager(QWidget* parent)
   QDialogButtonBox* buttons = new QDialogButtonBox();
   lay_main->addWidget(buttons);
 
-  QPushButton* btn;
-  btn = buttons->addButton(tr("&Add"), QDialogButtonBox::ActionRole);
-  btn->setMenu(myUsersMenu);
+  QPushButton* addButton = buttons->addButton(tr("&Add"), QDialogButtonBox::ActionRole);
+  addButton->setMenu(myUsersMenu);
 
-#define BUTTON(role, name, slot) \
+#define BUTTON(btn, role, name, slot) \
   btn = buttons->addButton(name, QDialogButtonBox::role); \
   connect(btn, SIGNAL(clicked()), SLOT(slot()))
 
-  BUTTON(ActionRole, tr("&Edit..."), slot_edit);
-  BUTTON(ActionRole, tr("&Remove"), slot_remove);
+  BUTTON(myEditButton, ActionRole, tr("&Edit..."), slot_edit);
+  BUTTON(myRemoveButton, ActionRole, tr("&Remove"), slot_remove);
 
 #undef BUTTON
   buttons->addButton(QDialogButtonBox::Close);
   connect(buttons, SIGNAL(rejected()), SLOT(close()));
 
   initKeyList();
-
+  keySelectionChanged();
   show();
 }
 
@@ -177,6 +177,13 @@ void GPGKeyManager::initKeyList()
   lst_keyList->resizeColumnsToContents();
 }
 
+void GPGKeyManager::keySelectionChanged()
+{
+  bool hasSelection = !lst_keyList->selectedItems().isEmpty();
+  myEditButton->setEnabled(hasSelection);
+  myRemoveButton->setEnabled(hasSelection);
+}
+
 // THE KEYLIST
 KeyList::KeyList(QWidget* parent)
   : QTreeWidget(parent)
@@ -235,10 +242,8 @@ void KeyList::dropEvent(QDropEvent* event)
     Licq::OwnerListGuard ownerList;
     BOOST_FOREACH(Licq::Owner* owner, **ownerList)
     {
-      unsigned long ppid = owner->ppid();
-      char ppidStr[5];
-      Licq::protocolId_toStr(ppidStr, ppid);
-      if (text.startsWith(ppidStr))
+      unsigned long ppid = owner->protocolId();
+      if (text.startsWith(Licq::protocolId_toString(ppid).c_str()))
       {
         nPPID = ppid;
         break;
@@ -249,7 +254,7 @@ void KeyList::dropEvent(QDropEvent* event)
   if (nPPID == 0)
     return;
 
-  editUser(Licq::UserId(text.mid(4).toLatin1().data(), nPPID));
+  editUser(Licq::UserId(text.mid(4).toLatin1().constData(), nPPID));
 }
 
 void KeyList::resizeEvent(QResizeEvent* e)
@@ -291,7 +296,7 @@ KeyListItem::KeyListItem(QTreeWidget* parent, const Licq::User* u)
 
 void KeyListItem::updateText(const Licq::User* u)
 {
-  setText(0, QString::fromUtf8(u->GetAlias()));
+  setText(0, QString::fromUtf8(u->getAlias().c_str()));
   setText(1, u->UseGPG() ? tr("Yes") : tr("No"));
   setText(2, u->gpgKey().c_str());
 }

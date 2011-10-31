@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -241,8 +240,6 @@ private slots:
 
 private:
   Licq::UserId myUserId;
-  QString myAccountId;
-  unsigned long myPpid;
   unsigned myStatus;
   int myEvents;
   bool myStatusInvisible, myStatusTyping, myCustomAR, mySecure, myFlash;
@@ -251,8 +248,8 @@ private:
   bool myInIgnoreList, myInOnlineNotify, myInInvisibleList, myInVisibleList;
   time_t myTouched;
   unsigned short myNewMessages;
-  unsigned short myEventSubCommand;
-  unsigned long myPhoneFollowMeStatus, myIcqPhoneStatus, mySharedFilesStatus;
+  unsigned myEventType;
+  unsigned myPhoneFollowMeStatus, myIcqPhoneStatus, mySharedFilesStatus;
   unsigned int myExtendedStatus;
   ContactListModel::SubGroupType mySubGroup;
   QString mySortKey;

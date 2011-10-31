@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -71,8 +70,7 @@
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
 #include <licq/event.h>
-#include <licq/icq.h>
-#include <licq/icqdefines.h>
+#include <licq/icq/icq.h>
 #include <licq/pluginsignal.h>
 
 #include "config/contactlist.h"
@@ -144,7 +142,7 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
   {
     Licq::OwnerReadGuard o(LICQ_PPID);
     if (o.isLocked())
-      myCaption += QString(" (%1)").arg(QString::fromUtf8(o->GetAlias()));
+      myCaption += QString(" (%1)").arg(QString::fromUtf8(o->getAlias().c_str()));
   }
   setWindowTitle(myCaption);
   setWindowIconText(myCaption);
@@ -226,8 +224,6 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       SLOT(updateStatus()));
   connect(gGuiSignalManager, SIGNAL(ownerRemoved(const Licq::UserId&)),
       SLOT(updateStatus()));
-  connect(gGuiSignalManager, SIGNAL(doneOwnerFcn(const Licq::Event*)),
-      SLOT(slot_doneOwnerFcn(const Licq::Event*)));
   connect(gGuiSignalManager, SIGNAL(logon()),
       SLOT(slot_logon()));
   connect(gGuiSignalManager, SIGNAL(protocolPlugin(unsigned long)),
@@ -679,7 +675,7 @@ void MainWindow::slot_updatedUser(const Licq::UserId& userId, unsigned long subS
         // User on notify list went online -> show popup at systray icon
         if (gLicqGui->dockIcon() != NULL && u->OnlineNotify())
         {
-          QString alias = QString::fromUtf8(u->GetAlias());
+          QString alias = QString::fromUtf8(u->getAlias().c_str());
           QPixmap px = IconManager::instance()->iconForUser(*u);
           gLicqGui->dockIcon()->popupMessage(alias, tr("is online"), px, 4000);
         }
@@ -1050,29 +1046,6 @@ void MainWindow::slot_protocolPlugin(unsigned long nPPID)
   // let KDE IM interface know about the new protocol
   // kdeIMInterface->addProtocol(QString(pName), nPPID);
 #endif
-}
-
-void MainWindow::slot_doneOwnerFcn(const Licq::Event* e)
-{
-  updateStatus();
-  switch (e->SNAC())
-  {
-    case MAKESNAC(ICQ_SNACxFAM_SERVICE, ICQ_SNACxSRV_SETxSTATUS):
-      if (e->Result() != Licq::Event::ResultSuccess)
-        WarnUser(this, tr("Logon failed.\nSee network window for details."));
-      break;
-
-/*
-    case ICQ_MDxSND_AUTHORIZE:
-       if (e->Result() != Licq::Event::ResultAcked)
-         WarnUser(this, tr("Error sending authorization."));
-       else
-         InformUser(this, tr("Authorization granted."));
-       break;
-*/
-    default:
-       break;
-  }
 }
 
 void MainWindow::slot_updateContactList()

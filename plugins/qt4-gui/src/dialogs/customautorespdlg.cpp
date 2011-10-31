@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,7 +73,8 @@ CustomAutoRespDlg::CustomAutoRespDlg(const Licq::UserId& userId, QWidget* parent
   if (!u.isLocked())
     return;
 
-  setWindowTitle(tr("Set Custom Auto Response for %1").arg(QString::fromUtf8(u->GetAlias())));
+  setWindowTitle(tr("Set Custom Auto Response for %1")
+      .arg(QString::fromUtf8(u->getAlias().c_str())));
   if (!u->customAutoResponse().empty())
     myMessage->setText(QString::fromLocal8Bit(u->customAutoResponse().c_str()));
   else
@@ -98,7 +98,7 @@ void CustomAutoRespDlg::ok()
   {
     Licq::UserWriteGuard u(myUserId);
     if (u.isLocked())
-      u->setCustomAutoResponse(s.toLocal8Bit().data());
+      u->setCustomAutoResponse(s.toLocal8Bit().constData());
   }
 
   // Notify all plugins (including ourselves)

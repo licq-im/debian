@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007, 2010 Licq developers
+ * Copyright (C) 2007, 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,12 +29,6 @@
 #include <stdint.h>
 #include <string>
 
-// Deprecated, to be removed
-const char L_WARNxSTR[]    = "[WRN] ";
-const char L_ERRORxSTR[]   = "[ERR] ";
-const char L_TCPxSTR[]     = "[TCP] ";
-const char L_SRVxSTR[]     = "[SRV] ";
-const char L_BLANKxSTR[]   = "                ";
 
 namespace Licq
 {
@@ -46,20 +40,11 @@ public:
 
   enum Level
   {
-    /// Unknown packets or bytes.
-    Unknown,
-
-    /// Basic information about what's going on.
-    Info,
-
-    /// Warnings which are not critical but could be important.
-    Warning,
-
-    /// Critical errors which should be brought to the attention of the user.
-    Error,
-
-    /// Debugging aid.
-    Debug
+    Unknown     = 1, /// Unknown packets or bytes.
+    Info        = 2, /// Basic information about what's going on.
+    Warning     = 3, /// Warnings which are not critical but could be important.
+    Error       = 4, /// Critical errors which should be brought to the attention of the user.
+    Debug       = 5, /// Debugging aid.
   };
 
   class Stream;

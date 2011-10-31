@@ -33,22 +33,18 @@
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/icqdefines.h>
-#include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/inifile.h>
-#include <licq/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
 #include <licq/socket.h>
 #include <licq/translator.h>
 #include <licq/userevents.h>
 
-extern "C" { const char *LP_Version(); }
+#include "pluginversion.h"
 
 using std::string;
 using Licq::gLog;
-using Licq::gPluginManager;
 using Licq::gProtocolManager;
 using Licq::gUserManager;
 using Licq::UserId;
@@ -58,13 +54,13 @@ const unsigned short SUBJ_CHARS = 20;
 /*---------------------------------------------------------------------------
  * CLicqForwarder::Constructor
  *-------------------------------------------------------------------------*/
-CLicqForwarder::CLicqForwarder(bool _bEnable, bool _bDelete, char *_szStatus)
+CLicqForwarder::CLicqForwarder(Licq::GeneralPlugin::Params& p)
+  : Licq::GeneralPlugin(p),
+    myIsEnabled(false),
+    myMarkAsRead(false)
 {
   tcp = new Licq::TCPSocket;
   m_bExit = false;
-  m_bEnabled = _bEnable;
-  m_bDelete = _bDelete;
-  m_szStatus = _szStatus == NULL ? NULL : strdup(_szStatus);
 }
 
 
@@ -76,23 +72,79 @@ CLicqForwarder::~CLicqForwarder()
   delete tcp;
 }
 
-/*---------------------------------------------------------------------------
- * CLicqForwarder::Shutdown
- *-------------------------------------------------------------------------*/
-void CLicqForwarder::Shutdown()
+std::string CLicqForwarder::name() const
 {
-  gLog.info("Shutting down forwarder");
-  gPluginManager.unregisterGeneralPlugin();
+  return "ICQ Forwarder";
 }
 
+std::string CLicqForwarder::version() const
+{
+  return PLUGIN_VERSION_STRING;
+}
+
+std::string CLicqForwarder::description() const
+{
+  return "ICQ message forwarder to email/icq";
+}
+
+std::string CLicqForwarder::usage() const
+{
+  return
+      "Usage:  Licq [options] -p forwarder -- [ -h ] [ -e ] [ -l <status> ] [ -d ]\n"
+      "         -h          : help\n"
+      "         -e          : start enabled\n"
+      "         -l <status> : log on at startup\n"
+      "         -d          : delete new messages after forwarding\n";
+}
+
+std::string CLicqForwarder::configFile() const
+{
+  return "licq_forwarder.conf";
+}
+
+bool CLicqForwarder::isEnabled() const
+{
+  return myIsEnabled;
+}
+
+bool CLicqForwarder::init(int argc, char** argv)
+{
+  //char *LocaleVal = new char;
+  //LocaleVal = setlocale (LC_ALL, "");
+  //bindtextdomain (PACKAGE, LOCALEDIR);
+  //textdomain (PACKAGE);
+
+  // parse command line for arguments
+  int i = 0;
+  while ( (i = getopt(argc, argv, "hel:d")) > 0)
+  {
+    switch (i)
+    {
+      case 'h':  // help
+        puts(usage().c_str());
+        return false;
+      case 'e': // enable
+        myIsEnabled = true;
+        break;
+      case 'l': //log on
+        myStartupStatus = optarg;
+        break;
+      case 'd':
+        myMarkAsRead = true;
+        break;
+    }
+  }
+  return true;
+}
 
 /*---------------------------------------------------------------------------
  * CLicqForwarder::Run
  *-------------------------------------------------------------------------*/
-int CLicqForwarder::Run()
+int CLicqForwarder::run()
 {
   // Register with the daemon, we only want the update user signal
-  m_nPipe = gPluginManager.registerGeneralPlugin(Licq::PluginSignal::SignalUser);
+  m_nPipe = getReadPipe();
+  setSignalMask(Licq::PluginSignal::SignalUser);
 
   // Create our smtp information
   m_nSMTPPort = 25; //getservicebyname("smtp");
@@ -140,15 +192,13 @@ int CLicqForwarder::Run()
   }
 
   // Log on if necessary
-  if (m_szStatus != NULL)
+  if (!myStartupStatus.empty())
   {
     unsigned s;
-    if (!Licq::User::stringToStatus(m_szStatus, s))
+    if (!Licq::User::stringToStatus(myStartupStatus, s))
       gLog.warning("Invalid startup status");
     else
       gProtocolManager.setStatus(gUserManager.ownerUserId(LICQ_PPID), s);
-    free(m_szStatus);
-    m_szStatus = NULL;
   }
 
   fd_set fdSet;
@@ -174,14 +224,18 @@ int CLicqForwarder::Run()
   return 0;
 }
 
+void CLicqForwarder::destructor()
+{
+  delete this;
+}
+
 /*---------------------------------------------------------------------------
  * CLicqForwarder::CreateDefaultConfig
  *-------------------------------------------------------------------------*/
 bool CLicqForwarder::CreateDefaultConfig()
 {
   // Create licq_forwarder.conf
-  string filename = Licq::gDaemon.baseDir() + "licq_forwarder.conf";
-  FILE *f = fopen(filename.c_str(), "w");
+  FILE* f = fopen(configFile().c_str(), "w");
   if (f == NULL)
     return false;
   fprintf(f, "%s", FORWARDER_CONF);
@@ -200,8 +254,8 @@ void CLicqForwarder::ProcessPipe()
   {
     case Licq::GeneralPlugin::PipeSignal:
     {
-      Licq::PluginSignal* s = Licq::gDaemon.popPluginSignal();
-      if (m_bEnabled)
+      Licq::PluginSignal* s = popSignal();
+      if (myIsEnabled)
         ProcessSignal(s);
       delete s;
       break;
@@ -210,8 +264,8 @@ void CLicqForwarder::ProcessPipe()
     case Licq::GeneralPlugin::PipeEvent:
     {
       // An event is pending (should never happen)
-      Licq::Event* e = Licq::gDaemon.PopPluginEvent();
-      if (m_bEnabled)
+      Licq::Event* e = popEvent();
+      if (myIsEnabled)
         ProcessEvent(e);
       delete e;
       break;
@@ -227,16 +281,16 @@ void CLicqForwarder::ProcessPipe()
     case Licq::GeneralPlugin::PipeDisable:
     {
     gLog.info("Disabling forwarder");
-    m_bEnabled = false;
-    break;
-  }
+      myIsEnabled = false;
+      break;
+    }
 
     case Licq::GeneralPlugin::PipeEnable:
     {
     gLog.info("Enabling forwarder");
-    m_bEnabled = true;
-    break;
-  }
+      myIsEnabled = true;
+      break;
+    }
 
   default:
     gLog.warning("Unknown notification type from daemon: %c", buf[0]);
@@ -315,7 +369,7 @@ void CLicqForwarder::ProcessUserEvent(const UserId& userId, unsigned long nId)
   else
   {
     bool r = ForwardEvent(*u, e);
-    if (m_bDelete && r)
+    if (myMarkAsRead && r)
       u->EventClearId(nId);
   }
 }
@@ -341,14 +395,12 @@ bool CLicqForwarder::ForwardEvent(const Licq::User* u, const Licq::UserEvent* e)
 
 bool CLicqForwarder::ForwardEvent_ICQ(const Licq::User* u, const Licq::UserEvent* e)
 {
-  char *szText = new char[e->text().size() + 256];
   char szTime[64];
   time_t t = e->Time();
   strftime(szTime, 64, "%a %b %d, %R", localtime(&t));
-  sprintf(szText, "[ %s from %s (%s) sent %s ]\n\n%s\n", e->description().c_str(),
-      u->getAlias().c_str(), u->accountId().c_str(), szTime, e->text().c_str());
-  unsigned long tag = gProtocolManager.sendMessage(myUserId, szText, true, ICQ_TCPxMSG_NORMAL);
-  delete []szText;
+  string text = "[ " + e->description() + " from " + u->getAlias() + " (" +
+      u->accountId() + ") sent " + szTime + " ]\n\n" + e->text() + "\n";
+  unsigned long tag = gProtocolManager.sendMessage(myUserId, text);
   if (tag == 0)
   {
     gLog.warning("Sending message to %s failed", myUserId.toString().c_str());
@@ -362,43 +414,39 @@ bool CLicqForwarder::ForwardEvent_ICQ(const Licq::User* u, const Licq::UserEvent
 
 bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEvent* e)
 {
-  char szTo[256],
-       szFrom[256],
-       szDate[256],
-       szReplyTo[256];
+  string headTo, headFrom, headDate, headReplyTo;
   time_t t = e->Time();
   string subject;
 
   // Fill in the strings
   if (!u->isUser())
   {
-    sprintf(szTo, "To: %s <%s>", u->getAlias().c_str(), mySmtpTo.c_str());
-    sprintf (szFrom, "From: ICQ System Message <support@icq.com>");
-    sprintf (szReplyTo, "Reply-To: Mirabilis <support@icq.com>");
+    headTo = "To: " + u->getAlias() + " <" + mySmtpTo + ">";
+    headFrom = "From: ICQ System Message <support@icq.com>";
+    headReplyTo = "Reply-To: Mirabilis <support@icq.com>";
   }
   else
   {
     unsigned long protocolId = u->protocolId();
     {
       Licq::OwnerReadGuard o(protocolId);
-      sprintf(szTo, "To: %s <%s>", o->getAlias().c_str(), mySmtpTo.c_str());
+      headTo = "To: " + o->getAlias() + " <" + mySmtpTo + ">";
     }
     if (protocolId == LICQ_PPID)
-      sprintf (szFrom, "From: \"%s\" <%s@pager.icq.com>", u->getAlias().c_str(), u->accountId().c_str());
+      headFrom = "From: \"" + u->getAlias() + "\" <" + u->accountId() + "@pager.icq.com>";
     else
-      sprintf (szFrom, "From: \"%s\" <%s>", u->getAlias().c_str(), u->getEmail().c_str());
-    sprintf (szReplyTo, "Reply-To: \"%s\" <%s>", u->getFullName().c_str(), u->getEmail().c_str());
+      headFrom = "From: \"" + u->getAlias() + "\" <" + u->getEmail() + ">";
+    headReplyTo = "Reply-To: \"" + u->getFullName() + "\" <" + u->getEmail() + ">";
   }
-  sprintf (szDate, "Date: %s", ctime(&t));
-  int l = strlen(szDate);
-  szDate[l - 1] = '\r';
-  szDate[l] = '\n';
-  szDate[l + 1] = '\0';
+  char ctimeBuf[32]; // Minimum 26 char according to man page
+  headDate = string("Date: ") + ctime_r(&t, ctimeBuf);
+  // ctime returns a string ending with \n, drop it
+  headDate.erase(headDate.size()-1);
 
-  switch (e->SubCommand())
+  switch (e->eventType())
   {
-  case ICQ_CMDxSUB_MSG:
-  case ICQ_CMDxSUB_CHAT:
+    case Licq::UserEvent::TypeMessage:
+    case Licq::UserEvent::TypeChat:
     {
       string s = e->text().substr(0, SUBJ_CHARS);
       size_t pos = s.find('\n');
@@ -408,11 +456,11 @@ bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEve
           (e->text().size() > SUBJ_CHARS ? "..." : "") + "]";
       break;
     }
-  case ICQ_CMDxSUB_URL:
+    case Licq::UserEvent::TypeUrl:
       subject = "Subject: " + e->description() + " [" +
           dynamic_cast<const Licq::EventUrl*>(e)->url() + "]";
       break;
-  case ICQ_CMDxSUB_FILE:
+    case Licq::UserEvent::TypeFile:
       subject = "Subject: " + e->description() + " [" +
           dynamic_cast<const Licq::EventFile*>(e)->filename() + "]";
       break;
@@ -422,7 +470,7 @@ bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEve
 
 
   // Connect to the SMTP server
-  if (!tcp->DestinationSet() && !tcp->connectTo(mySmtpHost.c_str(), m_nSMTPPort))
+  if (!tcp->DestinationSet() && !tcp->connectTo(mySmtpHost, m_nSMTPPort))
   {
     gLog.warning("Unable to connect to %s:%d: %s",
         tcp->getRemoteIpString().c_str(), tcp->getRemotePort(),
@@ -490,14 +538,9 @@ bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEve
   }
 
   string textDos = Licq::gTranslator.returnToDos(e->text());
-  fprintf(fs, "%s"
-              "%s\r\n"
-              "%s\r\n"
-              "%s\r\n"
-              "%s\r\n"
-              "\r\n"
-              "%s\r\n.\r\n",
-      szDate, szFrom, szTo, szReplyTo, subject.c_str(), textDos.c_str());
+  string msg = headDate + "\r\n" + headFrom + "\r\n" + headTo + "\r\n" +
+      headReplyTo + "\r\n" + subject + "\r\n\r\n" + textDos + "\r\n.\r\n";
+  fprintf(fs, "%s", msg.c_str());
 
   fgets(fin, 256, fs);
   code = atoi(fin);

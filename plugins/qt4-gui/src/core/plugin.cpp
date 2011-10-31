@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2; -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +16,8 @@
  * along with Licq; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
+
+#include "plugin.h"
 
 #include "config.h"
 #include "pluginversion.h"
@@ -34,35 +35,47 @@
 #endif
 
 #include <licq/daemon.h>
-#include <licq/pluginbase.h>
+#include <licq/plugin/generalbase.h>
 #include <licq/logging/log.h>
+#include <licq/version.h>
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
 
-const char* LP_Name()
+using namespace LicqQtGui;
+/* TRANSLATOR LicqQtGui::QtGuiPlugin */
+
+QtGuiPlugin* LicqQtGui::gQtGuiPlugin = NULL;
+
+QtGuiPlugin::QtGuiPlugin(Licq::GeneralPlugin::Params& p)
+  : Licq::GeneralPlugin(p),
+    myArgc(0),
+    myArgv(NULL)
 {
-  static const char name[] = DISPLAY_PLUGIN_NAME;
-  return name;
+  assert(gQtGuiPlugin == NULL);
+  gQtGuiPlugin = this;
 }
 
-const char* LP_Description()
+std::string QtGuiPlugin::name() const
+{
+  return DISPLAY_PLUGIN_NAME;
+}
+
+std::string QtGuiPlugin::description() const
 {
 #ifdef USE_KDE
-  static const char desc[] = "KDE4 based GUI";
+  return "KDE4 based GUI";
 #else
-  static const char desc[] = "Qt4 based GUI";
+  return "Qt4 based GUI";
 #endif
-  return desc;
 }
 
-const char* LP_Version()
+std::string QtGuiPlugin::version() const
 {
-  static const char version[] = PLUGIN_VERSION_STRING;
-  return version;
+  return PLUGIN_VERSION_STRING;
 }
 
-const char* LP_Usage()
+std::string QtGuiPlugin::usage() const
 {
   static QString usage = QString(
     "Usage:  Licq [options] -p %1 -- [-hdD] [-s skinname] [-i iconpack] [-e extendediconpack]"
@@ -85,28 +98,18 @@ const char* LP_Usage()
   return usage.toLatin1().constData();
 }
 
-const char* LP_ConfigFile()
+std::string QtGuiPlugin::configFile() const
 {
-  static const char file[] = QTGUI_CONFIGFILE;
-  return file;
+  return QTGUI_CONFIGFILE;
 }
 
-const char* LP_Status()
-{
-  static const char status[] = "running";
-  return status;
-}
-
-static int myArgc = 0;
-static char** myArgv = NULL;
-
-bool LP_Init(int argc, char** argv)
+bool QtGuiPlugin::init(int argc, char** argv)
 {
   for (int i = 1; i < argc; i++)
   {
     if (strcmp(argv[i], "-h") == 0)
     {
-      printf("%s\n", LP_Usage());
+      printf("%s\n", usage().c_str());
       return false;
     }
   }
@@ -124,7 +127,7 @@ bool LP_Init(int argc, char** argv)
   return true;
 }
 
-int LP_Main()
+int QtGuiPlugin::run()
 {
 #ifdef USE_KDE
   // Don't use the KDE crash handler (drkonqi).
@@ -132,7 +135,7 @@ int LP_Main()
 
   KCmdLineArgs::init(myArgc, myArgv,
                      "licq", "qt4-gui",
-                     ki18n(LP_Name()), PLUGIN_VERSION_STRING);
+      ki18n(DISPLAY_PLUGIN_NAME), PLUGIN_VERSION_STRING);
 #endif
 
   LicqQtGui::LicqGui* licqQtGui = new LicqQtGui::LicqGui(myArgc, myArgv);
@@ -164,3 +167,16 @@ int LP_Main()
 
   return result;
 }
+
+void QtGuiPlugin::destructor()
+{
+  delete this;
+}
+
+
+Licq::GeneralPlugin* QtGuiPluginFactory(Licq::GeneralPlugin::Params& p)
+{
+  return new LicqQtGui::QtGuiPlugin(p);
+}
+
+LICQ_GENERAL_PLUGIN_DATA(&QtGuiPluginFactory);

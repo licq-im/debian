@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,9 +31,10 @@
 #include <sys/stat.h> // chmod
 
 #include <licq/logging/log.h>
+#include <licq/logging/logservice.h>
+#include <licq/logging/logutils.h>
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
-#include <licq/icqdefines.h>
 #include <licq/inifile.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
@@ -47,9 +48,11 @@
 #include "contactlist/usermanager.h"
 #include "gettext.h"
 #include "gpghelper.h"
+#include "filter.h"
 #include "icq/icq.h"
 #include "licq.h"
-#include "plugins/pluginmanager.h"
+#include "logging/filelogsink.h"
+#include "plugin/pluginmanager.h"
 
 using namespace std;
 using namespace LicqDaemon;
@@ -68,7 +71,8 @@ Licq::Daemon& Licq::gDaemon(LicqDaemon::gDaemon);
 const char* const Daemon::TranslationDir = "translations";
 const char* const Daemon::UtilityDir = "utilities";
 
-Daemon::Daemon()
+Daemon::Daemon() :
+  licq(NULL)
 {
   // Set static variables based on compile time constants
   myLibDir = INSTALL_LIBDIR;
@@ -90,11 +94,11 @@ void Daemon::setBaseDir(const string& baseDir)
     myBaseDir += '/';
 }
 
-void Daemon::initialize(CLicq* _licq)
+void Daemon::initialize()
 {
-  string temp;
+  assert(licq != NULL);
 
-  licq = _licq;
+  string temp;
 
   myShuttingDown = false;
 
@@ -113,7 +117,7 @@ void Daemon::initialize(CLicq* _licq)
   setTcpEnabled(!myBehindFirewall || (myBehindFirewall && myTcpEnabled));
 
   licqConf.get("ProxyEnabled", myProxyEnabled, false);
-  licqConf.get("ProxyServerType", myProxyType, PROXY_TYPE_HTTP);
+  licqConf.get("ProxyServerType", myProxyType, ProxyTypeHttp);
   licqConf.get("ProxyServer", myProxyHost, "");
   licqConf.get("ProxyServerPort", myProxyPort, 0);
   licqConf.get("ProxyAuthEnabled", myProxyAuthEnabled, false);
@@ -124,6 +128,23 @@ void Daemon::initialize(CLicq* _licq)
   licqConf.get("Rejects", myRejectFile, "log.rejects");
   if (myRejectFile == "none")
     myRejectFile = "";
+
+  // Error log file
+  licqConf.get("Errors", myErrorFile, "log.errors");
+  licqConf.get("ErrorTypes", myErrorTypes, 0x4 | 0x2); // error and unknown
+  if (!myErrorFile.empty() && myErrorFile != "none")
+  {
+    string errorFile = baseDir() + myErrorFile;
+    boost::shared_ptr<FileLogSink> logSink(new FileLogSink(errorFile));
+    logSink->setLogLevelsFromBitmask(
+        Licq::LogUtils::convertOldBitmaskToNew(myErrorTypes));
+    logSink->setLogPackets(true);
+    if (logSink->isOpen())
+      Licq::gLogService.registerLogSink(logSink);
+    else
+      gLog.error("Unable to open %s as error log:\n%s",
+                 errorFile.c_str(), strerror(errno));
+  }
 
   // Loading translation table from file
   licqConf.get("Translation", temp, "none");
@@ -143,11 +164,6 @@ void Daemon::initialize(CLicq* _licq)
 
   // Init event id counter
   myNextEventId = 1;
-}
-
-Licq::LogService& Daemon::getLogService()
-{
-  return licq->getLogService();
 }
 
 const char* Daemon::Version() const
@@ -189,6 +205,9 @@ void Daemon::SaveConf()
 
   licqConf.set("Rejects", (myRejectFile.empty() ? "none" : myRejectFile));
 
+  licqConf.set("Errors", myErrorFile);
+  licqConf.set("ErrorTypes", myErrorTypes);
+
   string translation = Licq::gTranslator.getMapName();
   if (translation.empty())
     translation = "none";
@@ -216,16 +235,14 @@ void Daemon::SaveConf()
       Licq::OwnerWriteGuard o(owner);
 
       char szOwnerId[12], szOwnerPPID[14];
-      char szPPID[5];
       sprintf(szOwnerId, "Owner%d.Id", n);
       sprintf(szOwnerPPID, "Owner%d.PPID", n++);
 
-      o->SaveLicqInfo();
+      o->save(Licq::User::SaveOwnerInfo);
       if (o->accountId() != "0")
       {
-        Licq::protocolId_toStr(szPPID, o->protocolId());
         licqConf.set(szOwnerId, o->accountId());
-        licqConf.set(szOwnerPPID, szPPID);
+        licqConf.set(szOwnerPPID, Licq::protocolId_toString(o->protocolId()));
       }
     }
   }
@@ -273,12 +290,11 @@ int Licq::Daemon::StartTCPServer(TCPSocket *s)
   }
   else if (s->Error() == EADDRINUSE)
   {
-    gLog.warning(tr("%sNo ports available for local TCP server.\n"), L_WARNxSTR);
+    gLog.warning(tr("No ports available for local TCP server."));
   }
   else
   {
-    gLog.warning(tr("%sFailed to start local TCP server:\n%s"), L_WARNxSTR,
-        s->errorStr().c_str());
+    gLog.warning(tr("Failed to start local TCP server: %s"), s->errorStr().c_str());
   }
 
   return s->Descriptor();
@@ -287,13 +303,13 @@ int Licq::Daemon::StartTCPServer(TCPSocket *s)
 void Licq::Daemon::setTcpEnabled(bool b)
 {
   myTcpEnabled = b;
-  gLicqDaemon->SetDirectMode();
+  gLicqDaemon->setDirectMode();
 }
 
 void Licq::Daemon::setBehindFirewall(bool b)
 {
   myBehindFirewall = b;
-  gLicqDaemon->SetDirectMode();
+  gLicqDaemon->setDirectMode();
 }
 
 void Licq::Daemon::setTcpPorts(unsigned lowPort, unsigned highPort)
@@ -302,8 +318,8 @@ void Licq::Daemon::setTcpPorts(unsigned lowPort, unsigned highPort)
   myTcpPortsHigh = highPort;
   if (myTcpPortsHigh < myTcpPortsLow)
   {
-    gLog.warning(tr("%sTCP high port (%d) is lower then TCP low port (%d).\n"),
-       L_WARNxSTR, myTcpPortsHigh, myTcpPortsLow);
+    gLog.warning(tr("TCP high port (%d) is lower then TCP low port (%d)."),
+        myTcpPortsHigh, myTcpPortsLow);
     myTcpPortsHigh = myTcpPortsLow + 10;
   }
 }
@@ -322,7 +338,7 @@ Licq::Proxy* Licq::Daemon::createProxy()
 
   switch (myProxyType)
   {
-    case PROXY_TYPE_HTTP :
+    case ProxyTypeHttp:
       Proxy = new HttpProxy();
       break;
     default:
@@ -351,13 +367,30 @@ unsigned long Daemon::getNextEventId()
 
 bool Daemon::addUserEvent(Licq::User* u, Licq::UserEvent* e)
 {
+  int filteraction = gFilterManager.filterEvent(u, e);
+  if (filteraction == Licq::FilterRule::ActionIgnore)
+  {
+    // Ignore => Just drop the event
+    gLog.info("Event dropped by filter");
+    delete e;
+    return false;
+  }
+
   if (u->isUser())
     e->AddToHistory(u, true);
+
+  if (filteraction == Licq::FilterRule::ActionSilent)
+  {
+    // Accept silently => Logged to history but don't notify plugins
+    delete e;
+    return false;
+  }
+
   // Don't log a user event if this user is on the ignore list
   if (u->IgnoreList() ||
       (e->IsMultiRec() && ignoreType(IgnoreMassMsg)) ||
-      (e->SubCommand() == ICQ_CMDxSUB_EMAILxPAGER && ignoreType(IgnoreEmailPager)) ||
-      (e->SubCommand() == ICQ_CMDxSUB_WEBxPANEL && ignoreType(IgnoreWebPanel)) )
+      (e->eventType() == Licq::UserEvent::TypeEmailPager && ignoreType(IgnoreEmailPager)) ||
+      (e->eventType() == Licq::UserEvent::TypeWebPanel && ignoreType(IgnoreWebPanel)) )
   {
     delete e;
     return false;
@@ -379,7 +412,7 @@ void Daemon::rejectEvent(const UserId& userId, Licq::UserEvent* e)
   FILE* f = fopen(rejectFile.c_str(), "a");
   if (f == NULL)
   {
-    gLog.warning(tr("%sUnable to open \"%s\" for writing.\n"), L_WARNxSTR, rejectFile.c_str());
+    gLog.warning(tr("Unable to open \"%s\" for writing."), rejectFile.c_str());
   }
   else
   {
@@ -402,44 +435,14 @@ void Licq::Daemon::cancelEvent(Licq::Event* event)
   gIcqProtocol.CancelEvent(event);
 }
 
-void Licq::Daemon::PushPluginEvent(Licq::Event* e)
-{
-  LicqDaemon::gPluginManager.getPluginEventHandler().pushGeneralEvent(e);
-}
-
-void Licq::Daemon::pushPluginSignal(PluginSignal* s)
-{
-  LicqDaemon::gPluginManager.getPluginEventHandler().pushGeneralSignal(s);
-}
-
-PluginSignal* Licq::Daemon::popPluginSignal()
-{
-  return LicqDaemon::gPluginManager.getPluginEventHandler().popGeneralSignal();
-}
-
-Licq::Event* Licq::Daemon::PopPluginEvent()
-{
-  return LicqDaemon::gPluginManager.getPluginEventHandler().popGeneralEvent();
-}
-
-void Licq::Daemon::PushProtoSignal(Licq::ProtocolSignal* s, unsigned long _nPPID)
-{
-  LicqDaemon::gPluginManager.getPluginEventHandler().pushProtocolSignal(s, _nPPID);
-}
-
-Licq::ProtocolSignal* Licq::Daemon::PopProtoSignal()
-{
-  return LicqDaemon::gPluginManager.getPluginEventHandler().popProtocolSignal();
-}
-
 void Licq::Daemon::pluginUIViewEvent(const Licq::UserId& userId)
 {
-  pushPluginSignal(new PluginSignal(PluginSignal::SignalUiViewEvent, 0, userId));
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalUiViewEvent, 0, userId));
 }
 
 void Licq::Daemon::pluginUIMessage(const Licq::UserId& userId)
 {
-  pushPluginSignal(new PluginSignal(PluginSignal::SignalUiMessage, 0, userId));
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalUiMessage, 0, userId));
 }
 
 void Daemon::shutdownPlugins()

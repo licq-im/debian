@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,12 +20,13 @@
 #ifndef LICQCON_H
 #define LICQCON_H
 
+#include <licq/plugin/generalplugin.h>
+
 #include <list>
 #include <string>
 #include <vector>
 
 #include <licq/contactlist/user.h>
-#include <licq/icq.h>
 #include <licq/logging/pluginlogsink.h>
 #include <licq/userid.h>
 
@@ -80,13 +81,19 @@ struct SMacro
 typedef std::list<SMacro*> MacroList;
 
 
-class CLicqConsole
+class CLicqConsole : public Licq::GeneralPlugin
 {
 public:
+  CLicqConsole(Params& p);
   CLicqConsole(int, char **);
   ~CLicqConsole();
-  int Run();
-  void Shutdown();
+
+  // From Licq::GeneralPlugin
+  std::string name() const;
+  std::string version() const;
+  std::string description() const;
+  std::string usage() const;
+  std::string configFile() const;
 
   static const int SystemGroupOffset = 10000;
   static const int AllUsersGroupId = 0;
@@ -101,6 +108,11 @@ public:
   bool userIsInGroup(const Licq::User* user, int groupId);
 
 protected:
+  // From Licq::GeneralPlugin
+  bool init(int argc, char** argv);
+  int run();
+  void destructor();
+
   int m_nPipe;
   bool m_bExit;
   fd_set fdSet;

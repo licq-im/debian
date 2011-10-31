@@ -8,10 +8,10 @@ set(tested_SRCS
   logging/logutils.cpp
   logging/pluginlogsink.cpp
 
-  plugins/generalplugin.cpp
-  plugins/plugin.cpp
-  plugins/pluginthread.cpp
-  plugins/protocolplugin.cpp
+  plugin/generalplugin.cpp
+  plugin/plugin.cpp
+  plugin/pluginthread.cpp
+  plugin/protocolplugin.cpp
 
   thread/condition.cpp
   thread/mutexlocker.cpp
@@ -27,6 +27,7 @@ set(licq_SRCS
   daemon.cpp
   event.cpp
   fifo.cpp
+  filter.cpp
   gpghelper.cpp
   hebrev.c
   licq.cpp
@@ -36,13 +37,11 @@ set(licq_SRCS
   packet.cpp
   protocolmanager.cpp
   proxy.cpp
-  rtf.cc
   sarmanager.cpp
   sighandler.cpp
   socket.cpp
   socketmanager.cpp
   statistics.cpp
-  support.c
   translator.cpp
   userevents.cpp
   utility.cpp
@@ -62,14 +61,15 @@ set(licq_SRCS
   icq/icqprotocolplugin.cpp
   icq/oscarservice.cpp
   icq/packet.cpp
+  icq/rtf.cc
   icq/threads.cpp
+  icq/userclients.cpp
 
   logging/logservice.cpp
   logging/streamlogsink.cpp
   logging/threadlog.cpp
 
-  plugins/plugineventhandler.cpp
-  plugins/pluginmanager.cpp
+  plugin/pluginmanager.cpp
 
   ${tested_SRCS}
 )
@@ -84,10 +84,10 @@ set(test_SRCS
   logging/tests/logutilstest.cpp
   logging/tests/pluginlogsinktest.cpp
 
-  plugins/tests/generalplugintest.cpp
-  plugins/tests/plugintest.cpp
-  plugins/tests/pluginthreadtest.cpp
-  plugins/tests/protocolplugintest.cpp
+  plugin/tests/generalplugintest.cpp
+  plugin/tests/plugintest.cpp
+  plugin/tests/pluginthreadtest.cpp
+  plugin/tests/protocolplugintest.cpp
 
   thread/tests/conditiontest.cpp
   thread/tests/mutextest.cpp
@@ -98,12 +98,9 @@ set(test_SRCS
   utils/tests/dynamiclibrarytest.cpp
   utils/tests/pipetest.cpp
 
-  # Needed or IniFile won't find gLog
-  logging/logservice.cpp
-  logging/threadlog.cpp
-
-  # A dummy gDaemon to make tests compile without having to pull in the read daemon.cpp
+  # Dummy global instances to make tests compile
   tests/daemon_dummy.cpp
+  tests/log_dummy.cpp
 
   ${tested_SRCS}
 )
@@ -142,6 +139,7 @@ target_link_libraries(licq ${ICONV_LIBRARIES})
 target_link_libraries(licq ${OPENSSL_LIBRARIES})
 target_link_libraries(licq ${SOCKET_LIBRARIES})
 target_link_libraries(licq ${SOCKS5_LIBRARIES})
+target_link_libraries(licq ${Boost_LIBRARIES})
 
 install(TARGETS licq RUNTIME DESTINATION bin)
 
@@ -149,16 +147,24 @@ if (BUILD_TESTS)
   include_directories(${GTEST_INCLUDE_DIRS})
   include_directories(${GMOCK_INCLUDE_DIRS})
 
-  add_executable(unittests ${test_SRCS})
+  add_executable(unittest ${test_SRCS})
 
-  target_link_libraries(unittests ${GTEST_LIBRARIES})
-  target_link_libraries(unittests ${GMOCK_LIBRARIES})
-  target_link_libraries(unittests ${CMAKE_DL_LIBS})
-  target_link_libraries(unittests ${SOCKET_LIBRARIES})
+  target_link_libraries(unittest ${GTEST_LIBRARIES})
+  target_link_libraries(unittest ${GMOCK_LIBRARIES})
+  target_link_libraries(unittest ${CMAKE_DL_LIBS})
+  target_link_libraries(unittest ${SOCKET_LIBRARIES})
 
   # Link with thread library
-  target_link_libraries(unittests ${CMAKE_THREAD_LIBS_INIT})
+  target_link_libraries(unittest ${CMAKE_THREAD_LIBS_INIT})
 
-  add_test(licq unittests)
-  add_dependencies(tests unittests)
+  add_test(licq unittest)
+
+  set(unittest_stamp
+    "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/unittest.stamp")
+  add_custom_command(OUTPUT "${unittest_stamp}"
+    COMMAND ${CMAKE_CTEST_COMMAND} $(ARGS)
+    COMMAND ${CMAKE_COMMAND} -E touch "${unittest_stamp}"
+    COMMENT "Running unit test"
+    DEPENDS unittest)
+  add_custom_target(unittest_run ALL DEPENDS "${unittest_stamp}")
 endif (BUILD_TESTS)

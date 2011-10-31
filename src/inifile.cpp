@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,8 @@ IniFile::IniFile(const string& filename)
   : myConfigData("\n"),
     mySectionStart(string::npos),
     mySectionEnd(string::npos),
-    myIsModified(true)
+    myIsModified(true),
+    myLastTimestamp(0)
 {
   if (!filename.empty())
     setFilename(filename);
@@ -56,6 +57,7 @@ void IniFile::setFilename(const std::string& filename)
 
   // If filename has changed we most likely want to allow write
   myIsModified = true;
+  myLastTimestamp = 0;
 }
 
 bool IniFile::loadFile()
@@ -76,8 +78,8 @@ bool IniFile::loadFile()
     if (errno != ENOENT)
     {
       // Failure was not just a missing file, this is probably serious
-      gLog.error(tr("%sIniFile: I/O error, failed to open file.\nFile: %s\nError code: %i\n"),
-          L_ERRORxSTR, filename.c_str(), errno);
+      gLog.error(tr("IniFile: I/O error, failed to open file.\nFile: %s\nError code: %i"),
+          filename.c_str(), errno);
     }
 
     return false;
@@ -86,10 +88,19 @@ bool IniFile::loadFile()
   struct stat st;
   if (fstat(fd, &st) != 0)
   {
-    gLog.error(tr("%sIniFile: I/O error, failed to get file size.\nFile: %s\nError code: %i\n"),
-        L_ERRORxSTR, filename.c_str(), errno);
+    gLog.error(tr("IniFile: I/O error, failed to get file size.\nFile: %s\nError code: %i"),
+        filename.c_str(), errno);
     close(fd);
     return false;
+  }
+
+  if (!myIsModified && myLastTimestamp != 0 && myLastTimestamp == st.st_mtime)
+  {
+    // File hasn't changed, no need to reread it
+    mySectionStart = string::npos;
+    mySectionEnd = string::npos;
+    close(fd);
+    return true;
   }
 
   // Read entire file at once
@@ -98,8 +109,8 @@ bool IniFile::loadFile()
 
   if (numRead < 0)
   {
-    gLog.error(tr("%sIniFile: I/O error, failed to read file.\nFile: %s\nError code: %i\n"),
-        L_ERRORxSTR, filename.c_str(), errno);
+    gLog.error(tr("IniFile: I/O error, failed to read file.\nFile: %s\nError code: %i"),
+        filename.c_str(), errno);
     close(fd);
     delete[] buffer;
     return false;
@@ -112,6 +123,7 @@ bool IniFile::loadFile()
 
   loadRawConfiguration(buffer);
   delete [] buffer;
+  myLastTimestamp = st.st_mtime;
   return true;
 }
 
@@ -168,6 +180,7 @@ void IniFile::loadRawConfiguration(const string& rawConfig)
 
   // We currently have no changes to write
   myIsModified = false;
+  myLastTimestamp = 0;
 }
 
 bool IniFile::writeFile(bool allowCreate)
@@ -192,8 +205,8 @@ bool IniFile::writeFile(bool allowCreate)
     if (errno != ENOENT)
     {
       // Failure was not just a missing file, this is probably serious
-      gLog.error(tr("%sIniFile: I/O error, failed to get file size.\nFile: %s\nError code: %i\n"),
-          L_ERRORxSTR, filename.c_str(), errno);
+      gLog.error(tr("IniFile: I/O error, failed to get file size.\nFile: %s\nError code: %i"),
+          filename.c_str(), errno);
       return false;
     }
 
@@ -210,8 +223,8 @@ bool IniFile::writeFile(bool allowCreate)
 
   if (fd < 0)
   {
-    gLog.error(tr("%sIniFile: I/O error, failed to create file.\nFile: %s\nError code: %i\n"),
-        L_ERRORxSTR, tempFile.c_str(), errno);
+    gLog.error(tr("IniFile: I/O error, failed to create file.\nFile: %s\nError code: %i"),
+        tempFile.c_str(), errno);
     return false;
   }
 
@@ -221,8 +234,8 @@ bool IniFile::writeFile(bool allowCreate)
   if (numWritten != static_cast<ssize_t>(myConfigData.size() - 1))
   {
     // Write failed, remove temp file
-    gLog.error(tr("%sIniFile: I/O error, failed to write file.\nFile: %s\nError code: %i\n"),
-        L_ERRORxSTR, tempFile.c_str(), errno);
+    gLog.error(tr("IniFile: I/O error, failed to write file.\nFile: %s\nError code: %i"),
+        tempFile.c_str(), errno);
     close(fd);
     unlink(tempFile.c_str());
     return false;
@@ -232,11 +245,15 @@ bool IniFile::writeFile(bool allowCreate)
   if (close(fd) != 0 || rename(tempFile.c_str(), filename.c_str()) != 0)
   {
     // Close or rename file failed, data might not have made it to disk
-    gLog.error(tr("%sIniFile: I/O error, failed to replace file.\nFile: %s\nError code: %i\n"),
-        L_ERRORxSTR, filename.c_str(), errno);
+    gLog.error(tr("IniFile: I/O error, failed to replace file.\nFile: %s\nError code: %i"),
+        filename.c_str(), errno);
     unlink(tempFile.c_str());
     return false;
   }
+
+  // Save new file modification time
+  if (stat(filename.c_str(), &st) == 0)
+    myLastTimestamp = st.st_mtime;
 
   // Changes are written, mark data as unchanged
   myIsModified = false;
@@ -509,9 +526,46 @@ bool IniFile::get(const string& key, boost::any& data) const
     return get(key, boost::any_cast<bool&>(data));
 
   // Unhandled data type
-  gLog.warning(tr("%sInternal Error: IniFile::get, key=%s, data.type=%s\n"),
-      L_WARNxSTR, key.c_str(), data.type().name());
+  gLog.warning(tr("Internal Error: IniFile::get, key=%s, data.type=%s"),
+      key.c_str(), data.type().name());
   return false;
+}
+
+bool IniFile::getHex(const string& key, string& data, const string& defValue) const
+{
+  string strData;
+  if (!get(key, strData))
+  {
+    data = defValue;
+    return false;
+  }
+
+  data.clear();
+  int high = -1;
+  for (string::const_iterator i = strData.begin(); i != strData.end(); ++i)
+  {
+    int digit;
+    if (*i >= '0' && *i <= '9')
+      digit = *i - '0';
+    else if (*i >= 'A' && *i <= 'F')
+      digit = *i - 'A' + 10;
+    else if (*i >= 'a' && *i <= 'f')
+      digit = *i - 'a' + 10;
+    else
+      break;
+
+    if (high == -1)
+    {
+      high = digit << 4;
+    }
+    else
+    {
+      data += (char)(high | digit);
+      high = -1;
+    }
+  }
+
+  return true;
 }
 
 bool IniFile::set(const string& key, const string& data)
@@ -609,7 +663,19 @@ bool IniFile::set(const string& key, const boost::any& data)
   if (data.type() == typeid(bool))
     return set(key, boost::any_cast<bool>(data));
 
-  gLog.warning(tr("%sInternal Error: IniFile::set, key=%s, data.type=%s\n"),
-      L_WARNxSTR, key.c_str(), data.type().name());
+  gLog.warning(tr("Internal Error: IniFile::set, key=%s, data.type=%s"),
+      key.c_str(), data.type().name());
   return false;
+}
+
+bool IniFile::setHex(const string& key, const string& data)
+{
+  static const char* const hexChars = "0123456789ABCDEF";
+  string strData;
+  for (string::const_iterator i = data.begin(); i != data.end(); ++i)
+  {
+    strData += hexChars[(*i >> 4) & 0x0F];
+    strData += hexChars[*i & 0x0F];
+  }
+  return set(key, strData);
 }

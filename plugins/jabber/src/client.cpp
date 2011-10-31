@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -26,12 +26,14 @@
 #include "sessionmanager.h"
 #include "vcard.h"
 
+#include <gloox/connectionhttpproxy.h>
 #include <gloox/connectiontcpclient.h>
 #include <gloox/disco.h>
 #include <gloox/message.h>
 #include <gloox/rostermanager.h>
 
 #include <licq/contactlist/user.h>
+#include <licq/daemon.h>
 #include <licq/logging/log.h>
 #include <licq/licqversion.h>
 
@@ -40,15 +42,37 @@
 using namespace Jabber;
 
 using Licq::User;
+using Licq::gDaemon;
 using Licq::gLog;
 using std::string;
 
-Client::Client(const Config& config, Handler& handler,
-               const string& username, const string& password) :
+JClient::JClient(const gloox::JID& jid, const string& password, int port) :
+  gloox::Client(jid, password, port)
+{
+  // EMPTY
+}
+
+JClient::~JClient()
+{
+  // EMPTY
+}
+
+bool JClient::checkStreamVersion(const string& version)
+{
+  // do not consider absence of the version as an error
+  if (version.empty())
+    return true;
+
+  return gloox::Client::checkStreamVersion(version);
+}
+
+Client::Client(const Config& config, Handler& handler, const string& username,
+    const string& password, const string& host, int port) :
   myHandler(handler),
   mySessionManager(NULL),
   myJid(username + "/" + config.getResource()),
   myClient(myJid, password),
+  myTcpClient(NULL),
   myRosterManager(myClient.rosterManager()),
   myVCardManager(&myClient)
 {
@@ -63,11 +87,33 @@ Client::Client(const Config& config, Handler& handler,
   myClient.disco()->setIdentity("client", "pc");
   myClient.disco()->setVersion("Licq", LICQ_VERSION_STRING);
 
-  if (!config.getServer().empty())
-    myClient.setServer(config.getServer());
-  if (config.getPort() != -1)
-    myClient.setPort(config.getPort());
   myClient.setTls(config.getTlsPolicy());
+
+  if (!gDaemon.proxyEnabled())
+  {
+    if (!host.empty())
+      myClient.setServer(host);
+    if (port > 0)
+      myClient.setPort(port);
+  }
+  else if (gDaemon.proxyType() == Licq::Daemon::ProxyTypeHttp)
+  {
+    myTcpClient = new gloox::ConnectionTCPClient(
+      myClient.logInstance(), gDaemon.proxyHost(), gDaemon.proxyPort());
+
+    std::string server = myClient.server();
+    if (!host.empty())
+      server = host;
+
+    gloox::ConnectionHTTPProxy* httpProxy =
+      new gloox::ConnectionHTTPProxy(
+        &myClient, myTcpClient, myClient.logInstance(),
+        server, (port > 0 ? port : -1));
+
+    httpProxy->setProxyAuth(gDaemon.proxyLogin(), gDaemon.proxyPasswd());
+
+    myClient.setConnectionImpl(httpProxy);
+  }
 }
 
 Client::~Client()
@@ -80,7 +126,10 @@ Client::~Client()
 
 int Client::getSocket()
 {
-  return static_cast<gloox::ConnectionTCPClient*>(
+  if (myTcpClient != NULL)
+    return myTcpClient->socket();
+  else
+    return static_cast<gloox::ConnectionTCPClient*>(
       myClient.connectionImpl())->socket();
 }
 
@@ -132,12 +181,12 @@ void Client::setOwnerVCard(const UserToVCard& wrapper)
   myVCardManager.storeVCard(card, this);
 }
 
-void Client::addUser(const string& user, bool notify)
+void Client::addUser(const string& user, const gloox::StringList& groupNames, bool notify)
 {
   if (notify)
-    myRosterManager->subscribe(gloox::JID(user));
+    myRosterManager->subscribe(gloox::JID(user), user, groupNames);
   else
-    myRosterManager->add(gloox::JID(user), user, gloox::StringList());
+    myRosterManager->add(gloox::JID(user), user, groupNames);
 }
 
 void Client::changeUserGroups(
@@ -204,7 +253,8 @@ void Client::onDisconnect(gloox::ConnectionError error)
     case gloox::ConnNoError:
       break;
     case gloox::ConnStreamError:
-      gLog.error("stream error (%d)", myClient.streamError());
+      gLog.error("stream error (%d): %s", myClient.streamError(),
+          myClient.streamErrorText().c_str());
       break;
     case gloox::ConnStreamVersionError:
       gLog.error("incoming stream version not supported");
