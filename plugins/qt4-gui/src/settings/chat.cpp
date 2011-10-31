@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -158,8 +157,12 @@ QWidget* Settings::Chat::createPageChat(QWidget* parent)
   myDictionaryEdit->setEnabled(false);
   connect(myCheckSpelling, SIGNAL(toggled(bool)), myDictionaryLabel, SLOT(setEnabled(bool)));
   connect(myCheckSpelling, SIGNAL(toggled(bool)), myDictionaryEdit, SLOT(setEnabled(bool)));
-  myChatLayout->addLayout(dictionaryLayout, 7, 1);
+  myChatLayout->addLayout(dictionaryLayout, 8, 0, 1, 2);
 #endif
+
+  // Make the columns evenly wide
+  myChatLayout->setColumnStretch(0, 1);
+  myChatLayout->setColumnStretch(1, 1);
 
   myLocaleBox = new QGroupBox(tr("Localization"));
   myLocaleLayout = new QVBoxLayout(myLocaleBox);
@@ -274,7 +277,7 @@ QWidget* Settings::Chat::createPageChatDisp(QWidget* parent)
   myChatDispLayout->addLayout(myChatLayoutStyle);
 
   QHBoxLayout* myChatLayoutDateFormat = new QHBoxLayout();
-  myChatDateFormatLabel = new QLabel(tr("Date format:"));
+  myChatDateFormatLabel = new QLabel(tr("Time format:"));
   myChatDateFormatLabel->setToolTip(tr(helpDateFormat));
   myChatLayoutDateFormat->addWidget(myChatDateFormatLabel);
   myChatDateFormatCombo = new QComboBox();
@@ -298,15 +301,37 @@ QWidget* Settings::Chat::createPageChatDisp(QWidget* parent)
   myChatLineBreakCheck->setToolTip(tr("Insert a line between each message."));
   myChatDispLayout->addWidget(myChatLineBreakCheck);
 
-  myShowHistoryCheck = new QCheckBox(tr("Show recent messages"));
-  myShowHistoryCheck->setToolTip(tr("Show the last 5 messages when a Send Window is opened"));
-  connect(myShowHistoryCheck, SIGNAL(toggled(bool)), SLOT(updatePreviews()));
-  myChatDispLayout->addWidget(myShowHistoryCheck);
-
-  myShowNoticesCheck = new QCheckBox(tr("Show join/left notices"));
+  myShowNoticesCheck = new QCheckBox(tr("Show joined/left notices"));
   myShowNoticesCheck->setToolTip(tr("Show a notice in the chat window when a user joins or leaves the conversation."));
   connect(myShowNoticesCheck, SIGNAL(toggled(bool)), SLOT(updatePreviews()));
   myChatDispLayout->addWidget(myShowNoticesCheck);
+
+  QHBoxLayout* historyTimeLayout = new QHBoxLayout();
+  myHistoryTimeLabel1 = new QLabel(tr("Show"));
+  myHistoryTimeSpin = new QSpinBox();
+  myHistoryTimeSpin->setRange(0, 60*24*7);
+  myHistoryTimeLabel2 = new QLabel(tr("minutes of recent messages"));
+  myHistoryTimeLabel1->setBuddy(myHistoryTimeSpin);
+  myHistoryTimeLabel2->setBuddy(myHistoryTimeSpin);
+  historyTimeLayout->addWidget(myHistoryTimeLabel1);
+  historyTimeLayout->addWidget(myHistoryTimeSpin);
+  historyTimeLayout->addWidget(myHistoryTimeLabel2);
+  historyTimeLayout->addStretch(1);
+  myChatDispLayout->addLayout(historyTimeLayout);
+
+  QHBoxLayout* historyCountLayout = new QHBoxLayout();
+  myHistoryCountLabel1 = new QLabel(tr("Show at least"));
+  myHistoryCountSpin = new QSpinBox();
+  myHistoryCountSpin->setRange(0, 99);
+  myHistoryCountLabel2 = new QLabel(tr("recent messages"));
+  connect(myHistoryCountSpin, SIGNAL(valueChanged(int)), SLOT(updatePreviews()));
+  myHistoryCountLabel1->setBuddy(myHistoryCountSpin);
+  myHistoryCountLabel2->setBuddy(myHistoryCountSpin);
+  historyCountLayout->addWidget(myHistoryCountLabel1);
+  historyCountLayout->addWidget(myHistoryCountSpin);
+  historyCountLayout->addWidget(myHistoryCountLabel2);
+  historyCountLayout->addStretch(1);
+  myChatDispLayout->addLayout(historyCountLayout);
 
   myChatDispLayout->addStretch(1);
 
@@ -389,7 +414,7 @@ QWidget* Settings::Chat::createPageHistDisp(QWidget* parent)
   myHistDispLayout->addLayout(myHistStyleLayout);
 
   QHBoxLayout* myHistDateFormatLayout = new QHBoxLayout();
-  myHistDateFormatLabel = new QLabel(tr("Date format:"));
+  myHistDateFormatLabel = new QLabel(tr("Time format:"));
   myHistDateFormatLabel->setToolTip(tr(helpDateFormat));
   myHistDateFormatLayout->addWidget(myHistDateFormatLabel);
   myHistDateFormatCombo = new QComboBox();
@@ -432,12 +457,15 @@ void Settings::Chat::useMsgChatViewChanged(bool b)
   if (!b)
   {
     myTabbedChattingCheck->setChecked(false);
-    myShowHistoryCheck->setChecked(false);
-    myShowNoticesCheck->setEnabled(false);
   }
 
   myTabbedChattingCheck->setEnabled(b);
-  myShowHistoryCheck->setEnabled(b);
+  myHistoryCountSpin->setEnabled(b);
+  myHistoryCountLabel1->setEnabled(b);
+  myHistoryCountLabel2->setEnabled(b);
+  myHistoryTimeSpin->setEnabled(b);
+  myHistoryTimeLabel1->setEnabled(b);
+  myHistoryTimeLabel2->setEnabled(b);
   myShowNoticesCheck->setEnabled(b);
 }
 
@@ -476,7 +504,7 @@ void Settings::Chat::updatePreviews()
   QDateTime msgDate = date;
   for (unsigned int i = 0; i<7; i++)
   {
-    if (i < 2 && myShowHistoryCheck->isChecked() == false)
+    if (i < 2 && static_cast<unsigned int>(myHistoryCountSpin->value()) < 2-i)
       continue;
 
     myChatView->addMsg(i%2 == 0, (i<2),
@@ -538,18 +566,14 @@ void Settings::Chat::load()
   myMsgWinStickyCheck->setChecked(chatConfig->msgWinSticky());
   mySingleLineChatModeCheck->setChecked(chatConfig->singleLineChatMode());
   myTabbedChattingCheck->setChecked(chatConfig->tabbedChatting());
-  myShowHistoryCheck->setChecked(chatConfig->showHistory());
+  myHistoryCountSpin->setValue(chatConfig->showHistoryCount());
+  myHistoryTimeSpin->setValue(chatConfig->showHistoryTime() / 60);
   myShowNoticesCheck->setChecked(chatConfig->showNotices());
   myShowUserPicCheck->setChecked(chatConfig->showUserPic());
   myShowUserPicHiddenCheck->setChecked(chatConfig->showUserPicHidden());
   myPopupAutoResponseCheck->setChecked(chatConfig->popupAutoResponse());
 
-  if (!chatConfig->msgChatView())
-  {
-    myTabbedChattingCheck->setEnabled(false);
-    myShowHistoryCheck->setEnabled(false);
-    myShowNoticesCheck->setChecked(false);
-  }
+  useMsgChatViewChanged(chatConfig->msgChatView());
 
   mySendTNCheck->setChecked(Licq::gDaemon.sendTypingNotification());
 
@@ -603,7 +627,8 @@ void Settings::Chat::apply()
   chatConfig->setTabTypingColor(myColorTypingLabelButton->colorName());
   chatConfig->setChatBackColor(myColorChatBkgButton->colorName());
   chatConfig->setTabbedChatting(myTabbedChattingCheck->isChecked());
-  chatConfig->setShowHistory(myShowHistoryCheck->isChecked());
+  chatConfig->setShowHistoryCount(myHistoryCountSpin->value());
+  chatConfig->setShowHistoryTime(myHistoryTimeSpin->value() * 60);
   chatConfig->setShowNotices(myShowNoticesCheck->isChecked());
   chatConfig->setAutoPosReplyWin(myAutoPosReplyWinCheck->isChecked());
   chatConfig->setAutoSendThroughServer(myAutoSendThroughServerCheck->isChecked());
@@ -622,7 +647,7 @@ void Settings::Chat::apply()
 
   Licq::gDaemon.setSendTypingNotification(mySendTNCheck->isChecked());
 
-  Licq::gDaemon.setTerminal(myTerminalEdit->text().toLocal8Bit().data());
+  Licq::gDaemon.setTerminal(myTerminalEdit->text().toLocal8Bit().constData());
 
   if (myDefaultEncodingCombo->currentIndex() > 0)
     Licq::gUserManager.setDefaultUserEncoding(UserCodec::encodingForName(myDefaultEncodingCombo->currentText()).data());

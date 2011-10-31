@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,14 +37,16 @@
 # include <QStyleFactory>
 #endif
 
-#include <licq/icq.h>
+#include <licq/icq/icq.h>
 
 #include "config/chat.h"
 #include "config/contactlist.h"
 #include "config/general.h"
+#include "config/shortcuts.h"
 #include "config/skin.h"
 
 #include "core/mainwin.h"
+#include "widgets/shortcutedit.h"
 
 #include "settingsdlg.h"
 
@@ -178,6 +179,19 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   myEnableMainwinMouseMovementCheck->setToolTip(tr("Lets you drag around the main window with your mouse"));
   myBehaviourLayout->addWidget(myEnableMainwinMouseMovementCheck, 2, 0);
 
+#ifdef Q_WS_X11
+  QHBoxLayout* hotKeyLayout = new QHBoxLayout();
+  myHotKeyLabel = new QLabel(tr("Hot key:"));
+  hotKeyLayout->addWidget(myHotKeyLabel);
+  hotKeyLayout->addStretch();
+  myHotKeyLabel->setToolTip(tr("Hotkey to show/hide the contact list window."));
+  myHotKeyEdit = new ShortcutEdit();
+  myHotKeyEdit->setToolTip(myHotKeyLabel->toolTip());
+  myHotKeyLabel->setBuddy(myHotKeyEdit);
+  hotKeyLayout->addWidget(myHotKeyEdit);
+  myBehaviourLayout->addLayout(hotKeyLayout, 3, 0);
+#endif
+
   myMainWinStickyCheck = new QCheckBox(tr("Sticky main window"));
   myMainWinStickyCheck->setToolTip(tr("Makes the Main window visible on all desktops"));
   myBehaviourLayout->addWidget(myMainWinStickyCheck, 0, 1);
@@ -204,6 +218,9 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   mySortByLayout->addWidget(mySortByCombo);
   myBehaviourLayout->addLayout(mySortByLayout, 2, 1);
 
+  // Make the columns evenly wide
+  myBehaviourLayout->setColumnStretch(0, 1);
+  myBehaviourLayout->setColumnStretch(1, 1);
 
   myPageContactListLayout->addWidget(myAppearanceBox);
   myPageContactListLayout->addWidget(myBehaviourBox);
@@ -300,14 +317,16 @@ QWidget* Settings::ContactList::createPageContactInfo(QWidget* parent)
   myPopupLayout->addWidget(myPopupLastOnlineCheck, 1, 1);
   myPopupOnlineSinceCheck = new QCheckBox(tr("Online time"));
   myPopupLayout->addWidget(myPopupOnlineSinceCheck, 2, 1);
+  myPopupAwayTimeCheck = new QCheckBox(tr("Away time"));
+  myPopupLayout->addWidget(myPopupAwayTimeCheck, 3, 1);
   myPopupIdleTimeCheck = new QCheckBox(tr("Idle time"));
-  myPopupLayout->addWidget(myPopupIdleTimeCheck, 3, 1);
+  myPopupLayout->addWidget(myPopupIdleTimeCheck, 4, 1);
   myPopupLocalTimeCheck = new QCheckBox(tr("Local time"));
-  myPopupLayout->addWidget(myPopupLocalTimeCheck, 4, 1);
+  myPopupLayout->addWidget(myPopupLocalTimeCheck, 5, 1);
   myPopupIdCheck = new QCheckBox(tr("Protocol ID"));
-  myPopupLayout->addWidget(myPopupIdCheck, 5, 1);
+  myPopupLayout->addWidget(myPopupIdCheck, 6, 1);
   myPopupAuthCheck = new QCheckBox(tr("Authorization status"));
-  myPopupLayout->addWidget(myPopupAuthCheck, 6, 1);
+  myPopupLayout->addWidget(myPopupAuthCheck, 7, 1);
 
   myAutoUpdateBox = new QGroupBox(tr("Automatic Update"));
   myAutoUpdateLayout = new QVBoxLayout(myAutoUpdateBox);
@@ -354,6 +373,7 @@ void Settings::ContactList::load()
   Config::Chat* chatConfig = Config::Chat::instance();
   Config::ContactList* contactListConfig = Config::ContactList::instance();
   Config::General* generalConfig = Config::General::instance();
+  Config::Shortcuts* shortcutConfig = Config::Shortcuts::instance();
 
   myManualNewUserCheck->setChecked(chatConfig->manualNewUser());
 
@@ -375,6 +395,10 @@ void Settings::ContactList::load()
   myScrollBarCheck->setChecked(contactListConfig->allowScrollBar());
   mySysBackCheck->setChecked(contactListConfig->useSystemBackground());
   myDragMovesUserCheck->setChecked(contactListConfig->dragMovesUser());
+
+#ifdef Q_WS_X11
+  myHotKeyEdit->setKeySequence(shortcutConfig->getShortcut(Config::Shortcuts::GlobalShowMainwin));
+#endif
 
   int numColumns = contactListConfig->columnCount();
   if(numColumns < 1)
@@ -408,6 +432,7 @@ void Settings::ContactList::load()
   myPopupIpCheck->setChecked(contactListConfig->popupIP());
   myPopupLastOnlineCheck->setChecked(contactListConfig->popupLastOnline());
   myPopupOnlineSinceCheck->setChecked(contactListConfig->popupOnlineSince());
+  myPopupAwayTimeCheck->setChecked(contactListConfig->popupAwayTime());
   myPopupIdleTimeCheck->setChecked(contactListConfig->popupIdleTime());
   myPopupLocalTimeCheck->setChecked(contactListConfig->popupLocalTime());
   myPopupIdCheck->setChecked(contactListConfig->popupID());
@@ -433,6 +458,7 @@ void Settings::ContactList::apply()
   Config::Chat* chatConfig = Config::Chat::instance();
   Config::ContactList* contactListConfig = Config::ContactList::instance();
   Config::General* generalConfig = Config::General::instance();
+  Config::Shortcuts* shortcutConfig = Config::Shortcuts::instance();
   chatConfig->blockUpdates(true);
   contactListConfig->blockUpdates(true);
   generalConfig->blockUpdates(true);
@@ -457,6 +483,10 @@ void Settings::ContactList::apply()
   contactListConfig->setUseSystemBackground(mySysBackCheck->isChecked());
   contactListConfig->setDragMovesUser(myDragMovesUserCheck->isChecked());
 
+#ifdef Q_WS_X11
+  shortcutConfig->setShortcut(Config::Shortcuts::GlobalShowMainwin, myHotKeyEdit->keySequence());
+#endif
+
   for (int i = 0; i < MAX_COLUMNCOUNT; ++i)
   {
     contactListConfig->setColumn(i,
@@ -480,6 +510,7 @@ void Settings::ContactList::apply()
   contactListConfig->setPopupIP(myPopupIpCheck->isChecked());
   contactListConfig->setPopupLastOnline(myPopupLastOnlineCheck->isChecked());
   contactListConfig->setPopupOnlineSince(myPopupOnlineSinceCheck->isChecked());
+  contactListConfig->setPopupAwayTime(myPopupAwayTimeCheck->isChecked());
   contactListConfig->setPopupIdleTime(myPopupIdleTimeCheck->isChecked());
   contactListConfig->setPopupLocalTime(myPopupLocalTimeCheck->isChecked());
   contactListConfig->setPopupID(myPopupIdCheck->isChecked());

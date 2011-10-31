@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +32,7 @@
 
 #include <licq/contactlist/owner.h>
 #include <licq/daemon.h>
-#include <licq/icq.h>
+#include <licq/icq/icq.h>
 
 #include "core/messagebox.h"
 #include "core/signalmanager.h"
@@ -191,7 +190,7 @@ bool RegisterUserDlg::validateCurrentPage()
     button(CancelButton)->setEnabled(true);
     connect(gGuiSignalManager, SIGNAL(verifyImage(unsigned long)),
         SLOT(gotCaptcha(unsigned long)));
-    gLicqDaemon->icqRegister(myPasswordField->text().toLatin1().data());
+    gLicqDaemon->icqRegister(myPasswordField->text().toLatin1().constData());
     return false;
   }
 
@@ -205,7 +204,7 @@ bool RegisterUserDlg::validateCurrentPage()
     button(CancelButton)->setEnabled(true);
     connect(gGuiSignalManager, SIGNAL(newOwner(const Licq::UserId&)),
         SLOT(gotNewOwner(const Licq::UserId&)));
-    gLicqDaemon->icqVerify(myCaptchaField->text().toLatin1().data());
+    gLicqDaemon->icqVerify(myCaptchaField->text().toLatin1().constData());
     return false;
   }
 

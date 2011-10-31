@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2010 Licq developers
+ * Copyright (C) 2004-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 #ifndef __MSN_H
 #define __MSN_H
 
+#include <licq/plugin/protocolplugin.h>
+
 #include <list>
 #include <pthread.h>
 #include <string>
@@ -34,8 +36,6 @@
 namespace Licq
 {
 class Event;
-class PluginSignal;
-class ProtocolSignal;
 }
 
 const char CONTACT_LIST[] = "FL";
@@ -46,9 +46,6 @@ const unsigned short FLAG_CONTACT_LIST = 1;
 const unsigned short FLAG_ALLOW_LIST   = 2;
 const unsigned short FLAG_BLOCK_LIST   = 4;
 const unsigned short FLAG_REVERSE_LIST = 8;
-
-const char MSN_DEFAULT_SERVER_ADDRESS[]         = "messenger.hotmail.com";
-const unsigned short MSN_DEFAULT_SERVER_PORT    = 1863;
 
 #ifndef HAVE_STRNDUP
 char *strndup(const char *s, size_t n);
@@ -81,27 +78,37 @@ struct SStartMessage
 
 typedef std::list<SStartMessage*> StartList;
 
-class CMSN
+class CMSN : public Licq::ProtocolPlugin
 {
 public:
-  CMSN(int);
+  CMSN(Params& p);
   ~CMSN();
 
-  void Run();
+  // From Licq::ProtocolPlugin
+  std::string name() const;
+  std::string version() const;
+  unsigned long protocolId() const;
+  unsigned long capabilities() const;
+  std::string defaultServerHost() const;
+  int defaultServerPort() const;
 
   void MSNPing();
   bool Connected() { return m_nServerSocket != -1; }
   bool CanSendPing() { return m_bCanPing; }
+  void Logon(unsigned status, std::string host = std::string(), int port = 0);
   void MSNLogoff(bool = false);
-  void MSNLogon(const char *, int);
+  unsigned status() const { return myStatus; }
 
   bool WaitingPingReply()          { return m_bWaitingPingReply; }
   void SetWaitingPingReply(bool b) { m_bWaitingPingReply = b; }
 
-  const std::string& serverAddress() const   { return myServerAddress; }
-  unsigned short serverPort() const     { return myServerPort; }
-
   pthread_mutex_t mutex_ServerSocket; // Ugly, but whatever.
+
+protected:
+  // From Licq::ProtocolPlugin
+  bool init(int, char**);
+  int run();
+  void destructor();
 
 private:
   /**
@@ -120,7 +127,6 @@ private:
   void SendPacket(CMSNPacket *);
   void Send_SB_Packet(const Licq::UserId& userId, CMSNPacket* p, int nSocket = -1,
       bool bDelete = true);
-  void MSNLogon(const char *, int, unsigned status);
   void MSNGetServer();
   void MSNAuthenticateRedirect(const std::string& host, const std::string& param);
   void MSNAuthenticate(char *);
@@ -165,17 +171,11 @@ private:
    */
   void killConversation(int sock);
 
-  // Interface to CICQDaemon
-  void pushPluginSignal(Licq::PluginSignal* p);
-
   // Config
   unsigned long m_nListVersion;
-  std::string myServerAddress;
-  unsigned myServerPort;
 
   // Variables
   bool m_bExit;
-  int m_nPipe;
   int m_nServerSocket;
   int m_nNexusSocket;
   int m_nSSLSocket;
@@ -191,7 +191,6 @@ private:
   
   // Server variables
   unsigned myStatus;
-  unsigned myOldStatus;
   unsigned long m_nSessionStart;
   std::string m_strMSPAuth,
          m_strSID,

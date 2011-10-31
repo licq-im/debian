@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -20,20 +20,22 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <boost/foreach.hpp>
+
 #include "client.h"
 #include "handler.h"
 #include "plugin.h"
+#include "pluginversion.h"
 #include "sessionmanager.h"
 #include "vcard.h"
 
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/logging/log.h>
 #include <licq/oneventmanager.h>
-#include <licq/plugin.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/protocolsignal.h>
 #include <licq/statistics.h>
 #include <licq/userevents.h>
@@ -49,8 +51,11 @@ using std::string;
 
 const time_t PING_TIMEOUT = 60;
 
-Plugin::Plugin(const Config& config) :
-  myConfig(config),
+const char* const JabberConfigFile = "licq_jabber.conf";
+
+Plugin::Plugin(Params& p) :
+    Licq::ProtocolPlugin(p),
+    myConfig(JabberConfigFile),
   myHandler(NULL),
   myDoRun(false),
   myClient(NULL)
@@ -65,8 +70,53 @@ Plugin::~Plugin()
   delete myHandler;
 }
 
-int Plugin::run(int pipe)
+string Plugin::name() const
 {
+  return "Jabber";
+}
+
+string Plugin::version() const
+{
+  return PLUGIN_VERSION_STRING;
+}
+
+string Plugin::configFile() const
+{
+  return JabberConfigFile;
+}
+
+unsigned long Plugin::protocolId() const
+{
+  return JABBER_PPID;
+}
+
+unsigned long Plugin::capabilities() const
+{
+  return Licq::ProtocolPlugin::CanSendMsg
+      | Licq::ProtocolPlugin::CanHoldStatusMsg
+      | Licq::ProtocolPlugin::CanSendAuth
+      | Licq::ProtocolPlugin::CanSendAuthReq;
+}
+
+string Plugin::defaultServerHost() const
+{
+  return string();
+}
+
+int Plugin::defaultServerPort() const
+{
+  return 5222;
+}
+
+bool Plugin::init(int, char**)
+{
+  return true;
+}
+
+int Plugin::run()
+{
+  int pipe = getReadPipe();
+
   fd_set readFds;
 
   time_t lastPing = 0;
@@ -122,6 +172,11 @@ int Plugin::run(int pipe)
   return 0;
 }
 
+void Plugin::destructor()
+{
+  delete this;
+}
+
 void Plugin::processPipe(int pipe)
 {
   char ch;
@@ -131,12 +186,13 @@ void Plugin::processPipe(int pipe)
   {
     case Licq::ProtocolPlugin::PipeSignal:
     {
-      Licq::ProtocolSignal* signal = Licq::gDaemon.PopProtoSignal();
+      Licq::ProtocolSignal* signal = popSignal();
       processSignal(signal);
       delete signal;
       break;
     }
     case Licq::ProtocolPlugin::PipeShutdown:
+      doLogoff();
       myDoRun = false;
       break;
     default:
@@ -253,6 +309,8 @@ void Plugin::doLogon(Licq::ProtoLogonSignal* signal)
 
   string username;
   string password;
+  string host;
+  int port;
   {
     Licq::OwnerReadGuard owner(JABBER_PPID);
     if (!owner.isLocked())
@@ -263,10 +321,12 @@ void Plugin::doLogon(Licq::ProtoLogonSignal* signal)
 
     username = owner->accountId();
     password = owner->password();
+    host = owner->serverHost();
+    port = owner->serverPort();
   }
 
   if (myClient == NULL)
-    myClient = new Client(myConfig, *myHandler, username, password);
+    myClient = new Client(myConfig, *myHandler, username, password, host, port);
   else
     myClient->setPassword(password);
 
@@ -300,15 +360,17 @@ void Plugin::doSendMessage(Licq::ProtoSendMessageSignal* signal)
 {
   assert(myClient != NULL);
 
+  bool isUrgent = (signal->flags() & Licq::ProtocolSignal::SendUrgent);
+
   myClient->getSessionManager()->sendMessage(
-      signal->userId().accountId(), signal->message(), signal->flags() & 0x40);
+      signal->userId().accountId(), signal->message(), isUrgent);
 
   Licq::EventMsg* message = new Licq::EventMsg(
-      signal->message().c_str(), 0, Licq::UserEvent::TimeNow, 0);
-  message->setIsReceiver(false);
+      signal->message().c_str(), Licq::EventMsg::TimeNow, Licq::EventMsg::FlagSender);
 
   Licq::Event* event = new Licq::Event(signal->eventId(), 0, NULL,
       Licq::Event::ConnectServer, signal->userId(), message);
+  event->myCommand = Licq::Event::CommandMessage;
   event->thread_plugin = signal->callerThread();
   event->m_eResult = Licq::Event::ResultAcked;
 
@@ -324,7 +386,7 @@ void Plugin::doSendMessage(Licq::ProtoSendMessageSignal* signal)
     Licq::gStatistics.increase(Licq::Statistics::EventsSentCounter);
   }
 
-  Licq::gDaemon.PushPluginEvent(event);
+  Licq::gPluginManager.pushPluginEvent(event);
 }
 
 void Plugin::doNotifyTyping(Licq::ProtoTypingNotificationSignal* signal)
@@ -358,30 +420,34 @@ void Plugin::doUpdateInfo(Licq::ProtoUpdateInfoSignal* /*signal*/)
 void Plugin::doAddUser(Licq::ProtoAddUserSignal* signal)
 {
   assert(myClient != NULL);
-  myClient->addUser(signal->userId().accountId(), true);
+  const Licq::UserId userId = signal->userId();
+  gloox::StringList groupNames;
+  getUserGroups(userId, groupNames);
+  myClient->addUser(userId.accountId(), groupNames, true);
 }
 
 void Plugin::doChangeUserGroups(Licq::ProtoChangeUserGroupsSignal* signal)
 {
   assert(myClient != NULL);
   const Licq::UserId userId = signal->userId();
-
-  // Get names of all group user is member of
   gloox::StringList groupNames;
-  {
-    Licq::UserReadGuard u(userId);
-    if (!u.isLocked())
-      return;
-    const Licq::UserGroupList groups = u->GetGroups();
-    for (Licq::UserGroupList::const_iterator i = groups.begin();
-         i != groups.end(); ++i)
-    {
-      string groupName = Licq::gUserManager. GetGroupNameFromGroup(*i);
-      if (!groupName.empty())
-        groupNames.push_back(groupName);
-    }
-  }
+  getUserGroups(userId, groupNames);
   myClient->changeUserGroups(userId.accountId(), groupNames);
+}
+
+void Plugin::getUserGroups(const Licq::UserId& userId, gloox::StringList& retGroupNames)
+{
+  Licq::UserReadGuard u(userId);
+  if (!u.isLocked())
+    return;
+
+  const Licq::UserGroupList groups = u->GetGroups();
+  BOOST_FOREACH(int groupId, groups)
+  {
+    string groupName = Licq::gUserManager.GetGroupNameFromGroup(groupId);
+    if (!groupName.empty())
+      retGroupNames.push_back(groupName);
+  }
 }
 
 void Plugin::doRemoveUser(Licq::ProtoRemoveUserSignal* signal)

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 unsigned long Licq::Packet::s_nLocalIp = 0;
 unsigned long Licq::Packet::s_nRealIp = 0;
 unsigned short Licq::Packet::s_nLocalPort = 0;
-char Licq::Packet::s_nMode = MODE_DIRECT;
 
 Licq::Packet::Packet()
   : buffer(NULL)
@@ -36,6 +35,3 @@ Licq::Packet::~Packet()
 {
   delete buffer;
 }
-
-
-

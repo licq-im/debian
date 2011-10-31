@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /* ----------------------------------------------------------------------------
  * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2010 Licq developers
+ * Copyright (C) 1998-2011 Licq developers
  *
  * This program is licensed under the terms found in the LICENSE file.
  */
@@ -15,6 +14,8 @@
 #include <locale>
 
 #include "licq.h"
+#include "plugin/pluginmanager.h"
+#include "plugin/pluginthread.h"
 
 #ifdef USE_SOCKS5
 #define SOCKS
@@ -30,6 +31,24 @@ extern "C" {
 // sighandler.cpp
 void licq_install_signal_handlers();
 
+using LicqDaemon::PluginThread;
+
+static int threadArgc;
+static char** threadArgv;
+static int threadMain(PluginThread::Ptr mainThread)
+{
+  using LicqDaemon::gPluginManager;
+  gPluginManager.setGuiThread(mainThread);
+
+  int ret = 1;
+  CLicq licq;
+  if (licq.Init(threadArgc, threadArgv))
+    ret = licq.Main();
+
+  gPluginManager.setGuiThread(PluginThread::Ptr());
+  return ret;
+}
+
 int main(int argc, char **argv)
 {
 #if ENABLE_NLS
@@ -39,7 +58,7 @@ int main(int argc, char **argv)
   textdomain(PACKAGE);
 #endif
   
-// Make sure argv[0] is defined otherwise licq will crash if it is NULL
+  // Make sure argv[0] is defined otherwise licq will crash if it is NULL
   if (argv[0] == NULL)
     argv[0] = strdup("licq");
 #ifdef USE_SOCKS5
@@ -48,8 +67,14 @@ int main(int argc, char **argv)
 
   licq_install_signal_handlers();
 
-  CLicq licq;
-  if (!licq.Init(argc, argv))
-    return 1;
-  return licq.Main();
+  threadArgc = argc;
+  threadArgv = argv;
+
+  // On some systems (e.g. Mac OS X) the GUI plugin must run in the main thread
+  // and the daemon will run in a new thread.
+#if __APPLE__
+  return PluginThread::createWithCurrentThread(&threadMain);
+#else
+  return threadMain(PluginThread::Ptr());
+#endif
 }

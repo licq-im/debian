@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,7 +59,7 @@ using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Settings::Skin */
 
 enum {
-  MAX_HEIGHT = 190, /* Height of icon preview widget, this is
+  MAX_HEIGHT = 12*19, /* Height of icon preview widget, this is
                        (number-of-Icons) / 3 * 19.
                        if the result isn't a multiple of 19,
                        round it up to become a multiple of 19 */
@@ -68,7 +67,8 @@ enum {
 };
 
 Settings::Skin::Skin(SettingsDlg* parent)
-  : QObject(parent)
+  : QObject(parent),
+    myDisableUpdate(false)
 {
   parent->addPage(SettingsDlg::SkinPage, createPageSkin(parent),
       tr("Skin"), SettingsDlg::ContactListPage);
@@ -91,8 +91,8 @@ QWidget* Settings::Skin::createPageSkin(QWidget* parent)
                    << "Chat" << "File" << "SMS" << "Contact" << "Authorize" << "ReqAuthorize"
                    << "SecureOff" << "SecureOn" << "Search" << "Remove" << "History"
                    << "Info" << "AIMOnline" << "AIMOffline" << "AIMAway"
-                   << "MSNOnline" << "MSNOffline" << "MSNAway"
-                   << "MSNOccupied" << "MSNPrivate";
+      << "MSNOnline" << "MSNOffline" << "MSNAway" << "MSNOccupied" << "MSNPrivate"
+      << "XMPPOnline" << "XMPPFFC" << "XMPPOffline" << "XMPPAway" << "XMPPNA" << "XMPPDND";
 
   myExtIconNames << "Collapsed" << "Expanded" << "Birthday" << "Cellular"
                       << "CustomAR" << "Invisible" << "Typing" << "Phone"
@@ -109,7 +109,7 @@ QWidget* Settings::Skin::createPageSkin(QWidget* parent)
   layMain->addWidget(boxIcons);
 
   // Skin Box
-  QLabel* lblSkin = new QLabel(tr("S&kins:"));
+  QLabel* lblSkin = new QLabel(tr("S&kin:"));
   laySkin->addWidget(lblSkin);
 
   mySkinPreview = new QLabel();
@@ -203,6 +203,9 @@ QWidget* Settings::Skin::createPageSkin(QWidget* parent)
 
 void Settings::Skin::load()
 {
+  // Don't trigger updates while we're populating comboboxes
+  myDisableUpdate = true;
+
   // Load up the available packs
   QDir skinsPath(QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + QTGUI_DIR + SKINS_DIR);
   QDir skinsUserPath(QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + QTGUI_DIR + SKINS_DIR);
@@ -210,7 +213,7 @@ void Settings::Skin::load()
   skinsUserPath.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   if (skinsPath.count() == 0 && skinsUserPath.count() == 0)
   {
-    Licq::gLog.error("Error reading %s directory", skinsPath.path().toLatin1().data());
+    Licq::gLog.error("Error reading %s directory", skinsPath.path().toLatin1().constData());
     mySkinCombo->addItem(tr("Error"));
     mySkinCombo->setEnabled(false);
   }
@@ -256,6 +259,7 @@ void Settings::Skin::load()
     myEmoticonCombo->setCurrentIndex(index);
 
   // Create initial preview
+  myDisableUpdate = false;
   previewSkin(mySkinCombo->currentText());
   previewIcons(myIconCombo->currentText());
   previewExtIcons(myExtIconCombo->currentText());
@@ -271,7 +275,7 @@ void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo
   iconsUserPath.setFilter(QDir::Dirs | QDir::NoDotAndDotDot);
   if (iconsPath.count() == 0 && iconsUserPath.count() == 0)
   {
-    Licq::gLog.error("Error reading %s directory", iconsPath.path().toLatin1().data());
+    Licq::gLog.error("Error reading %s directory", iconsPath.path().toLatin1().constData());
     iconCombo->addItem(tr("Error"));
     iconCombo->setEnabled(false);
   }
@@ -282,7 +286,7 @@ void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo
     {
       iconsPath.cd(iconset);
       QString iconsFile = QString("%1/%2.icons").arg(iconsPath.path()).arg(iconset);
-      Licq::IniFile iconsConf(iconsFile.toLocal8Bit().data());
+      Licq::IniFile iconsConf(iconsFile.toLocal8Bit().constData());
       if (!iconsConf.loadFile())
       {
         WarnUser(dynamic_cast<SettingsDlg*>(parent()),
@@ -307,7 +311,7 @@ void Settings::Skin::loadIconsetList(const QString& subdir, QComboBox* iconCombo
     {
       iconsUserPath.cd(iconset);
       QString iconsFile = QString("%1/%2.icons").arg(iconsUserPath.path()).arg(iconset);
-      Licq::IniFile iconsConf(iconsFile.toLocal8Bit().data());
+      Licq::IniFile iconsConf(iconsFile.toLocal8Bit().constData());
       if (iconsConf.loadFile())
       {
         WarnUser(dynamic_cast<SettingsDlg*>(parent()),
@@ -350,11 +354,11 @@ void Settings::Skin::apply()
 
   if (!iconManager->loadIcons(myIconCombo->currentText()))
     WarnUser(dynamic_cast<SettingsDlg*>(parent()), tr("Unable to load icons\n%1.")
-        .arg(myIconCombo->currentText().toLocal8Bit().data()));
+        .arg(myIconCombo->currentText().toLocal8Bit().constData()));
 
   if (!iconManager->loadExtendedIcons(myExtIconCombo->currentText()))
     WarnUser(dynamic_cast<SettingsDlg*>(parent()), tr("Unable to load extended icons\n%1.")
-        .arg(myExtIconCombo->currentText().toLocal8Bit().data()));
+        .arg(myExtIconCombo->currentText().toLocal8Bit().constData()));
 
   Emoticons::self()->setTheme(myEmoticonCombo->currentText());
 }
@@ -375,16 +379,22 @@ void Settings::Skin::editSkin()
 
 void Settings::Skin::previewSkin(const QString& skin)
 {
+  if (myDisableUpdate)
+    return;
   mySkinPreview->setPixmap(renderSkin(skin));
 }
 
 void Settings::Skin::previewIcons(const QString& icon)
 {
+  if (myDisableUpdate)
+    return;
   myIconPreview->setPixmapList(loadIcons(icon, ICONS_DIR, myIconNames));
 }
 
 void Settings::Skin::previewExtIcons(const QString& extIcon)
 {
+  if (myDisableUpdate)
+    return;
   myExtIconPreview->setPixmapList(loadIcons(extIcon, EXTICONS_DIR, myExtIconNames));
 }
 
@@ -395,11 +405,11 @@ IconList Settings::Skin::loadIcons(const QString& iconSet, const QString& subdir
   QString iconListName = iconSet + ".icons";
   QString subpath = QString(QTGUI_DIR) + subdir + iconSet + "/";
   QString iconsPath = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subpath;
-  Licq::IniFile iconsFile((iconsPath + iconListName).toLocal8Bit().data());
+  Licq::IniFile iconsFile((iconsPath + iconListName).toLocal8Bit().constData());
   if (!iconsFile.loadFile())
   {
     iconsPath = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subpath;
-    iconsFile.setFilename((iconsPath + iconListName).toLocal8Bit().data());
+    iconsFile.setFilename((iconsPath + iconListName).toLocal8Bit().constData());
     if (!iconsFile.loadFile())
     {
       WarnUser(dynamic_cast<SettingsDlg*>(parent()), tr("Unable to open icons file\n%1").arg(iconsPath + iconListName));
@@ -421,6 +431,9 @@ IconList Settings::Skin::loadIcons(const QString& iconSet, const QString& subdir
 
 void Settings::Skin::previewEmoticons(const QString& emoticon)
 {
+  if (myDisableUpdate)
+    return;
+
   IconList icons;
   const QStringList files = Emoticons::self()->fileList(emoticon);
   foreach (const QString& i, files)

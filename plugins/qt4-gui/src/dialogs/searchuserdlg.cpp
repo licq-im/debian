@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,8 +37,8 @@
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/event.h>
-#include <licq/icq.h>
-#include <licq/icqcodes.h>
+#include <licq/icq/icq.h>
+#include <licq/icq/codes.h>
 
 #include "contactlist/contactlist.h"
 
@@ -252,7 +251,7 @@ void SearchUserDlg::startSearch()
         codec->fromUnicode(edtFirst->text()).data(),
         codec->fromUnicode(edtLast->text()).data(),
         codec->fromUnicode(edtNick->text()).data(),
-        edtEmail->text().toLocal8Bit().data(),
+        edtEmail->text().toLocal8Bit().constData(),
         mins[cmbAge->currentIndex()],
         maxs[cmbAge->currentIndex()],
         cmbGender->currentIndex(),

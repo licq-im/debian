@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2010 Licq developers
+ * Copyright (C) 2000-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,10 +38,11 @@
 #include <licq/contactlist/user.h>
 #include <licq/daemon.h>
 #include <licq/event.h>
-#include <licq/icq.h>
-#include <licq/icqdefines.h>
+#include <licq/icq/icq.h>
 #include <licq/protocolmanager.h>
+#include <licq/protocolsignal.h>
 #include <licq/translator.h>
+#include <licq/userevents.h>
 
 #include "core/signalmanager.h"
 
@@ -62,7 +62,6 @@ MMSendDlg::MMSendDlg(MMUserView* _mmv, QWidget* p)
     icqEventTag(0)
 {
   Support::setWidgetProps(this, "MMSendDialog");
-  setModal(true);
   setAttribute(Qt::WA_DeleteOnClose, true);
 
   QVBoxLayout* v = new QVBoxLayout(this);
@@ -90,20 +89,20 @@ MMSendDlg::MMSendDlg(MMUserView* _mmv, QWidget* p)
 
 int MMSendDlg::go_message(const QString& msg)
 {
-  m_nEventType = ICQ_CMDxSUB_MSG;
+  myEventType = Licq::UserEvent::TypeMessage;
   s1 = msg;
 
   setWindowTitle(tr("Multiple Recipient Message"));
 
   // Start
   SendNext();
-  show();
+  exec();
   return 0;
 }
 
 int MMSendDlg::go_url(const QString& url, const QString& desc)
 {
-  m_nEventType = ICQ_CMDxSUB_URL;
+  myEventType = Licq::UserEvent::TypeUrl;
   s1 = desc;
   s2 = url;
 
@@ -111,21 +110,19 @@ int MMSendDlg::go_url(const QString& url, const QString& desc)
 
   // Start
   SendNext();
-  show();
-  return result();
+  return exec();
 }
 
 int MMSendDlg::go_contact(StringList& users)
 {
-  m_nEventType = ICQ_CMDxSUB_CONTACTxLIST;
+  myEventType = Licq::UserEvent::TypeContactList;
   myUsers = &users;
 
   setWindowTitle(tr("Multiple Recipient Contact List"));
 
   // Start
   SendNext();
-  show();
-  return result();
+  return exec();
 }
 
 void MMSendDlg::slot_done(const Licq::Event* e)
@@ -170,9 +167,9 @@ void MMSendDlg::SendNext()
   if (!userId.isValid())
     return;
 
-  switch (m_nEventType)
+  switch (myEventType)
   {
-    case ICQ_CMDxSUB_MSG:
+    case Licq::UserEvent::TypeMessage:
     {
       const QTextCodec* codec;
       {
@@ -180,7 +177,8 @@ void MMSendDlg::SendNext()
         if (!u.isLocked())
           return;
         codec = UserCodec::codecForUser(*u);
-        grpSending->setTitle(tr("Sending mass message to %1...").arg(QString::fromUtf8(u->GetAlias())));
+        grpSending->setTitle(tr("Sending mass message to %1...")
+            .arg(QString::fromUtf8(u->getAlias().c_str())));
       }
 
       // create initial strings (implicit copying, no allocation impact :)
@@ -232,14 +230,14 @@ void MMSendDlg::SendNext()
         }
 
         icqEventTag = gProtocolManager.sendMessage(userId, messageRaw.data(),
-            true, ICQ_TCPxMSG_NORMAL, true);
+            Licq::ProtocolSignal::SendToMultiple);
 
         wholeMessagePos += Licq::gTranslator.returnToDos(messageRaw.data()).size();
       }
 
       break;
     }
-    case ICQ_CMDxSUB_URL:
+    case Licq::UserEvent::TypeUrl:
     {
       const QTextCodec* codec;
       {
@@ -247,23 +245,25 @@ void MMSendDlg::SendNext()
         if (!u.isLocked())
           return;
         codec = UserCodec::codecForUser(*u);
-        grpSending->setTitle(tr("Sending mass URL to %1...").arg(QString::fromUtf8(u->GetAlias())));
+        grpSending->setTitle(tr("Sending mass URL to %1...")
+            .arg(QString::fromUtf8(u->getAlias().c_str())));
       }
 
-      icqEventTag = gProtocolManager.sendUrl(userId, s2.toLatin1().data(),
-          codec->fromUnicode(s1).data(), true, ICQ_TCPxMSG_NORMAL, true);
+      icqEventTag = gProtocolManager.sendUrl(userId, s2.toLatin1().constData(),
+          codec->fromUnicode(s1).data(), Licq::ProtocolSignal::SendToMultiple);
       break;
     }
-    case ICQ_CMDxSUB_CONTACTxLIST:
+    case Licq::UserEvent::TypeContactList:
     {
       {
         Licq::UserReadGuard u(userId);
         if (!u.isLocked())
           return;
-        grpSending->setTitle(tr("Sending mass list to %1...").arg(QString::fromUtf8(u->GetAlias())));
+        grpSending->setTitle(tr("Sending mass list to %1...")
+            .arg(QString::fromUtf8(u->getAlias().c_str())));
       }
 
-      icqEventTag = gLicqDaemon->icqSendContactList(userId, *myUsers, false, ICQ_TCPxMSG_NORMAL);
+      icqEventTag = gLicqDaemon->icqSendContactList(userId, *myUsers);
       break;
     }
   }

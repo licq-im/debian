@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,12 +21,12 @@
 #define LICQ_H
 
 #include "config.h"
-#include "logging/logservice.h"
 
 #include <pthread.h>
 #include <list>
 
-#include <licq/plugin.h>
+#include <licq/plugin/generalplugin.h>
+#include <licq/plugin/protocolplugin.h>
 
 extern char **global_argv;
 extern int global_argc;
@@ -56,8 +56,6 @@ public:
   bool Install();
   void SaveLoadedPlugins();
 
-  inline LicqDaemon::LogService& getLogService();
-
 protected:
   bool upgradeLicq128(Licq::IniFile& licqConf);
 
@@ -67,14 +65,8 @@ protected:
   LoadProtoPlugin(const char *, bool keep = true);
 
 private:
-  LicqDaemon::LogService myLogService;
   boost::shared_ptr<LicqDaemon::StreamLogSink> myConsoleLog;
   int myConsoleLogLevel;
 };
-
-inline LicqDaemon::LogService& CLicq::getLogService()
-{
-  return myLogService;
-}
 
 #endif

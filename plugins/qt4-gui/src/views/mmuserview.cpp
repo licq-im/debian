@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2010 Licq developers
+ * Copyright (C) 2000-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,7 +50,7 @@ using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::MMUserView */
 
 MMUserView::MMUserView(const Licq::UserId& userId, ContactListModel* contactList, QWidget* parent)
-  : UserViewBase(contactList, parent),
+  : UserViewBase(contactList, false, parent),
     myUserId(userId)
 {
   // Use a proxy model for sorting and filtering
@@ -158,10 +157,8 @@ void MMUserView::dropEvent(QDropEvent* event)
       Licq::OwnerListGuard ownerList;
       BOOST_FOREACH(Licq::Owner* owner, **ownerList)
       {
-        unsigned long protocolId = owner->ppid();
-        char ppidStr[5];
-        Licq::protocolId_toStr(ppidStr, protocolId);
-        if (text.startsWith(ppidStr))
+        unsigned long protocolId = owner->protocolId();
+        if (text.startsWith(Licq::protocolId_toString(protocolId).c_str()))
         {
           ppid = protocolId;
           break;
@@ -177,7 +174,7 @@ void MMUserView::dropEvent(QDropEvent* event)
     if (id.isEmpty())
       return;
 
-    add(Licq::UserId(id.toLatin1().data(), ppid));
+    add(Licq::UserId(id.toLatin1().constData(), ppid));
   }
   else
     return; // Not accepted

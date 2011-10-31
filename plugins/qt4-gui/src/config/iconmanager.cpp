@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,10 +24,10 @@
 #include <cctype>
 
 #include <licq/daemon.h>
-#include <licq/icqdefines.h>
 #include <licq/inifile.h>
 #include <licq/logging/log.h>
 #include <licq/contactlist/user.h>
+#include <licq/userevents.h>
 
 #include "config/contactlist.h"
 
@@ -88,25 +87,30 @@ void IconManager::createInstance(const QString& iconSet, const QString& extended
 }
 
 IconManager::IconManager(const QString& iconSet, const QString& extendedIconSet, QObject* parent)
-  : QObject(parent)
+  : QObject(parent),
+    myIconSet("\0"),
+    myExtendedIconSet("\0")
 {
   if (!loadIcons(iconSet))
-    Licq::gLog.warning("Unable to load icons %s", iconSet.toLocal8Bit().data());
+    Licq::gLog.warning("Unable to load icons %s", iconSet.toLocal8Bit().constData());
 
   if (!loadExtendedIcons(extendedIconSet))
-    Licq::gLog.warning("Unable to load extended icons %s", extendedIconSet.toLocal8Bit().data());
+    Licq::gLog.warning("Unable to load extended icons %s", extendedIconSet.toLocal8Bit().constData());
 }
 
 bool IconManager::loadIcons(const QString& iconSet)
 {
+  if (iconSet == myIconSet)
+    return true;
+
   QString iconListName = iconSet + ".icons";
   QString subdir = QString(QTGUI_DIR) + ICONS_DIR + iconSet + "/";
   QString iconPath = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subdir;
-  Licq::IniFile iconsConf((iconPath + iconListName).toLocal8Bit().data());
+  Licq::IniFile iconsConf((iconPath + iconListName).toLocal8Bit().constData());
   if (!iconsConf.loadFile())
   {
     iconPath = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subdir;
-    iconsConf.setFilename((iconPath + iconListName).toLocal8Bit().data());
+    iconsConf.setFilename((iconPath + iconListName).toLocal8Bit().constData());
     if (!iconsConf.loadFile())
       return false;
   }
@@ -234,14 +238,17 @@ bool IconManager::loadIcons(const QString& iconSet)
 
 bool IconManager::loadExtendedIcons(const QString& iconSet)
 {
+  if (iconSet == myExtendedIconSet)
+    return true;
+
   QString iconListName = iconSet + ".icons";
   QString subdir = QString(QTGUI_DIR) + EXTICONS_DIR + iconSet + "/";
   QString iconPath = QString::fromLocal8Bit(Licq::gDaemon.baseDir().c_str()) + subdir;
-  Licq::IniFile iconsConf((iconPath + iconListName).toLocal8Bit().data());
+  Licq::IniFile iconsConf((iconPath + iconListName).toLocal8Bit().constData());
   if (!iconsConf.loadFile())
   {
     iconPath = QString::fromLocal8Bit(Licq::gDaemon.shareDir().c_str()) + subdir;
-    iconsConf.setFilename((iconPath + iconListName).toLocal8Bit().data());
+    iconsConf.setFilename((iconPath + iconListName).toLocal8Bit().constData());
     if (!iconsConf.loadFile())
       return false;
   }
@@ -331,31 +338,37 @@ const QPixmap& IconManager::iconForStatus(unsigned status, const Licq::UserId& u
   return myStatusIconMap[QPair<ProtocolType, unsigned>(ProtocolIcq, User::OnlineStatus)];
 }
 
-const QPixmap& IconManager::iconForEvent(unsigned short subCommand)
+const QPixmap& IconManager::iconForProtocol(unsigned long protocolId)
+{
+  Licq::UserId userId = Licq::UserId("1", protocolId);
+  return iconForStatus(Licq::User::OnlineStatus, userId);
+}
+
+const QPixmap& IconManager::iconForEvent(unsigned eventType)
 {
   IconType icon;
-  switch(subCommand)
+  switch (eventType)
   {
-    case ICQ_CMDxSUB_URL:
+    case Licq::UserEvent::TypeUrl:
       icon = UrlMessageIcon;
       break;
-    case ICQ_CMDxSUB_CHAT:
+    case Licq::UserEvent::TypeChat:
       icon = ChatMessageIcon;
       break;
-    case ICQ_CMDxSUB_FILE:
+    case Licq::UserEvent::TypeFile:
       icon = FileMessageIcon;
       break;
-    case ICQ_CMDxSUB_CONTACTxLIST:
+    case Licq::UserEvent::TypeContactList:
       icon = ContactMessageIcon;
       break;
-    case ICQ_CMDxSUB_AUTHxREQUEST:
+    case Licq::UserEvent::TypeAuthRequest:
       icon = ReqAuthorizeMessageIcon;
       break;
-    case ICQ_CMDxSUB_AUTHxREFUSED:
-    case ICQ_CMDxSUB_AUTHxGRANTED:
+    case Licq::UserEvent::TypeAuthRefused:
+    case Licq::UserEvent::TypeAuthGranted:
       icon = AuthorizeMessageIcon;
       break;
-    case ICQ_CMDxSUB_MSG:
+    case Licq::UserEvent::TypeMessage:
     default:
       icon = StandardMessageIcon;
   }

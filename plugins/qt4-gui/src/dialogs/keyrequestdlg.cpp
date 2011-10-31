@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2010 Licq developers
+ * Copyright (C) 2000-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,7 +52,7 @@ KeyRequestDlg::KeyRequestDlg(const Licq::UserId& userId, QWidget* parent)
 
   Licq::UserReadGuard u(myUserId);
   setWindowTitle(tr("Licq - Secure Channel with %1")
-      .arg(QString::fromUtf8(u->GetAlias())));
+      .arg(QString::fromUtf8(u->getAlias().c_str())));
 
   QVBoxLayout* top_lay = new QVBoxLayout(this);
 
@@ -61,20 +60,20 @@ KeyRequestDlg::KeyRequestDlg(const Licq::UserId& userId, QWidget* parent)
                   "with Diffie-Hellman key exchange and\n"
                   "the TLS version 1 protocol.\n\n");
   QString t2;
-  switch (u->SecureChannelSupport())
+  switch (u->secureChannelSupport())
   {
-    case Licq::SECURE_CHANNEL_SUPPORTED:
-      t2 = tr("The remote uses Licq %1/SSL.")
-        .arg(Licq::UserEvent::licqVersionToString(u->LicqVersion()).c_str());
+    case Licq::User::SecureChannelSupported:
+      t2 = tr("The remote uses %1.")
+        .arg(u->clientInfo().c_str());
       if (Licq::gDaemon.haveCryptoSupport())
         QTimer::singleShot(0, this, SLOT(startSend()));
       break;
 
-    case Licq::SECURE_CHANNEL_NOTSUPPORTED:
-      t2 = tr("The remote uses Licq %1, however it\n"
+    case Licq::User::SecureChannelNotSupported:
+      t2 = tr("The remote uses %1, however it\n"
               "has no secure channel support compiled in.\n"
               "This probably won't work.")
-        .arg(Licq::UserEvent::licqVersionToString(u->LicqVersion()).c_str());
+        .arg(u->clientInfo().c_str());
       break;
 
     default:

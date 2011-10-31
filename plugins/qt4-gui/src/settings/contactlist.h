@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009 Licq developers
+ * Copyright (C) 2007-2009,2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,6 +40,7 @@ class QWidget;
 namespace LicqQtGui
 {
 class SettingsDlg;
+class ShortcutEdit;
 
 namespace Settings
 {
@@ -109,6 +110,10 @@ private:
   QCheckBox* myDragMovesUserCheck;
   QLabel* myGuiStyleLabel;
   QComboBox* myGuiStyleCombo;
+#ifdef Q_WS_X11
+  QLabel* myHotKeyLabel;
+  ShortcutEdit* myHotKeyEdit;
+#endif
 
   // Widgets for contact list column settings
   QVBoxLayout* myPageColumnsLayout;
@@ -141,6 +146,7 @@ private:
   QCheckBox* myPopupIpCheck;
   QCheckBox* myPopupLastOnlineCheck;
   QCheckBox* myPopupOnlineSinceCheck;
+  QCheckBox* myPopupAwayTimeCheck;
   QCheckBox* myPopupIdleTimeCheck;
   QCheckBox* myPopupLocalTimeCheck;
   QCheckBox* myPopupIdCheck;

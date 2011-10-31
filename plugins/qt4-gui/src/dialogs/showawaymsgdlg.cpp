@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,8 +36,7 @@
 #include <licq/contactlist/user.h>
 #include <licq/daemon.h>
 #include <licq/event.h>
-#include <licq/icq.h>
-#include <licq/icqdefines.h>
+#include <licq/icq/icq.h>
 
 #include "core/signalmanager.h"
 
@@ -87,7 +85,7 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(const Licq::UserId& userId, bool fetch, QWidget* 
 
     setWindowTitle(QString(tr("%1 Response for %2"))
         .arg(u->statusString(true, false).c_str())
-        .arg(QString::fromUtf8(u->GetAlias())));
+        .arg(QString::fromUtf8(u->getAlias().c_str())));
 
     if (fetch)
       bSendServer = (u->normalSocketDesc() <= 0 && u->Version() > 6);
@@ -155,10 +153,7 @@ void ShowAwayMsgDlg::doneEvent(const Licq::Event* e)
 
   icqEventTag = 0;
 
-  if (isOk &&
-      (e->Command() == ICQ_CMDxTCP_START ||
-       e->SNAC() == MAKESNAC(ICQ_SNACxFAM_MESSAGE, ICQ_SNACxMSG_SENDxSERVER) ||
-       e->SNAC() == MAKESNAC(ICQ_SNACxFAM_LOCATION, ICQ_SNACxLOC_INFOxREQ)))
+  if (isOk)
   {
     Licq::UserReadGuard u(myUserId);
     const QTextCodec* codec = UserCodec::codecForUser(*u);
@@ -167,7 +162,7 @@ void ShowAwayMsgDlg::doneEvent(const Licq::Event* e)
        e->ExtendedAck()->response().c_str() :
        u->autoResponse().c_str();
 
-    if (u->ppid() == LICQ_PPID && QString(u->accountId().c_str())[0].isLetter())
+    if (u->protocolId() == LICQ_PPID && QString(u->accountId().c_str())[0].isLetter())
     {
       // Strip HTML
       QString strResponse(codec->toUnicode(szAutoResp));

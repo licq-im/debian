@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include "licq-osd.h"
+
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -36,8 +38,6 @@
 #include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/inifile.h>
-#include <licq/pluginbase.h>
-#include <licq/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/userevents.h>
 
@@ -49,7 +49,6 @@ using namespace std;
 using Licq::User;
 using Licq::UserId;
 using Licq::gLog;
-using Licq::gPluginManager;
 using Licq::gUserManager;
 
 //#if CVSLICQ==1
@@ -108,13 +107,21 @@ bool Configured=false; // is the xosd display initialized?
 
 using namespace std;
 
-const char *LP_Usage(void) // when licq --help is called
+OsdPlugin::OsdPlugin(Licq::GeneralPlugin::Params& p)
+  : Licq::GeneralPlugin(p)
+{
+  // Empty
+}
+
+// when licq --help is called
+string OsdPlugin::usage() const
 {
     static const char name[] = "no options for this plugin. Configure via configfile";
     return name;
 }
 
-const char *LP_Name(void) // plugin name as seen in the licq load plugins menupoint
+// plugin name as seen in the licq load plugins menupoint
+string OsdPlugin::name() const
 {
     static const char name[] = "OSD";
     return name;
@@ -122,14 +129,14 @@ const char *LP_Name(void) // plugin name as seen in the licq load plugins menupo
 
 // config file for this plugin
 // used when you select configure in the licq plugin selector
-const char *LP_ConfigFile(void)
+string OsdPlugin::configFile() const
 {
     static const char name[] = "licq_osd.conf";
     return name;
 }
 
 // displayed in plugin selector
-const char *LP_Version(void)
+string OsdPlugin::version() const
 {
     static const char version[] = PLUGIN_VERSION_STRING;
     return version;
@@ -137,17 +144,13 @@ const char *LP_Version(void)
 
 // status of plugin - so they can be deactivated
 // not implemented for this plugin
-const char *LP_Status(void)
+bool OsdPlugin::isEnabled() const
 {
-    static const char status_running[] = "running";
-    static const char status_disabled[] = "disabled";
-    if (Enabled)
-	return status_running;
-    return status_disabled;
+  return Enabled;
 }
 
 // displayed in plugin selector
-const char *LP_Description(void)
+string OsdPlugin::description() const
 {
     static const char desc[] = "OSD-text on new messages";
     return desc;
@@ -232,7 +235,7 @@ unsigned parseShowInModesStr(const char* ShowInModesStr)
 }
 
 // called once on Load of the plugin
-bool LP_Init(int /* argc */, char** /* argv */)
+bool OsdPlugin::init(int /* argc */, char** /* argv */)
 {
   string showInModes;
   string showMsgsInModes;
@@ -312,10 +315,11 @@ bool LP_Init(int /* argc */, char** /* argv */)
 
 
 // run method of plugin
-int LP_Main()
+int OsdPlugin::run()
 {
     // register plugin at the licq daemon
-  int nPipe = gPluginManager.registerGeneralPlugin(Licq::PluginSignal::SignalUser |
+  int nPipe = getReadPipe();
+  setSignalMask(Licq::PluginSignal::SignalUser |
       Licq::PluginSignal::SignalLogon | Licq::PluginSignal::SignalLogoff);
     bool Exit=false; // exit plugin?
     char buf[16];
@@ -345,7 +349,7 @@ int LP_Main()
       case Licq::GeneralPlugin::PipeSignal:
       {
 		// read the actual signal from the daemon
-        Licq::PluginSignal* s = Licq::gDaemon.popPluginSignal();
+        Licq::PluginSignal* s = popSignal();
 		if (s)
 		{
 		    ProcessSignal(s);
@@ -361,7 +365,7 @@ int LP_Main()
       case Licq::GeneralPlugin::PipeEvent:
       {
         gLog.warning("Event received - should not happen in this plugin");
-        Licq::Event* e = Licq::gDaemon.PopPluginEvent();
+        Licq::Event* e = popEvent();
         delete e;
         break;
       }
@@ -392,12 +396,14 @@ int LP_Main()
 	my_xosd_exit();
         Configured=false;
     }
-    // unregister the plugin
-  gPluginManager.unregisterGeneralPlugin();
 
     return 0;
 }
 
+void OsdPlugin::destructor()
+{
+  delete this;
+}
 
 void ProcessSignal(Licq::PluginSignal* s)
 {

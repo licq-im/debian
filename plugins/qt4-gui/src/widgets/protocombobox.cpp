@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 2007-2011 Licq developers
@@ -23,7 +22,7 @@
 #include <boost/foreach.hpp>
 
 #include <licq/contactlist/usermanager.h>
-#include <licq/pluginmanager.h>
+#include <licq/plugin/pluginmanager.h>
 
 #include "config/iconmanager.h"
 
@@ -42,7 +41,7 @@ void ProtoComboBox::fillComboBox(unsigned filter)
   Licq::gPluginManager.getProtocolPluginsList(protocols);
   BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
   {
-    unsigned long ppid = protocol->getProtocolId();
+    unsigned long ppid = protocol->protocolId();
     Licq::UserId userId = Licq::gUserManager.ownerUserId(ppid);
     if (userId.isValid())
     {
@@ -58,7 +57,7 @@ void ProtoComboBox::fillComboBox(unsigned filter)
 
     addItem(
         IconManager::instance()->iconForStatus(Licq::User::OnlineStatus, userId), // icon
-        protocol->getName(), // protocol name
+        protocol->name().c_str(), // protocol name
         QString::number(ppid) // user data
         );
   }

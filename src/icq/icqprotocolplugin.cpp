@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,51 +17,58 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <unistd.h>
+#include <licq/plugin/protocolbase.h>
 
-#include <licq/pluginmanager.h>
 #include <licq/version.h>
+#include "icq.h"
 
+#define LicqProtocolPluginData IcqProtocolPluginData
 
-#define LProto_Name LProto_icq_Name
-#define LProto_Version LProto_icq_Version
-#define LProto_PPID LProto_icq_PPID
-#define LProto_Init LProto_icq_Init
-#define LProto_SendFuncs LProto_icq_SendFuncs
-#define LProto_Main LProto_icq_Main
-#define LP_Id LProto_icq_Id
-#define LProto_Exit LProto_icq_Exit
-#define LProto_Main_tep LProto_icq_Main_tep
-
-#include <licq/protocolbase.h>
-
-using Licq::gPluginManager;
-using Licq::ProtocolPlugin;
-
-char* LProto_icq_Name()
+class IcqProtocolPlugin : public Licq::ProtocolPlugin
 {
-  static char name[] = "ICQ";
-  return name;
+public:
+  IcqProtocolPlugin(Params& p);
+
+  // From Licq::ProtocolPlugin
+  std::string name() const;
+  std::string version() const;
+  unsigned long protocolId() const;
+  unsigned long capabilities() const;
+  std::string defaultServerHost() const;
+  int defaultServerPort() const;
+
+protected:
+  // From Licq::ProtocolPlugin
+  bool init(int, char**);
+  int run();
+  void destructor();
+
+private:
+
+};
+
+IcqProtocolPlugin::IcqProtocolPlugin(Params& p)
+  : ProtocolPlugin(p)
+{
+  // Empty
 }
 
-char* LProto_icq_Version()
+std::string IcqProtocolPlugin::name() const
 {
-  static char version[] = LICQ_VERSION_STRING;
-  return version;
+  return "ICQ";
 }
 
-char* LProto_icq_PPID()
+std::string IcqProtocolPlugin::version() const
 {
-  static char ppid[] = "Licq";
-  return ppid;
+  return LICQ_VERSION_STRING;
 }
 
-bool LProto_icq_Init()
+unsigned long IcqProtocolPlugin::protocolId() const
 {
-  return true;
+  return LICQ_PPID;
 }
 
-unsigned long LProto_icq_SendFuncs()
+unsigned long IcqProtocolPlugin::capabilities() const
 {
   return ProtocolPlugin::CanSendMsg | ProtocolPlugin::CanSendUrl |
       ProtocolPlugin::CanSendFile | ProtocolPlugin::CanSendChat |
@@ -71,35 +78,41 @@ unsigned long LProto_icq_SendFuncs()
       ProtocolPlugin::CanHoldStatusMsg;
 }
 
-int LProto_icq_Main()
+std::string IcqProtocolPlugin::defaultServerHost() const
 {
-  int fd = gPluginManager.registerProtocolPlugin();
-  if (fd == -1)
-    return -1;
+  return "login.icq.com";
+}
 
-  bool run = true;
-  while (run)
-  {
-    fd_set readFd;
-    FD_ZERO(&readFd);
-    FD_SET(fd, &readFd);
-    int ret = ::select(fd + 1, &readFd, NULL, NULL, NULL);
-    if (ret > 0 && FD_ISSET(fd, &readFd))
-    {
-      char ch;
-      ::read(fd, &ch, sizeof(ch));
-      switch (ch)
-      {
-      case Licq::ProtocolPlugin::PipeShutdown:
-        run = false;
-        break;
-      default:
-        assert(false);
-        break;
-      }
-    }
-  }
+int IcqProtocolPlugin::defaultServerPort() const
+{
+  return 5190;
+}
 
-  gPluginManager.unregisterProtocolPlugin();
+bool IcqProtocolPlugin::init(int, char**)
+{
+  gIcqProtocol.initialize();
+  return true;
+}
+
+int IcqProtocolPlugin::run()
+{
+  if (!gIcqProtocol.start())
+    return 1;
   return 0;
 }
+
+void IcqProtocolPlugin::destructor()
+{
+  delete this;
+}
+
+Licq::ProtocolPlugin* IcqPluginFactory(Licq::ProtocolPlugin::Params& p)
+{
+  return new IcqProtocolPlugin(p);
+}
+
+struct Licq::ProtocolPluginData IcqProtocolPluginData = {
+    {'L', 'i', 'c', 'q' },      // licqMagic
+    LICQ_VERSION,               // licqVersion
+    &IcqPluginFactory,          // pluginFactory
+};

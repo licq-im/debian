@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,8 +30,8 @@
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
-#include <licq/icq.h>
-#include <licq/pluginmanager.h>
+#include <licq/icq/icq.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/protocolmanager.h>
 
 using namespace std;
@@ -167,7 +167,7 @@ void CLicqConsole::MenuPopup(int userSelected) {
         if (!u.isLocked())
           return;
 
-        PrintContactPopup(u->GetAlias());
+        PrintContactPopup(u->getAlias().c_str());
       }
       nl();
       choice = activateCDKScroll(cdkContactPopup, NULL);
@@ -301,10 +301,9 @@ void CLicqConsole::MenuPlugins(char* /* _szArg */)
   BOOST_FOREACH(Licq::GeneralPlugin::Ptr plugin, plugins)
   {
     PrintBoxLeft();
-    winMain->wprintf("[%3d] %s v%s (%s %s) - %s",
-                     plugin->getId(), plugin->getName(),
-                     plugin->getVersion(), plugin->getBuildDate(),
-                     plugin->getBuildTime(), plugin->getStatus());
+    winMain->wprintf("[%3d] %s v%s - %s",
+        plugin->id(), plugin->name().c_str(),
+        plugin->version().c_str(), (plugin->isEnabled() ? "enabled" : "disabled"));
     PrintBoxRight(70);
   }
 
@@ -312,8 +311,8 @@ void CLicqConsole::MenuPlugins(char* /* _szArg */)
   {
     PrintBoxLeft();
     winMain->wprintf("[%3d] %s v%s",
-                     protocol->getId(), protocol->getName(),
-                     protocol->getVersion());
+        protocol->id(), protocol->name().c_str(),
+        protocol->version().c_str());
     PrintBoxRight(70);
   }
   PrintBoxBottom(70);
@@ -565,7 +564,7 @@ void CLicqConsole::MenuStatus(char *_szArg)
   gPluginManager.getProtocolPluginsList(protocols);
   BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
   {
-    unsigned long nPPID = protocol->getProtocolId();
+    unsigned long nPPID = protocol->protocolId();
     gProtocolManager.setStatus(Licq::gUserManager.ownerUserId(nPPID), status);
   }
 }
@@ -619,9 +618,9 @@ bool CLicqConsole::GetContactFromArg(char **p_szArg, Licq::UserId& userId)
     gPluginManager.getProtocolPluginsList(protocols);
     BOOST_FOREACH(Licq::ProtocolPlugin::Ptr protocol, protocols)
     {
-      if (strcasecmp(protocol->getName(), strProtocol.c_str()) == 0)
+      if (strcasecmp(protocol->name().c_str(), strProtocol.c_str()) == 0)
       {
-        nPPID = protocol->getProtocolId();
+        nPPID = protocol->protocolId();
         szArg[strArg.find_last_of(".")] = '\0';
         string tmp(strArg, 0, nPos);
         tmp.append(strArg, s, strArg.size());
@@ -674,14 +673,12 @@ bool CLicqConsole::GetContactFromArg(char **p_szArg, Licq::UserId& userId)
     BOOST_FOREACH(const Licq::User* user, **userList)
     {
       Licq::UserReadGuard u(user);
-      if ((nPPID && u->protocolId() == nPPID && strcasecmp(szAlias, u->getAlias().c_str()) == 0) ||
-          (!nPPID && strcasecmp(szAlias, u->GetAlias()) == 0))
+      if ((!nPPID || u->protocolId() == nPPID) && strcasecmp(szAlias, u->getAlias().c_str()) == 0)
       {
         userId = u->id();
         break;
       }
-      else if ((nPPID && u->protocolId() == nPPID && strcasecmp(szAlias, u->accountId().c_str()) == 0) ||
-          (!nPPID && strcasecmp(szAlias, u->accountId().c_str()) == 0))
+      else if ((!nPPID || u->protocolId() == nPPID) && strcasecmp(szAlias, u->accountId().c_str()) == 0)
       {
         userId = u->id();
         break;

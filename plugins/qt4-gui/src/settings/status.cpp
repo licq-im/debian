@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,7 +36,7 @@
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/pluginmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/sarmanager.h>
 
 #include "config/general.h"
@@ -84,7 +83,7 @@ QWidget* Settings::Status::createPageStatus(QWidget* parent)
       if (protocol.get() == NULL)
         continue;
 
-      QLabel* autoLogonLabel = new QLabel(QString(protocol->getName()) + ": ");
+      QLabel* autoLogonLabel = new QLabel(QString(protocol->name().c_str()) + ": ");
       myAutoLogonLayout->addWidget(autoLogonLabel, line, 0);
 
 #define ADD_STATUS(status, cond) \
@@ -278,8 +277,8 @@ void Settings::Status::saveSar()
 {
   Licq::SarList& sars(gSarManager.getList(static_cast<SarManager::List>(mySarGroupCombo->currentIndex())));
   Licq::SavedAutoResponse& sar(sars[mySarMsgCombo->currentIndex()]);
-  sar.name = mySarMsgCombo->currentText().toLocal8Bit().data();
-  sar.text = mySartextEdit->toPlainText().toLocal8Bit().data();
+  sar.name = mySarMsgCombo->currentText().toLocal8Bit().constData();
+  sar.text = mySartextEdit->toPlainText().toLocal8Bit().constData();
   gSarManager.releaseList(true);
 
   buildAutoStatusCombos(0);
@@ -350,6 +349,6 @@ void Settings::Status::apply()
       continue;
 
     o->setStartupStatus(status);
-    o->SaveLicqInfo();
+    o->save(Licq::Owner::SaveOwnerInfo);
   }
 }

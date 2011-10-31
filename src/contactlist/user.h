@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,32 +42,21 @@ public:
   static const char* const HistoryOldExt;
 
   /**
-   * Constructor to create a user object for an existing contact
-   *
-   * @param id User id
-   * @param filename Filename to read user data from
-   */
-  User(const Licq::UserId& id, const std::string& filename);
-
-  /**
    * Constructor to create a user object for a new contact
    *
    * @param id User id
    * @param temporary False if user is added permanently to list
+   * @param isOwner True if this is an owner
    */
-  User(const Licq::UserId& id, bool temporary = false);
+  User(const Licq::UserId& id, bool temporary = false, bool isOwner = false);
 
   ~User();
 
   void writeToHistory(const std::string& text);
 
   // From Licq::User
+  void save(unsigned group);
   void RemoveFiles();
-  void SaveLicqInfo();
-  void saveUserInfo();
-  void SavePhoneBookInfo();
-  void SavePictureInfo();
-  void SaveNewMessagesInfo();
   std::string getUserInfoString(const std::string& key) const;
   unsigned int getUserInfoUint(const std::string& key) const;
   bool getUserInfoBool(const std::string& key) const;
@@ -82,8 +71,13 @@ public:
   void AddToContactList();
 
 protected:
+  virtual void saveLicqInfo();
+  virtual void saveUserInfo();
+  virtual void saveOwnerInfo();
+  virtual void saveNewMessagesInfo();
+  virtual void savePictureInfo();
+
   void setHistoryFile(const std::string& file);
-  bool LoadInfo();
   void LoadLicqInfo();
   void LoadPhoneBookInfo();
   void LoadPictureInfo();
@@ -92,6 +86,22 @@ protected:
 
 private:
   void loadUserInfo();
+
+  /**
+   * Save a category list
+   *
+   * @param category The category map to save
+   * @param key Base name of key in file for entries
+   */
+  void saveCategory(const Licq::UserCategoryMap& category, const std::string& key);
+
+  /**
+   * Load a category list
+   *
+   * @param category The category map to save
+   * @param key Base name of key in file for entries
+   */
+  void loadCategory(Licq::UserCategoryMap& category, const std::string& key);
 
   /**
    * Initialize all user object. Contains common code for all constructors

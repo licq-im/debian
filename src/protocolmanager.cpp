@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/icqdefines.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolsignal.h>
 #include <licq/userid.h>
@@ -42,6 +42,7 @@ using Licq::UserId;
 using Licq::UserReadGuard;
 using Licq::UserWriteGuard;
 using Licq::gLog;
+using Licq::gPluginManager;
 using Licq::gUserManager;
 
 
@@ -78,7 +79,7 @@ bool ProtocolManager::isProtocolConnected(const UserId& userId)
 
 void ProtocolManager::pushProtoSignal(Licq::ProtocolSignal* s, const UserId& userId)
 {
-  gDaemon.PushProtoSignal(s, userId.protocolId());
+  gPluginManager.pushProtocolSignal(s, userId.protocolId());
 }
 
 void ProtocolManager::addUser(const UserId& userId, int groupId)
@@ -149,14 +150,13 @@ unsigned long ProtocolManager::setStatus(const UserId& ownerId,
 
     isOffline = !owner->isOnline();
     if (message != KeepAutoResponse)
+    {
       owner->setAutoResponse(message);
+      owner->save(Licq::Owner::SaveOwnerInfo);
+    }
   }
 
   unsigned long eventId = 0;
-  unsigned long icqStatus = User::icqStatusFromStatus(newStatus);
-  if (newStatus & User::InvisibleStatus)
-    icqStatus |= ICQ_STATUS_FxPRIVATE;
-
   if (newStatus == User::OfflineStatus)
   {
     if (isOffline)
@@ -170,14 +170,14 @@ unsigned long ProtocolManager::setStatus(const UserId& ownerId,
   else if(isOffline)
   {
     if (ownerId.protocolId() == LICQ_PPID)
-      eventId = gIcqProtocol.icqLogon(icqStatus);
+      eventId = gIcqProtocol.logon(newStatus);
     else
       pushProtoSignal(new Licq::ProtoLogonSignal(newStatus), ownerId);
   }
   else
   {
     if (ownerId.protocolId() == LICQ_PPID)
-      eventId = gIcqProtocol.icqSetStatus(icqStatus);
+      eventId = gIcqProtocol.setStatus(newStatus);
     else
       pushProtoSignal(new Licq::ProtoChangeStatusSignal(newStatus), ownerId);
   }
@@ -200,8 +200,7 @@ void ProtocolManager::sendTypingNotification(const UserId& userId, bool active, 
 }
 
 unsigned long ProtocolManager::sendMessage(const UserId& userId, const string& message,
-    bool viaServer, unsigned short flags, bool multipleRecipients, const Licq::Color* color,
-    unsigned long convoId)
+    unsigned flags, const Licq::Color* color, unsigned long convoId)
 {
   if (!isProtocolConnected(userId))
     return 0;
@@ -209,7 +208,7 @@ unsigned long ProtocolManager::sendMessage(const UserId& userId, const string& m
   unsigned long eventId = getNextEventId();
 
   if (userId.protocolId() == LICQ_PPID)
-    gIcqProtocol.icqSendMessage(eventId, userId, message, viaServer, flags, multipleRecipients, color);
+    gIcqProtocol.icqSendMessage(eventId, userId, message, flags, color);
   else
     pushProtoSignal(new Licq::ProtoSendMessageSignal(eventId, userId, message, flags, convoId), userId);
 
@@ -217,8 +216,7 @@ unsigned long ProtocolManager::sendMessage(const UserId& userId, const string& m
 }
 
 unsigned long ProtocolManager::sendUrl(const UserId& userId, const string& url,
-    const string& message, bool viaServer, unsigned short flags,
-    bool multipleRecipients, const Licq::Color* color)
+    const string& message, unsigned flags, const Licq::Color* color)
 {
   if (!isProtocolConnected(userId))
     return 0;
@@ -226,7 +224,7 @@ unsigned long ProtocolManager::sendUrl(const UserId& userId, const string& url,
   unsigned long eventId = getNextEventId();
 
   if (userId.protocolId() == LICQ_PPID)
-    gIcqProtocol.icqSendUrl(eventId, userId, url, message, viaServer, flags, multipleRecipients, color);
+    gIcqProtocol.icqSendUrl(eventId, userId, url, message, flags, color);
   else
     eventId = 0;
 
@@ -250,7 +248,7 @@ unsigned long ProtocolManager::requestUserAutoResponse(const UserId& userId)
 
 unsigned long ProtocolManager::fileTransferPropose(const UserId& userId,
     const string& filename, const string& message, const list<string>& files,
-    unsigned short flags, bool viaServer)
+    unsigned flags)
 {
   if (!isProtocolConnected(userId))
     return 0;
@@ -258,7 +256,7 @@ unsigned long ProtocolManager::fileTransferPropose(const UserId& userId,
   unsigned long eventId = getNextEventId();
 
   if (userId.protocolId() == LICQ_PPID)
-    gIcqProtocol.icqFileTransfer(eventId, userId, filename, message, files, flags, viaServer);
+    gIcqProtocol.icqFileTransfer(eventId, userId, filename, message, files, flags);
   else
     pushProtoSignal(new Licq::ProtoSendFileSignal(eventId, userId, filename, message, files), userId);
 
@@ -384,7 +382,7 @@ unsigned long ProtocolManager::updateOwnerInfo(const UserId& ownerId)
 
       alias = owner->getAlias();
       firstName = owner->getFirstName();
-      firstName = owner->getLastName();
+      lastName = owner->getLastName();
       email = owner->getUserInfoString("Email1");
       address = owner->getUserInfoString("Address");
       city = owner->getUserInfoString("City");
@@ -421,7 +419,7 @@ unsigned long ProtocolManager::requestUserPicture(const UserId& userId)
       return 0;
 
     iconHashSize = user->buddyIconHash().size();
-    sendServer = (user->SocketDesc(ICQ_CHNxINFO) < 0);
+    sendServer = (user->infoSocketDesc() < 0);
   }
 
   unsigned long eventId = 0;
@@ -446,15 +444,15 @@ unsigned long ProtocolManager::secureChannelOpen(const UserId& userId)
     UserReadGuard user(userId);
     if (!user.isLocked())
     {
-      gLog.warning(tr("%sCannot send secure channel request to user not on list (%s).\n"),
-          L_WARNxSTR, userId.toString().c_str());
+      gLog.warning(tr("Cannot send secure channel request to user not on list (%s)."),
+          userId.toString().c_str());
       return 0;
     }
 
     // Check that the user doesn't already have a secure channel
     if (user->Secure())
     {
-      gLog.warning(tr("%s%s (%s) already has a secure channel.\n"), L_WARNxSTR,
+      gLog.warning(tr("%s (%s) already has a secure channel."),
           user->getAlias().c_str(), userId.toString().c_str());
       return 0;
     }
@@ -479,15 +477,15 @@ unsigned long ProtocolManager::secureChannelClose(const UserId& userId)
     UserReadGuard user(userId);
     if (!user.isLocked())
     {
-      gLog.warning(tr("%sCannot send secure channel request to user not on list (%s).\n"),
-          L_WARNxSTR, userId.toString().c_str());
+      gLog.warning(tr("Cannot send secure channel request to user not on list (%s)."),
+          userId.toString().c_str());
       return 0;
     }
 
     // Check that the user have a secure channel to close
     if (!user->Secure())
     {
-      gLog.warning(tr("%s%s (%s) does not have a secure channel.\n"), L_WARNxSTR,
+      gLog.warning(tr("%s (%s) does not have a secure channel."),
           user->getAlias().c_str(), userId.toString().c_str());
       return 0;
     }

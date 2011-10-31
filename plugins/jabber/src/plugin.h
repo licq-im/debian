@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -23,7 +23,11 @@
 #ifndef JABBER_PLUGIN_H
 #define JABBER_PLUGIN_H
 
-#include <boost/noncopyable.hpp>
+#include <licq/plugin/protocolplugin.h>
+
+#include "config.h"
+
+#include <gloox/gloox.h>
 
 namespace Licq
 {
@@ -41,6 +45,7 @@ class ProtoTypingNotificationSignal;
 class ProtoUpdateInfoSignal;
 class ProtoSendMessageSignal;
 class ProtocolSignal;
+class UserId;
 }
 
 namespace Jabber
@@ -50,17 +55,30 @@ class Client;
 class Config;
 class Handler;
 
-class Plugin : private boost::noncopyable
+class Plugin : public Licq::ProtocolPlugin
 {
 public:
-  explicit Plugin(const Config& config);
+  Plugin(Params& p);
   ~Plugin();
 
-  int run(int pipe);
+  // From Licq::ProtocolPlugin
+  std::string name() const;
+  std::string version() const;
+  std::string configFile() const;
+  unsigned long protocolId() const;
+  unsigned long capabilities() const;
+  std::string defaultServerHost() const;
+  int defaultServerPort() const;
 
 private:
+  // From Licq::ProtocolPlugin
+  bool init(int, char**);
+  int run();
+  void destructor();
+
   void processPipe(int pipe);
   void processSignal(Licq::ProtocolSignal* signal);
+  void getUserGroups(const Licq::UserId& userId, gloox::StringList& retGroupNames);
 
   void doLogon(Licq::ProtoLogonSignal* signal);
   void doChangeStatus(Licq::ProtoChangeStatusSignal* signal);
@@ -77,7 +95,7 @@ private:
   void doRefuseAuth(Licq::ProtoRefuseAuthSignal* signal);
   void doRequestAuth(Licq::ProtoRequestAuthSignal* signal);
 
-  const Config& myConfig;
+  Config myConfig;
   Handler* myHandler;
   bool myDoRun;
   Client* myClient;

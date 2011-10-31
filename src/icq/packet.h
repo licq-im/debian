@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2010 Licq developers
+ * Copyright (C) 2000-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,10 +27,11 @@
 #include <string>
 
 #include <licq/contactlist/user.h>
-#include <licq/icqchat.h> // ChatClientList
-#include <licq/icqdefines.h>
+#include <licq/icq/chat.h> // ChatClientList
 #include <licq/userid.h>
 #include <licq/packet.h>
+
+#include "defines.h"
 
 namespace Licq
 {
@@ -112,14 +113,11 @@ public:
   virtual ~CSrvPacketTcp();
 
   // Packet details
-  virtual unsigned char  Channel()     { return m_nChannel; }
+  unsigned char icqChannel() const { return myIcqChannel; }
   virtual unsigned short Sequence()    { return m_nSequence; }
   virtual unsigned short SubSequence() { return m_nSubSequence; }
   virtual unsigned long  SNAC() { return ((m_nFamily << 16) | (m_nSubType)); }
   virtual unsigned short SubCommand()  { return m_nSubCommand; }
-
-  // Not used anymore here, use SNAC instead.
-  virtual unsigned short Command()     { return 0; }
 
   // Misc.
   virtual unsigned short ExtraInfo() { return m_nExtraInfo; }
@@ -135,7 +133,7 @@ protected:
   static unsigned short s_nSubSequence;
   static pthread_mutex_t s_xMutex;
 
-  unsigned char  m_nChannel;
+  unsigned char myIcqChannel;
   unsigned short m_nSequence;
   unsigned short m_nSubSequence;
   unsigned short m_nFamily;
@@ -158,7 +156,6 @@ public:
    virtual CBuffer *Finalize(Licq::INetSocket*);
    virtual unsigned short Sequence() { return m_nSequence; }
    virtual unsigned short SubSequence() { return m_nSubSequence; }
-   virtual unsigned short Command()  { return m_nCommand; }
    virtual unsigned short SubCommand()  { return 0; }
 protected:
    CPacketUdp(unsigned short _nCommand);
@@ -270,7 +267,6 @@ public:
 
   virtual unsigned short Sequence() { return m_nSequence; }
   virtual unsigned short SubSequence() { return 0; }
-  virtual unsigned short Command()  { return m_nCommand; }
   virtual unsigned short SubCommand() { return 0; }
 protected:
   virtual unsigned long getSize()       { return 1; }
@@ -678,8 +674,7 @@ class CPU_ThroughServer : public CPU_CommonFamily
 {
 public:
   CPU_ThroughServer(const std::string& accountId, unsigned char format, const std::string& message,
-                    unsigned short _nCharset = 0, bool bOffline = true,
-                    size_t _nLen = 0);
+      unsigned short _nCharset = 0, bool bOffline = true);
 protected:
   unsigned char  m_nMsgType;
 };
@@ -1217,7 +1212,6 @@ class CPacketTcp_Handshake : public CPacket
 public:
   virtual unsigned short Sequence()   { return 0; }
   virtual unsigned short SubSequence()   { return 0; }
-  virtual unsigned short Command()    { return ICQ_CMDxTCP_HANDSHAKE; }
   virtual unsigned short SubCommand() { return 0; }
 };
 
@@ -1319,13 +1313,13 @@ public:
 class CPacketTcp_Handshake_Confirm : public CPacketTcp_Handshake
 {
 public:
-  CPacketTcp_Handshake_Confirm(unsigned char nChannel, unsigned short nSequence);
+  CPacketTcp_Handshake_Confirm(int channel, unsigned short nSequence);
   CPacketTcp_Handshake_Confirm(CBuffer *inbuf);
 
-  virtual unsigned char Channel() { return m_nChannel; }
+  int channel() const { return myChannel; }
   unsigned long Id() { return m_nId; }
 protected:
-  unsigned char m_nChannel;
+  int myChannel;
   unsigned long m_nId;
 };
 
@@ -1337,16 +1331,16 @@ public:
    virtual ~CPacketTcp();
 
    virtual CBuffer *Finalize(Licq::INetSocket*);
+  int channel() const { return myChannel; }
    virtual unsigned short Sequence()   { return m_nSequence; }
    virtual unsigned short SubSequence()   { return 0; }
-   virtual unsigned short Command()    { return m_nCommand; }
    virtual unsigned short SubCommand() { return m_nSubCommand; }
 
    char *LocalPortOffset()  {  return m_szLocalPortOffset; }
    unsigned short Level()  { return m_nLevel; }
    unsigned short Version()  { return m_nVersion; }
 protected:
-   CPacketTcp(unsigned long _nCommand, unsigned short _nSubCommand,
+  CPacketTcp(unsigned long _nCommand, unsigned short _nSubCommand, int channel,
       const std::string& message, bool _bAccept, unsigned short nLevel,
       Licq::User* _cUser);
    void InitBuffer();
@@ -1363,6 +1357,7 @@ protected:
    unsigned long  m_nSourceUin;
    unsigned long  m_nCommand;
    unsigned short m_nSubCommand;
+  int myChannel;
    std::string myMessage;
    unsigned long  m_nLocalPort;
    unsigned short m_nStatus;
@@ -1382,7 +1377,7 @@ class CPT_Message : public CPacketTcp
 {
 public:
    CPT_Message(const std::string& message, unsigned short nLevel, bool bMR,
-      const Licq::Color* pColor, Licq::User* pUser);
+      const Licq::Color* pColor, Licq::User* pUser, bool isUtf8);
 };
 
 
@@ -1631,11 +1626,7 @@ class CPT_PluginError : public CPacketTcp
 {
 public:
   CPT_PluginError(Licq::User* _cUser, unsigned short nSequence,
-     unsigned char nChannel);
-   virtual unsigned char Channel() { return m_nChannel; }
-
-protected:
-   unsigned char m_nChannel;
+      int channel);
 };
 
 //----Request info plugin list--------------------------------------------------
@@ -1643,7 +1634,6 @@ class CPT_InfoPluginReq : public CPacketTcp
 {
 public:
   CPT_InfoPluginReq(Licq::User* _cUser, const char* GUID, unsigned long int nTime);
-   virtual unsigned char Channel()   { return ICQ_CHNxINFO; }
    virtual const char *RequestGUID()        { return m_ReqGUID; }
    virtual unsigned short ExtraInfo() { return DirectInfoPluginRequest; }
 
@@ -1656,7 +1646,6 @@ class CPT_InfoPhoneBookResp : public CPacketTcp
 {
 public:
   CPT_InfoPhoneBookResp(Licq::User* _cUser, unsigned short nSequence);
-   virtual unsigned char Channel() { return ICQ_CHNxINFO; }
 };
 
 //-----Response to picture request----------------------------------------------
@@ -1664,7 +1653,6 @@ class CPT_InfoPictureResp : public CPacketTcp
 {
 public:
   CPT_InfoPictureResp(Licq::User* _cUser, unsigned short nSequence);
-   virtual unsigned char Channel() { return ICQ_CHNxINFO; }
 };
 
 //----Response to info plugin list request--------------------------------------
@@ -1672,7 +1660,6 @@ class CPT_InfoPluginListResp : public CPacketTcp
 {
 public:
   CPT_InfoPluginListResp(Licq::User* _cUser, unsigned short nSequence);
-   virtual unsigned char Channel() { return ICQ_CHNxINFO; }
 };
 
 //----Send status plugin request------------------------------------------------
@@ -1680,7 +1667,6 @@ class CPT_StatusPluginReq : public CPacketTcp
 {
 public:
   CPT_StatusPluginReq(Licq::User* _cUser, const char* GUID, unsigned long nTime);
-   virtual unsigned char  Channel()   { return ICQ_CHNxSTATUS; }
    virtual unsigned short ExtraInfo() { return DirectStatusPluginRequest;}
    virtual const char *RequestGUID() { return m_ReqGUID; }
 
@@ -1693,7 +1679,6 @@ class CPT_StatusPluginListResp : public CPacketTcp
 {
 public:
   CPT_StatusPluginListResp(Licq::User* _cUser, unsigned short nSequence);
-  virtual unsigned char  Channel()   { return ICQ_CHNxSTATUS; }
 };
 
 //----Response to status request------------------------------------------------
@@ -1702,7 +1687,6 @@ class CPT_StatusPluginResp : public CPacketTcp
 public:
   CPT_StatusPluginResp(Licq::User* _cUser, unsigned short nSequence,
                        unsigned long nStatus);
-  virtual unsigned char  Channel()   { return ICQ_CHNxSTATUS; }
 };
 
 
@@ -1715,7 +1699,6 @@ public:
 
   virtual unsigned short Sequence()    { return 0; };
   virtual unsigned short SubSequence() { return 0; };
-  virtual unsigned short Command()     { return 0; };
   virtual unsigned short SubCommand()  { return 0; };
 protected:
    void InitBuffer()   { buffer = new CBuffer(m_nSize); };
@@ -1789,7 +1772,6 @@ class CPacketChat : public Licq::Packet
 public:
   virtual unsigned short Sequence()   { return 0; };
   virtual unsigned short SubSequence()   { return 0; };
-  virtual unsigned short Command()    { return 0; };
   virtual unsigned short SubCommand() { return 0; };
 protected:
    void InitBuffer();

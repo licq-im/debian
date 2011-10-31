@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -27,38 +27,44 @@
 using namespace Jabber;
 
 Config::Config(const std::string& filename) :
-  myPort(-1),
+  myFile(NULL),
   myTlsPolicy(gloox::TLSOptional),
   myResource("Licq")
 {
-  Licq::IniFile file(filename);
+  myFile = new Licq::IniFile(filename);
 
-  if (!file.loadFile()) {
-    // Save default values
-    file.setSection("network");
-    file.set("Port", -1);
-    file.set("Server", "");
-    file.set("TlsPolicy", "optional");
-    file.set("Resource", "Licq");
-    file.writeFile();
+  if (!myFile->loadFile()) {
+    return;
   }
-  else {
-    std::string value;
-    file.setSection("network");
 
-    file.get("Port", myPort, -1);
-    file.get("Server", myServer, std::string());
+  std::string value;
+  myFile->setSection("network");
 
-    file.get("TlsPolicy", value, "optional");
-    if (value == "disabled")
-      myTlsPolicy = gloox::TLSDisabled;
-    else if (value == "required")
-      myTlsPolicy = gloox::TLSRequired;
-    else
-      myTlsPolicy = gloox::TLSOptional;
+  myFile->get("TlsPolicy", value, "optional");
+  if (value == "disabled")
+    myTlsPolicy = gloox::TLSDisabled;
+  else if (value == "required")
+    myTlsPolicy = gloox::TLSRequired;
+  else
+    myTlsPolicy = gloox::TLSOptional;
 
-    if (file.get("Resource", value) && !value.empty())
-      myResource = value;
-  }
+  if (myFile->get("Resource", value) && !value.empty())
+    myResource = value;
 }
 
+Config::~Config()
+{
+  myFile->setSection("network");
+
+  if (myTlsPolicy == gloox::TLSDisabled)
+    myFile->set("TlsPolicy", "disabled");
+  else if (myTlsPolicy == gloox::TLSRequired)
+    myFile->set("TlsPolicy", "required");
+  else if (myTlsPolicy == gloox::TLSOptional)
+    myFile->set("TlsPolicy", "optional");
+
+  myFile->set("Resource", myResource);
+
+  myFile->writeFile();
+  delete myFile;
+}

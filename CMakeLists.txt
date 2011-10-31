@@ -37,6 +37,7 @@ endif (HAVE_LIBNSL)
 # Functions
 check_function_exists(readdir_r HAVE_READDIR_R)
 check_function_exists(backtrace HAVE_BACKTRACE)
+check_function_exists(prctl HAVE_PRCTL)
 
 if(CMAKE_SYSTEM MATCHES "SunOS.*")
   # Make readdir_r on Solaris behave normally
@@ -112,7 +113,6 @@ endif (USE_SOCKS5)
 
 if (BUILD_TESTS)
   enable_testing()
-  add_custom_target(tests ALL COMMAND ${CMAKE_CTEST_COMMAND} $(ARGS))
 
   # Google Test
   add_subdirectory(3rdparty/gtest)
@@ -168,9 +168,12 @@ add_custom_target(uninstall
 
 add_subdirectory(cmake)
 add_subdirectory(include)
-add_subdirectory(po)
 add_subdirectory(share)
 add_subdirectory(src)
+
+if (ENABLE_NLS)
+  add_subdirectory(po)
+endif (ENABLE_NLS)
 
 if (BUILD_PLUGINS)
   add_subdirectory(plugins)

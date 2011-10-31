@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -29,9 +29,9 @@
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
-#include <licq/icqdefines.h>
 #include <licq/logging/log.h>
 #include <licq/oneventmanager.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
 #include <licq/socket.h>
@@ -47,8 +47,7 @@ using std::string;
 
 #define TRACE() Licq::gLog.debug("In Handler::%s()", __func__)
 
-Handler::Handler() :
-  myNextConvoId(1)
+Handler::Handler()
 {
   // Empty
 }
@@ -57,24 +56,28 @@ void Handler::onConnect(const string& ip, int port, unsigned status)
 {
   TRACE();
 
-  Licq::OwnerWriteGuard owner(JABBER_PPID);
-  if (owner.isLocked())
   {
-    owner->statusChanged(status);
-    owner->SetIpPort(Licq::INetSocket::ipToInt(ip), port);
-    owner->SetTimezone(Licq::User::SystemTimezone());
+    Licq::OwnerWriteGuard owner(JABBER_PPID);
+    if (owner.isLocked())
+    {
+      owner->statusChanged(status);
+      owner->SetIpPort(Licq::INetSocket::ipToInt(ip), port);
+      owner->SetTimezone(Licq::User::SystemTimezone());
+    }
   }
 
-  Licq::gDaemon.pushPluginSignal(
+  Licq::gPluginManager.pushPluginSignal(
       new Licq::PluginSignal(Licq::PluginSignal::SignalLogon,
-                             0, UserId(), JABBER_PPID));
+      0, gUserManager.ownerUserId(JABBER_PPID)));
 }
 
 void Handler::onChangeStatus(unsigned status)
 {
   TRACE();
 
-  gUserManager.ownerStatusChanged(JABBER_PPID, status);
+  Licq::OwnerWriteGuard owner(JABBER_PPID);
+  if (owner.isLocked())
+    owner->statusChanged(status);
 }
 
 void Handler::onDisconnect(bool authError)
@@ -83,17 +86,21 @@ void Handler::onDisconnect(bool authError)
 
   {
     Licq::UserListGuard userList(JABBER_PPID);
-    BOOST_FOREACH(Licq::User* user, **userList)
+    BOOST_FOREACH(Licq::User* licqUser, **userList)
     {
-      Licq::UserWriteGuard u(user);
-      if (u->isOnline())
-        u->statusChanged(Licq::User::OfflineStatus);
+      Licq::UserWriteGuard user(licqUser);
+      if (user->isOnline())
+        user->statusChanged(Licq::User::OfflineStatus);
     }
   }
 
-  gUserManager.ownerStatusChanged(JABBER_PPID, Licq::User::OfflineStatus);
+  {
+    Licq::OwnerWriteGuard owner(JABBER_PPID);
+    if (owner.isLocked())
+      owner->statusChanged(Licq::User::OfflineStatus);
+  }
 
-  Licq::gDaemon.pushPluginSignal(
+  Licq::gPluginManager.pushPluginSignal(
       new Licq::PluginSignal(Licq::PluginSignal::SignalLogoff,
                              authError ?
                              Licq::PluginSignal::LogoffPassword :
@@ -139,12 +146,12 @@ void Handler::onUserAdded(
   user->SetAwaitingAuth(awaitingAuthorization);
 
   // Remove this line when SetGroups call above saves contact groups itself.
-  user->SaveLicqInfo();
+  user->save(Licq::User::SaveLicqInfo);
 
-  Licq::gDaemon.pushPluginSignal(
+  Licq::gPluginManager.pushPluginSignal(
       new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
                              Licq::PluginSignal::UserBasic, userId));
-  Licq::gDaemon.pushPluginSignal(
+  Licq::gPluginManager.pushPluginSignal(
       new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
                              Licq::PluginSignal::UserGroups, userId));
 
@@ -171,9 +178,6 @@ void Handler::onUserStatusChange(
     user->SetSendServer(true);
     user->setAutoResponse(msg);
     user->statusChanged(status);
-
-    if (status == Licq::User::OnlineStatus)
-      gOnEventManager.performOnEvent(OnEventData::OnEventOnline, *user);
   }
 }
 
@@ -198,7 +202,7 @@ void Handler::onUserInfo(const string& id, const VCardToUser& wrapper)
 
   if (updated)
   {
-    Licq::gDaemon.pushPluginSignal(
+    Licq::gPluginManager.pushPluginSignal(
         new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
                                Licq::PluginSignal::UserBasic, userId));
   }
@@ -235,7 +239,7 @@ void Handler::onUserAuthorizationRequest(
       string(), string(), // first and last name
       string(), // email
       message,
-      ICQ_CMDxRCV_SYSxMSGxONLINE, time(0), 0);
+      time(0), 0);
 
   Licq::OwnerWriteGuard owner(JABBER_PPID);
   if (Licq::gDaemon.addUserEvent(*owner, event))
@@ -251,9 +255,8 @@ void Handler::onMessage(const string& from, const string& message, time_t sent,
   TRACE();
 
   Licq::EventMsg* event = new Licq::EventMsg(
-      message.c_str(), ICQ_CMDxRCV_SYSxMSGxOFFLINE, sent,
-      urgent ? unsigned(Licq::UserEvent::FlagUrgent) : 0,
-      getConvoId(from));
+      message.c_str(), sent,
+      urgent ? unsigned(Licq::UserEvent::FlagUrgent) : 0);
 
   Licq::UserWriteGuard user(UserId(from, JABBER_PPID), true);
 
@@ -272,11 +275,10 @@ void Handler::onNotifyTyping(const string& from, bool active)
   {
     user->setIsTyping(active);
 
-    Licq::gDaemon.pushPluginSignal(
+    Licq::gPluginManager.pushPluginSignal(
         new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
                                Licq::PluginSignal::UserTyping,
-                               user->id(),
-                               getConvoId(from)));
+                               user->id()));
   }
 }
 
@@ -290,12 +292,4 @@ string Handler::getStatusMessage(unsigned status)
     return string();
 
   return o->autoResponse();
-}
-
-unsigned long Handler::getConvoId(const string& from)
-{
-  std::map<string, unsigned long>::iterator it = myConvoIds.find(from);
-  if (it == myConvoIds.end())
-    it = myConvoIds.insert(std::make_pair(from, myNextConvoId++)).first;
-  return it->second;
 }

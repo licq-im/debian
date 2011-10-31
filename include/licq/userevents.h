@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,13 +55,44 @@ public:
     FlagUrgent          = 0x00040000,
     FlagCancelled       = 0x00080000,
     FlagEncrypted       = 0x00100000,
+    FlagSender          = 0x00200000,
+    FlagOffline         = 0x00400000,
     FlagUnknown         = 0x80000000,
   };
 
-  // Use this constant for constructor to get current time
+  // Event type, for now these must be the same as the ICQ protocol sub commands
+  enum EventType
+  {
+    TypeMessage         = 0x0001,
+    TypeChat            = 0x0002,
+    TypeFile            = 0x0003,
+    TypeUrl             = 0x0004,
+    TypeAuthRequest     = 0x0006,
+    TypeAuthRefused     = 0x0007,
+    TypeAuthGranted     = 0x0008,
+    TypeMsgServer       = 0x0009,
+    TypeAdded           = 0x000C,
+    TypeWebPanel        = 0x000D,
+    TypeEmailPager      = 0x000E,
+    TypeContactList     = 0x0013,
+    TypeSms             = 0x001A,
+    TypeEmailAlert      = 0x00EC,
+    TypeUnknownSys      = 0xFFFF,
+  };
+
+  // Only used for history files, must be same as ICQ protocol commands
+  enum HistoryCommand
+  {
+    CommandDirect       = 0x07EE,
+    CommandSent         = 0x010E,
+    CommandRcvOnline    = 0x0104,
+    CommandRcvOffline   = 0x00DC,
+    CommandCancelled    = 0x07D0,
+  };
+
   static const time_t TimeNow = 0;
 
-  UserEvent(unsigned short _nSubCommand, unsigned short _nCommand,
+  UserEvent(EventType eventType,
               unsigned short _nSequence, time_t _tTime,
               unsigned long _nFlags, unsigned long _nConvoId = 0);
   UserEvent(const UserEvent *);
@@ -76,8 +107,13 @@ public:
 
   static const std::string licqVersionToString(unsigned long);
   unsigned short Sequence() const { return m_nSequence; }
-  unsigned short Command() const { return m_nCommand; }
-  unsigned short SubCommand() const { return m_nSubCommand; }
+
+  /// Get type of event
+  unsigned eventType() const { return myEventType; }
+
+  /// Returns translated event name
+  virtual std::string eventName() const = 0;
+
   int Id() const { return m_nId; }
   bool IsDirect() const { return m_nFlags & FlagDirect; }
   bool IsMultiRec() const { return m_nFlags & FlagMultiRec; }
@@ -86,7 +122,14 @@ public:
   bool IsLicq() const { return LicqVersion() != 0; };
   bool IsEncrypted() const { return m_nFlags & FlagEncrypted; };
   unsigned short LicqVersion() const { return m_nFlags & FlagLicqVerMask; }
-  bool isReceiver() const { return myIsReceiver; }
+
+  /// Was message sent from us
+  bool isSender() const { return m_nFlags & FlagSender; }
+
+  /// Was message sent while receiver was offline
+  bool isOffline() const { return m_nFlags & FlagOffline; }
+
+  bool isReceiver() const { return !isSender(); }
   const Color* color() const { return &myColor; }
   unsigned long ConvoId() const { return m_nConvoId; }
 
@@ -95,10 +138,23 @@ public:
 
 protected:
   virtual void AddToHistory(User* user, bool isReceiver) const = 0;
-  int AddToHistory_Header(bool isReceiver, char* szOut) const;
-  void AddToHistory_Flush(User* u, const std::string& text) const;
 
-  void setIsReceiver(bool isReceiver) { myIsReceiver = isReceiver; }
+  /**
+   * Construct a header for the history entry
+   *
+   * @param isReceived True if message was received
+   * @return String with header data formated for history
+   */
+  std::string historyHeader(bool isReceiver) const;
+
+  /**
+   * Write to user history
+   *
+   * @param User to write to, must be write locked
+   * @param text History entry, including header and formatting
+   */
+  void writeUserHistory(User* u, const std::string& text) const;
+
   void Cancel() { m_nFlags |= FlagCancelled; }
   void SetColor(unsigned fore, unsigned back) { myColor.set(fore, back); }
   void SetColor(const Color* c) { myColor.set(c); }
@@ -113,14 +169,12 @@ protected:
   // m_szText is not initialized until it is accessed. Allow this delayed
   // initialization even if called in const context.
   mutable std::string myText;
-   unsigned short m_nCommand;
-   unsigned short m_nSubCommand;
+  unsigned myEventType;
    unsigned short m_nSequence;
    int            m_nId;
    time_t         m_tTime;
    unsigned long  m_nFlags;
 
-  bool myIsReceiver;
    bool           m_bPending;
   Color myColor;
    unsigned long  m_nConvoId;
@@ -129,7 +183,6 @@ protected:
   friend class LicqDaemon::Daemon;
   friend class ::CMSN;
   friend class Jabber::Plugin;
-  friend class LicqDaemon::UserHistory;
   friend class User;
 };
 
@@ -138,7 +191,7 @@ protected:
 class EventMsg : public UserEvent
 {
 public:
-  EventMsg(const std::string& message, unsigned short _nCommand,
+  EventMsg(const std::string& message,
              time_t _tTime, unsigned long _nFlags, unsigned long _nConvoId = 0);
 
   virtual EventMsg* Copy() const;
@@ -147,6 +200,8 @@ public:
 
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myMessage;
 };
 
@@ -170,6 +225,8 @@ public:
   const unsigned long* MessageID() const { return m_nMsgID; }
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myFilename;
   std::string myFileDescription;
    unsigned long m_nFileSize;
@@ -183,17 +240,18 @@ class EventUrl : public UserEvent
 {
 public:
   EventUrl(const std::string& url, const std::string& urlDescription,
-             unsigned short _nCommand, time_t _tTime,
-             unsigned long _nFlags, unsigned long _nConvoId = 0);
+      time_t _tTime, unsigned long _nFlags, unsigned long _nConvoId = 0);
   virtual EventUrl* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
   const std::string& url() const { return myUrl; }
   const std::string& urlDescription() const { return myUrlDescription; }
 
-  static EventUrl *Parse(char *sz, unsigned short nCmd, time_t nTime,
+  static EventUrl *Parse(char *sz, time_t nTime,
      unsigned long nFlags, unsigned long nConvoId = 0);
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myUrl;
   std::string myUrlDescription;
 };
@@ -217,6 +275,8 @@ public:
   const unsigned long* MessageID() const { return m_nMsgID; }
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myReason;
   std::string myClients;
   unsigned short m_nPort;
@@ -230,14 +290,15 @@ class EventAdded : public UserEvent
 public:
   EventAdded(const UserId& userId, const std::string& alias,
       const std::string& firstName, const std::string& lastName,
-      const std::string& email, unsigned short _nCommand, time_t _tTime,
-      unsigned long _nFlags);
+      const std::string& email, time_t _tTime, unsigned long _nFlags);
   virtual EventAdded* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
   const UserId& userId() const { return myUserId; }
 
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   UserId myUserId;
   std::string myAlias;
   std::string myFirstName;
@@ -253,13 +314,16 @@ public:
   EventAuthRequest(const UserId& userId, const std::string& alias,
       const std::string& firstName, const std::string& lastName,
       const std::string& email, const std::string& reason,
-      unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
+      time_t _tTime, unsigned long _nFlags);
   virtual EventAuthRequest* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
   const UserId& userId() const { return myUserId; }
+  const std::string& reason() const { return myReason; }
 
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   UserId myUserId;
   std::string myAlias;
   std::string myFirstName;
@@ -274,13 +338,16 @@ class EventAuthGranted : public UserEvent
 {
 public:
   EventAuthGranted(const UserId& userId, const std::string& message,
-                     unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
+      time_t _tTime, unsigned long _nFlags);
   virtual EventAuthGranted* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
   const UserId& userId() const { return myUserId; }
+  const std::string& message() const { return myMessage; }
 
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   UserId myUserId;
   std::string myMessage;
 };
@@ -291,13 +358,16 @@ class EventAuthRefused : public UserEvent
 {
 public:
   EventAuthRefused(const UserId& userId, const std::string& message,
-                     unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
+      time_t _tTime, unsigned long _nFlags);
   virtual EventAuthRefused* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
   const UserId& userId() const { return myUserId; }
+  const std::string& message() const { return myMessage; }
 
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   UserId myUserId;
   std::string myMessage;
 };
@@ -308,12 +378,15 @@ class EventWebPanel : public UserEvent
 {
 public:
   EventWebPanel(const std::string& name, const std::string& email,
-      const std::string& message, unsigned short _nCommand, time_t _tTime,
-      unsigned long _nFlags);
+      const std::string& message, time_t _tTime, unsigned long _nFlags);
   virtual EventWebPanel* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
+  const std::string& message() const { return myMessage; }
+
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myName;
   std::string myEmail;
   std::string myMessage;
@@ -325,12 +398,15 @@ class EventEmailPager : public UserEvent
 {
 public:
   EventEmailPager(const std::string& name, const std::string& email,
-      const std::string& message, unsigned short _nCommand, time_t _tTime,
-      unsigned long _nFlags);
+      const std::string& message, time_t _tTime, unsigned long _nFlags);
   virtual EventEmailPager* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
+  const std::string& message() const { return myMessage; }
+
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myName;
   std::string myEmail;
   std::string myMessage;
@@ -356,7 +432,7 @@ public:
   typedef std::list<Contact *> ContactList;
 
 
-  EventContactList(const ContactList& cl, bool bDeep, unsigned short nCommand,
+  EventContactList(const ContactList& cl, bool bDeep,
      time_t tTime, unsigned long nFlags);
   virtual ~EventContactList();
   virtual EventContactList* Copy() const;
@@ -364,9 +440,11 @@ public:
 
   const ContactList &Contacts() const { return m_vszFields; }
 
-  static EventContactList *Parse(char *sz, unsigned short nCmd, time_t nTime, unsigned long nFlags);
+  static EventContactList *Parse(char *sz, time_t nTime, unsigned long nFlags);
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   ContactList m_vszFields;
 };
 
@@ -376,15 +454,17 @@ class EventSms : public UserEvent
 {
 public:
   EventSms(const std::string& number, const std::string& message,
-             unsigned short _nCommand, time_t _tTime, unsigned long _nFlags);
+      time_t _tTime, unsigned long _nFlags);
   virtual EventSms* Copy() const;
   const std::string& number() const { return myNumber; }
   const std::string& message() const { return myMessage; }
   virtual void AddToHistory(User* u, bool isReceiver) const;
 
-  static EventSms* Parse(const std::string& s, unsigned short nCmd, time_t nTime, unsigned long nFlags);
+  static EventSms* Parse(const std::string& s, time_t nTime, unsigned long nFlags);
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
   std::string myNumber;
   std::string myMessage;
 };
@@ -396,12 +476,14 @@ public:
   EventServerMessage(const std::string& name, const std::string& email,
       const std::string& message, time_t _tTime);
   virtual EventServerMessage* Copy() const;
+  const std::string& message() const { return myMessage; }
   virtual void AddToHistory(User* u, bool isReceiver) const;
 
   static EventServerMessage *Parse(char *, unsigned short, time_t, unsigned long);
 
 protected:
  void CreateDescription() const;
+  std::string eventName() const;
 
   std::string myName;
   std::string myEmail;
@@ -437,6 +519,7 @@ public:
 
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
 
   // Info
   std::string myName;
@@ -463,8 +546,15 @@ public:
       const UserId& userId, const std::string& message, time_t _tTime, unsigned long _nFlags);
   virtual EventUnknownSysMsg* Copy() const;
   virtual void AddToHistory(User* u, bool isReceiver) const;
+  unsigned short subCommand() const { return m_nSubCommand; }
+  unsigned short Command() const { return m_nCommand; }
+
 protected:
   void CreateDescription() const;
+  std::string eventName() const;
+
+  unsigned short m_nCommand;
+  unsigned short m_nSubCommand;
   UserId myUserId;
   std::string myMessage;
 };

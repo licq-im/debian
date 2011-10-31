@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -110,19 +109,28 @@ void Config::ContactList::loadConfiguration(Licq::IniFile& iniFile)
     myGroupId = ContactListModel::AllGroupsGroupId;
 
   iniFile.get("NumColumns", myColumnCount, 1);
+  if (myColumnCount < 1)
+    myColumnCount = 1;
+  if (myColumnCount > MAX_COLUMNCOUNT)
+    myColumnCount = MAX_COLUMNCOUNT;
   for (int i = 0; i < myColumnCount; i++)
   {
     std::string s;
     int us;
 
     QString key = QString("Column%1.").arg(i + 1);
-    iniFile.get((key + "Title").toLatin1().data(), s, "Alias");
+    iniFile.get((key + "Title").toLatin1().constData(), s, (i == 0 ? "Alias" : ""));
     myColumnHeading[i] = QString::fromLocal8Bit(s.c_str());
-    iniFile.get((key + "Format").toLatin1().data(), s, "%a");
+    iniFile.get((key + "Format").toLatin1().constData(), s, (i == 0 ? "%a" : ""));
     myColumnFormat[i] = QString::fromLocal8Bit(s.c_str());
-    iniFile.get((key + "Width").toLatin1().data(), myColumnWidth[i], 100);
-    iniFile.get((key + "Align").toLatin1().data(), us, 0);
+    iniFile.get((key + "Width").toLatin1().constData(), myColumnWidth[i], 100);
+    iniFile.get((key + "Align").toLatin1().constData(), us, AlignLeft);
     myColumnAlignment[i] = static_cast<AlignmentMode>(us);
+  }
+  for (int i = myColumnCount; i < MAX_COLUMNCOUNT; ++i)
+  {
+    myColumnWidth[i] = 100;
+    myColumnAlignment[i] = AlignLeft;
   }
 
   iniFile.get("showPopPicture", myPopupPicture, true);
@@ -136,6 +144,7 @@ void Config::ContactList::loadConfiguration(Licq::IniFile& iniFile)
   iniFile.get("showPopIP", myPopupIP, false);
   iniFile.get("showPopLastOnelin", myPopupLastOnline, false);
   iniFile.get("showPopOnlineSince", myPopupOnlineSince, false);
+  iniFile.get("showPopAwayTime", myPopupAwayTime, true);
   iniFile.get("showPopIdleTime", myPopupIdleTime, true);
   iniFile.get("showPopLocalTime", myPopupLocalTime, false);
   iniFile.get("showPopID", myPopupID, true);
@@ -174,10 +183,10 @@ void Config::ContactList::saveConfiguration(Licq::IniFile& iniFile) const
   for (int i = 0; i < myColumnCount; i++)
   {
     QString key = QString("Column%1.").arg(i + 1);
-    iniFile.set((key + "Title").toLatin1().data(), myColumnHeading[i].toLocal8Bit().data());
-    iniFile.set((key + "Format").toLatin1().data(), myColumnFormat[i].toLocal8Bit().data());
-    iniFile.set((key + "Width").toLatin1().data(), myColumnWidth[i]);
-    iniFile.set((key + "Align").toLatin1().data(), static_cast<int>(myColumnAlignment[i]));
+    iniFile.set((key + "Title").toLatin1().constData(), myColumnHeading[i].toLocal8Bit().constData());
+    iniFile.set((key + "Format").toLatin1().constData(), myColumnFormat[i].toLocal8Bit().constData());
+    iniFile.set((key + "Width").toLatin1().constData(), myColumnWidth[i]);
+    iniFile.set((key + "Align").toLatin1().constData(), static_cast<int>(myColumnAlignment[i]));
   }
 
   iniFile.set("showPopPicture", myPopupPicture);
@@ -191,6 +200,7 @@ void Config::ContactList::saveConfiguration(Licq::IniFile& iniFile) const
   iniFile.set("showPopIP", myPopupIP);
   iniFile.set("showPopLastOnelin", myPopupLastOnline);
   iniFile.set("showPopOnlineSince", myPopupOnlineSince);
+  iniFile.set("showPopAwayTime", myPopupAwayTime);
   iniFile.set("showPopIdleTime", myPopupIdleTime);
   iniFile.set("showPopLocalTime", myPopupLocalTime);
   iniFile.set("showPopID", myPopupID);
@@ -500,6 +510,11 @@ void Config::ContactList::setPopupLastOnline(bool popupLastOnline)
 void Config::ContactList::setPopupOnlineSince(bool popupOnlineSince)
 {
   myPopupOnlineSince = popupOnlineSince;
+}
+
+void Config::ContactList::setPopupAwayTime(bool popupAwayTime)
+{
+  myPopupAwayTime = popupAwayTime;
 }
 
 void Config::ContactList::setPopupIdleTime(bool popupIdleTime)

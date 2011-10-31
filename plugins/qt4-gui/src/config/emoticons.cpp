@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2003-2010 Licq developers
+ * Copyright (C) 2003-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -213,7 +213,7 @@ static QString fullFilename(const QString& dir, const QString& file)
   else if (QFile::exists(base + ".mng"))
     return base + ".mng";
 
-  Licq::gLog.warning("Unknown file '%s'", base.toLatin1().data());
+  Licq::gLog.warning("Unknown file '%s'", base.toLatin1().constData());
   return QString::null;
 }
 
@@ -300,9 +300,9 @@ static bool parseXml(const QString& dir, QMap<QChar, QLinkedList<Emoticon> >* em
 #ifdef EMOTICON_DEBUG
             if ((*it).escapedSmiley == emo.escapedSmiley)
               TRACE("The smiley '%s' (%s) is already mapped to %s",
-                  emo.smiley.toLatin1().data(),
-                  QFileInfo(file).fileName().toLatin1().data(),
-                  QFileInfo((*it).file).fileName().toLatin1().data());
+                  emo.smiley.toLatin1().constData(),
+                  QFileInfo(file).fileName().toLatin1().constData(),
+                  QFileInfo((*it).file).fileName().toLatin1().constData());
 #endif
             if ((*it).escapedSmiley.length() < emo.escapedSmiley.length())
               break;
@@ -314,8 +314,8 @@ static bool parseXml(const QString& dir, QMap<QChar, QLinkedList<Emoticon> >* em
         else
         {
           Licq::gLog.warning("Element '%s' in '%s' unknown",
-              string.tagName().toLatin1().data(),
-              xmlfile.fileName().toLatin1().data());
+              string.tagName().toLatin1().constData(),
+              xmlfile.fileName().toLatin1().constData());
         }
       }
     }
@@ -362,9 +362,13 @@ bool Emoticons::setTheme(const QString& theme_in)
 
   if (theme.isEmpty() || theme == NO_THEME)
   {
+    if (pimpl->currentTheme == NO_THEME)
+      return true;
+
     pimpl->currentTheme = NO_THEME;
     pimpl->emoticons.clear();
     pimpl->fileSmiley.clear();
+    emit themeChanged();
     return true;
   }
 
@@ -378,16 +382,14 @@ bool Emoticons::setTheme(const QString& theme_in)
   QMap<QChar, QLinkedList<Emoticon> > emoticons;
   QMap<QString, QString> fileSmiley;
 
-  const bool parsed = parseXml(dir, &emoticons, &fileSmiley);
-  if (parsed)
-  {
-    pimpl->currentTheme = theme;
-    pimpl->emoticons = emoticons;
-    pimpl->fileSmiley = fileSmiley;
-    emit themeChanged();
-  }
+  if (!parseXml(dir, &emoticons, &fileSmiley))
+    return false;
 
-  return parsed;
+  pimpl->currentTheme = theme;
+  pimpl->emoticons = emoticons;
+  pimpl->fileSmiley = fileSmiley;
+  emit themeChanged();
+  return true;
 }
 
 QString Emoticons::theme() const
@@ -428,7 +430,7 @@ void Emoticons::parseMessage(QString& message, ParseMode mode) const
   if (pimpl->emoticons.isEmpty())
     return;
 
-  TRACE("message pre: '%s'", message.toLatin1().data());
+  TRACE("message pre: '%s'", message.toLatin1().constData());
 
   QChar p(' '), c; // previous and current char
   for (int pos = 0; pos < message.length(); pos++)
@@ -494,8 +496,8 @@ void Emoticons::parseMessage(QString& message, ParseMode mode) const
             .arg(emo.file)
             .arg(emo.escapedSmiley);
           TRACE("Replacing '%s' with '%s'",
-              message.mid(pos, emo.escapedSmiley.length()).toLatin1().data(),
-              img.toLatin1().data());
+              message.mid(pos, emo.escapedSmiley.length()).toLatin1().constData(),
+              img.toLatin1().constData());
           message.replace(pos, emo.escapedSmiley.length(), img);
           pos += img.length() - 1; // Point pos at '>'
           c = '>';
@@ -506,7 +508,7 @@ void Emoticons::parseMessage(QString& message, ParseMode mode) const
 
     p = c;
   }
-  TRACE("message post: '%s'", message.toLatin1().data());
+  TRACE("message post: '%s'", message.toLatin1().constData());
 }
 
 /**

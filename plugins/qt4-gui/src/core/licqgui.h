@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 1999-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,12 +53,12 @@ class UserEventCommon;
 class UserEventTabDlg;
 class UserDlg;
 class UserMenu;
-class UserSendCommon;
+class UserSendEvent;
 class UserViewEvent;
 
 typedef QList<UserViewEvent*> UserViewEventList;
 typedef QList<UserDlg*> UserDlgList;
-typedef QList<UserSendCommon*> UserSendEventList;
+typedef QList<UserSendEvent*> UserSendEventList;
 
 #ifdef USE_KDE
 class LicqGui : public KApplication
@@ -122,16 +122,6 @@ public:
    * @param autoPopup True if the dialog was triggered automatically, false if triggered by the user
    */
   UserEventCommon* showEventDialog(int fcn, const Licq::UserId& userId, int convoId = -1, bool autoPopup = false);
-
-  /**
-   * Replace event dialog
-   * Called when event type is changed and dialog is replaced
-   *
-   * @param oldDialog Old (current) event dialog
-   * @param newDialog New event dialog
-   * @param userId Contact id
-   */
-  void replaceEventDialog(UserSendCommon* oldDialog, UserSendCommon* newDialog, const Licq::UserId& userId);
 
   /**
    * Toggle floaty for a contact
@@ -250,7 +240,7 @@ signals:
 
 private slots:
 #ifdef Q_WS_X11
-  void grabKey(const QString& key);
+  void updateGlobalShortcuts();
 #endif
 
   void userDlgFinished(UserDlg* dialog);
@@ -352,8 +342,12 @@ private:
   UserDlgList myUserDlgList;
   UserSendEventList myUserSendList;
 
+#ifdef Q_WS_X11
+  int myPopupMessageKey;
+  int myShowMainwinKey;
+#endif
+
   QStringList myCmdLineParams;
-  int grabKeysym;
   QTimer myAutoAwayTimer;
 };
 

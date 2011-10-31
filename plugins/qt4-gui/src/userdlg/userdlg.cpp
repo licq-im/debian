@@ -1,7 +1,6 @@
-// -*- c-basic-offset: 2 -*-
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008-2010 Licq developers
+ * Copyright (C) 2008-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -109,7 +108,7 @@ UserDlg::UserDlg(const Licq::UserId& userId, QWidget* parent)
       QString name = codec->toUnicode(user->getFullName().c_str());
       if (!name.isEmpty())
         name = " (" + name + ")";
-      myBasicTitle = tr("Licq - Info ") + QString::fromUtf8(user->GetAlias()) + name;
+      myBasicTitle = tr("Licq - Info ") + QString::fromUtf8(user->getAlias().c_str()) + name;
 
       myUserInfo->load(*user);
       myUserSettings->load(*user);
@@ -213,7 +212,7 @@ void UserDlg::apply()
     myUserSettings->apply(*user);
 
     user->SetEnableSave(true);
-    user->saveAll();
+    user->save(Licq::User::SaveAll);
   }
 
   // Special stuff that must be called without holding lock

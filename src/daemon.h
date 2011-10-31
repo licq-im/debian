@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2011 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,10 +38,12 @@ public:
   Daemon();
   ~Daemon();
 
+  void preInitialize(CLicq* _licq) { licq = _licq; }
+
   /**
    * Initialize the daemon
    */
-  void initialize(CLicq* licq);
+  void initialize();
 
   /**
    * Get next available id to use for an event
@@ -70,7 +72,6 @@ public:
   pthread_t* Shutdown();
   const char* Version() const;
   void SaveConf();
-  Licq::LogService& getLogService();
   bool addUserEvent(Licq::User* u, Licq::UserEvent* e);
   void rejectEvent(const Licq::UserId& userId, Licq::UserEvent* e);
 
@@ -78,6 +79,8 @@ private:
   unsigned long myNextEventId;
   Licq::Mutex myNextEventIdMutex;
   std::string myRejectFile;
+  unsigned myErrorTypes;
+  std::string myErrorFile;
 
   pthread_t thread_shutdown;
 
