@@ -1,6 +1,6 @@
 licq (1.6.0-1) unstable; urgency=low
 
-  * New upstream version 1.6.0
+  * New upstream version 1.6.0 (Closes: #271035)
 
  -- Erik Johansson <debian@ejohansson.se>  Mon, 31 Oct 2011 19:50:20 +0100
 
