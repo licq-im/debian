@@ -9,7 +9,7 @@ DEB_DH_MAKESHLIBS_ARGS_ALL = -X usr/lib/licq/
 
 # cmake settings
 CMAKE = cmake
-CMAKE_BUILDDIR = obj-$(DEB_BUILD_GNU_TYPE)
+CMAKE_BUILDDIR = obj-$(if $(1),$(1)-)$(DEB_BUILD_GNU_TYPE)
 CMAKE_INSTALL_PREFIX = /usr
 CMAKE_NORMAL_ARGS  = -DCMAKE_INSTALL_PREFIX="$(CMAKE_INSTALL_PREFIX)"
 CMAKE_NORMAL_ARGS += -DCMAKE_C_COMPILER:FILEPATH="$(CC)"
@@ -29,25 +29,11 @@ src/autoreply = auto-reply
 src/console   = console
 src/forwarder = forwarder
 src/jabber    = jabber
-src/kde4      = kde4-gui
+src/kde4      = qt4-gui
 src/msn       = msn
 src/osd       = osd
 src/qt4       = qt4-gui
 src/rms       = rms
-
-
-# In order to have both a Qt and a KDE plugin, we make a mangled copy
-# of the Qt plugin in the source tree.
-
-post-patches:: preconfigure-kde4-gui
-
-preconfigure-kde4-gui:
-	cp -a plugins/qt4-gui plugins/kde4-gui
-	touch $@
-
-clean::
-	rm -f preconfigure-kde4-gui
-	rm -rf plugins/kde4-gui
 
 
 # Build rules

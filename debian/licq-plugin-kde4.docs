@@ -1,5 +1,5 @@
-plugins/kde4-gui/doc/README.KDE
-plugins/kde4-gui/doc/DOCKING.HOWTO
-plugins/kde4-gui/doc/DOCK_THEME.HOWTO
-plugins/kde4-gui/doc/ICONS.HOWTO
-plugins/kde4-gui/doc/SKINS.HOWTO
+plugins/qt4-gui/doc/README.KDE
+plugins/qt4-gui/doc/DOCKING.HOWTO
+plugins/qt4-gui/doc/DOCK_THEME.HOWTO
+plugins/qt4-gui/doc/ICONS.HOWTO
+plugins/qt4-gui/doc/SKINS.HOWTO
