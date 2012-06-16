@@ -1,8 +1,20 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include "config.h"
@@ -276,10 +288,16 @@ const struct PluginList status_plugins[] =
 
 //======Server TCP============================================================
 bool CSrvPacketTcp::s_bRegistered = false;
-unsigned short CSrvPacketTcp::s_nSequence[32] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-                                                  0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff };
+unsigned short CSrvPacketTcp::s_nSequence[32];
 unsigned short CSrvPacketTcp::s_nSubSequence = 0;
 pthread_mutex_t CSrvPacketTcp::s_xMutex = PTHREAD_MUTEX_INITIALIZER;
+
+void CSrvPacketTcp::initSequence(int service)
+{
+  pthread_mutex_lock(&s_xMutex);
+  s_nSequence[service] = login_fix[ rand() % (sizeof(login_fix)/sizeof(login_fix[0])-1) ];
+  pthread_mutex_unlock(&s_xMutex);
+}
 
 CSrvPacketTcp::CSrvPacketTcp(unsigned char icqChannel)
   : myIcqChannel(icqChannel)
@@ -311,10 +329,8 @@ CBuffer *CSrvPacketTcp::Finalize(Licq::INetSocket*)
 void CSrvPacketTcp::InitBuffer()
 {
   pthread_mutex_lock(&s_xMutex);
-  if (s_nSequence[m_nService] == 0xffff)
-    s_nSequence[m_nService] = login_fix[ rand() % (sizeof(login_fix)/sizeof(login_fix[0])-1) ];
   m_nSequence = s_nSequence[m_nService]++;
-  s_nSequence[m_nService] &= 0x7fff;
+  s_nSequence[m_nService] &= 0xffff;
   pthread_mutex_unlock(&s_xMutex);
 
   buffer = new CBuffer(m_nSize+6);
@@ -664,10 +680,8 @@ CPU_RegisterFirst::CPU_RegisterFirst()
 {
   m_nSize = 4;
 
-  pthread_mutex_lock(&s_xMutex);
-  s_nSequence[m_nService] = 0xffff;
+  initSequence(m_nService);
   s_bRegistered = true;
-  pthread_mutex_unlock(&s_xMutex);
 
   InitBuffer();
 
@@ -754,12 +768,10 @@ CPU_SendVerification::~CPU_SendVerification()
 CPU_ConnectStart::CPU_ConnectStart()
   : CSrvPacketTcp(ICQ_CHNxNEW)
 {
-  pthread_mutex_lock(&s_xMutex);
   if (!s_bRegistered) {
-    s_nSequence[m_nService] = 0xffff;
+    initSequence(m_nService);
     s_bRegistered = true;
   }
-  pthread_mutex_unlock(&s_xMutex);
 
   m_nSize = 12;
   InitBuffer();
@@ -841,12 +853,10 @@ CPU_Logon::CPU_Logon(const string& password, const string& accountId, unsigned s
   char szEncPass[16];
   unsigned int j;
 
-  pthread_mutex_lock(&s_xMutex);
   if (!s_bRegistered) {
-    s_nSequence[m_nService] = 0xffff;
+    initSequence(m_nService);
     s_bRegistered = true;
   }
-  pthread_mutex_unlock(&s_xMutex);
 
   m_nLogonStatus = _nLogonStatus;
   m_nTcpVersion = ICQ_VERSION_TCP;
@@ -901,9 +911,7 @@ CPU_SendCookie::CPU_SendCookie(const string& cookie, unsigned short nService)
 {
   m_nService = nService;
   m_nSize = cookie.size() + 8;
-  pthread_mutex_lock(&s_xMutex);
-  s_nSequence[m_nService] = 0xffff;
-  pthread_mutex_unlock(&s_xMutex);
+  initSequence(m_nService);
   InitBuffer();
 
   buffer->PackUnsignedLongBE(0x00000001);
@@ -4548,6 +4556,9 @@ CPT_Message::CPT_Message(const string& message, unsigned short nLevel, bool bMR,
         Licq::TCPSocket::ChannelNormal,
         message, true, nLevel, pUser)
 {
+  if (m_nVersion >= 6 && isUtf8)
+    m_nSize += 4 + sizeof(ICQ_CAPABILITY_UTF8_STR)-1;
+
   InitBuffer();
   if (m_nVersion >= 6)
   {

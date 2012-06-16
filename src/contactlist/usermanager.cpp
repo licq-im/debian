@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -353,6 +353,9 @@ bool UserManager::makeUserPermanent(const UserId& userId, bool addToServer,
 
     dynamic_cast<User*>(*user)->SetPermanent();
   }
+
+  // Save local user list to disk
+  saveUserList();
 
   // Add user to server side list
   if (addToServer)
@@ -1077,13 +1080,22 @@ void UserManager::setUserInGroup(const UserId& userId, int groupId,
   // Notify server
   if (updateServer)
   {
-    if (userId.protocolId() == LICQ_PPID)
+    bool ownerIsOnline = false;
     {
-      if (inGroup) // Server group can only be changed, not removed
-        gIcqProtocol.icqChangeGroup(userId, groupId, gsid);
+      OwnerReadGuard owner(userId.protocolId());
+      ownerIsOnline = (owner.isLocked() && owner->isOnline());
     }
-    else
-      gPluginManager.pushProtocolSignal(new Licq::ProtoChangeUserGroupsSignal(userId), userId.protocolId());
+
+    if (ownerIsOnline)
+    {
+      if (userId.protocolId() == LICQ_PPID)
+      {
+        if (inGroup) // Server group can only be changed, not removed
+          gIcqProtocol.icqChangeGroup(userId, groupId, gsid);
+      }
+      else
+        gPluginManager.pushProtocolSignal(new Licq::ProtoChangeUserGroupsSignal(userId), userId.protocolId());
+    }
   }
 
   // Notify plugins
