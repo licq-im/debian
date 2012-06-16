@@ -1,3 +1,11 @@
+licq (1.6.1-1) unstable; urgency=low
+
+  * New upstream version 1.6.1
+  * Don't run tests if nocheck is given in DEB_BUILD_OPTIONS
+  * Bump standards version to 3.9.3 with no changes
+
+ -- Erik Johansson <debian@ejohansson.se>  Sat, 16 Jun 2012 23:02:32 +0200
+
 licq (1.6.0-2) unstable; urgency=low
 
   * Bump debhelper compat to 8
