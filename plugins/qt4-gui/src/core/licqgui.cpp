@@ -54,6 +54,7 @@
 extern "C"
 {
 #include <X11/X.h>
+#include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
@@ -512,8 +513,8 @@ bool LicqGui::x11EventFilter(XEvent* event)
   if (event->type == KeyPress && (myPopupMessageKey != 0 || myShowMainwinKey != 0))
   {
     Display* dsp = QX11Info::display();
-    unsigned int mod = event->xkey.state & (ControlMask | ShiftMask | Mod1Mask);
-    unsigned int keysym = XKeycodeToKeysym(dsp, event->xkey.keycode, 0);
+    unsigned int mod = event->xkey.state & (ControlMask | ShiftMask | Mod1Mask | Mod4Mask);
+    unsigned int keysym = XkbKeycodeToKeysym(dsp, event->xkey.keycode, 0, 0);
 
     if (keysym == Support::keyToXSym(myPopupMessageKey) &&
         mod == Support::keyToXMod(myPopupMessageKey))
@@ -549,23 +550,15 @@ void LicqGui::updateGlobalShortcuts()
 
   // Ungrab all current keys that have changed
   if (myPopupMessageKey != 0 && myPopupMessageKey != newPopup)
-    XGrabKey(dsp, XKeysymToKeycode(dsp, Support::keyToXSym(myPopupMessageKey)),
-        Support::keyToXMod(myPopupMessageKey), rootWin, false,
-        GrabModeAsync, GrabModeSync);
+    Support::grabKey(dsp, rootWin, myPopupMessageKey, false);
   if (myShowMainwinKey != 0 && myShowMainwinKey != newMainwin)
-    XGrabKey(dsp, XKeysymToKeycode(dsp, Support::keyToXSym(myShowMainwinKey)),
-        Support::keyToXMod(myShowMainwinKey), rootWin, false,
-        GrabModeAsync, GrabModeSync);
+    Support::grabKey(dsp, rootWin, myShowMainwinKey, false);
 
   // Grab new keys that have changed
   if (newPopup != 0 && newPopup != myPopupMessageKey)
-    XGrabKey(dsp, XKeysymToKeycode(dsp, Support::keyToXSym(newPopup)),
-        Support::keyToXMod(newPopup), rootWin, true,
-        GrabModeAsync, GrabModeSync);
+    Support::grabKey(dsp, rootWin, newPopup, true);
   if (newMainwin != 0 && newMainwin != myShowMainwinKey)
-    XGrabKey(dsp, XKeysymToKeycode(dsp, Support::keyToXSym(newMainwin)),
-        Support::keyToXMod(newMainwin), rootWin, true,
-        GrabModeAsync, GrabModeSync);
+    Support::grabKey(dsp, rootWin, newMainwin, true);
 
   myPopupMessageKey = newPopup;
   myShowMainwinKey = newMainwin;
