@@ -74,7 +74,8 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
 Provides: licq-plugin
 Description: Jabber plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
- communication over a Jabber (XMPP) instant messaging network.
+ communication over a Jabber (XMPP) instant messaging network, such as Google
+ Talk and the Facebook chat.
 
 Package: licq-plugin-kde
 Architecture: all
