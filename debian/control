@@ -101,8 +101,8 @@ Description: graphical user interface plug-in for Licq using KDE4
  and a searchable history.
  .
  KDE4-GUI is based on the old KDE-GUI (licq-plugin-kde) but uses KDE4 and
- includes new features such as spell checking and configurable keyboard
- shortcuts as well as entirely new dialogs for messaging, history and settings.
+ includes new features such as configurable keyboard shortcuts as well as
+ entirely new dialogs for messaging, history and settings.
 
 Package: licq-plugin-msn
 Architecture: any
