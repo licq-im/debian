@@ -21,7 +21,8 @@ CMAKE_NORMAL_ARGS += -DCMAKE_VERBOSE_MAKEFILE=ON
 export CTEST_OUTPUT_ON_FAILURE=1
 
 # plugin packages
-PLUGINS := $(patsubst licq-plugin-%,%,$(filter licq-plugin-%,$(shell dh_listpackages)))
+PLUGINS := $(filter licq-plugin-%,$(shell dh_listpackages))
+PLUGINS := $(patsubst licq-plugin-%,%,$(PLUGINS))
 PLUGINS := $(filter-out kde qt qt4-common,$(PLUGINS))
 
 # directories of plugin packages in source tree
