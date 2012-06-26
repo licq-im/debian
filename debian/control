@@ -148,7 +148,7 @@ Description: graphical user interface plug-in for Licq using Qt4
  .
  By taking advantage of the desktop integration features of Qt4, the GUI can
  adapt to standard desktops with regards to look and feel.  Docking support is
- also available for Window Maker, AfterStep and Enlightment among others.
+ also available for Window Maker, AfterStep and Enlightenment among others.
  .
  Qt4-GUI is based on the old Qt-GUI (licq-plugin-qt) but uses Qt4 and includes
  new features such as spell checking and configurable keyboard shortcuts as
