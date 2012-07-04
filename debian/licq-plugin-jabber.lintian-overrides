@@ -1,0 +1,1 @@
+licq-plugin-jabber: hardening-no-fortify-functions usr/lib/licq/protocol_jabber.so

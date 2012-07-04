@@ -1,0 +1,1 @@
+licq-plugin-osd: hardening-no-fortify-functions usr/lib/licq/licq_osd.so
