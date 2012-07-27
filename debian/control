@@ -23,8 +23,8 @@ Homepage: http://www.licq.org/
 
 Package: licq
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Recommends: licq-plugin-qt4 | licq-plugin, sox
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4 | licq-plugin-ui
+Recommends: sox
 Suggests: bind9-host | host, ping, traceroute
 Description: multi-protocol instant messaging client (base files)
  Licq is an instant messaging client daemon that supports a number of
@@ -55,7 +55,6 @@ Description: Licq development and header files
 Package: licq-plugin-autoreply
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
 Description: autoreply plug-in for Licq
  This is an autoreplier plug-in for the Licq instant messaging client.  Any
  events (messages, URLs, etc.) received while the plug-in is enabled will cause
@@ -64,8 +63,9 @@ Description: autoreply plug-in for Licq
 
 Package: licq-plugin-console
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: licq (= ${binary:Version})
+Provides: licq-plugin-ui
 Description: console user interface plug-in for Licq
  This is a console user interface plug-in for the Licq instant messaging
  client.  It does not have all the features that the Qt GUI supports, but it
@@ -75,7 +75,6 @@ Description: console user interface plug-in for Licq
 Package: licq-plugin-forwarder
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
 Description: forwarder plug-in for Licq
  This is a forwarder plug-in for the Licq instant messaging client.  Any events
  (messages, URLs, etc.) received while the plug-in is enabled will be forwarded
@@ -84,7 +83,6 @@ Description: forwarder plug-in for Licq
 Package: licq-plugin-jabber
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
 Description: Jabber plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
  communication over a Jabber (XMPP) instant messaging network, such as Google
@@ -102,8 +100,9 @@ Description: dummy package for transition to licq-plugin-kde4
 
 Package: licq-plugin-kde4
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version}), licq-plugin-qt4-common
-Provides: licq-plugin
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4-common
+Recommends: licq (= ${binary:Version})
+Provides: licq-plugin-ui
 Description: graphical user interface plug-in for Licq using KDE4
  This package provides a KDE-based graphical user interface to the Licq instant
  messaging client.  The GUI provides access to all features available in Licq.
@@ -120,7 +119,6 @@ Description: graphical user interface plug-in for Licq using KDE4
 Package: licq-plugin-msn
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
 Description: MSN plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
  communication over the MSN Messenger instant messaging network.
@@ -128,7 +126,6 @@ Description: MSN plug-in for Licq
 Package: licq-plugin-osd
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
 Description: on-screen display plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables it to
  display new messages as an on-screen display message.  User logged on/off and
@@ -145,8 +142,9 @@ Description: dummy package for transition to licq-plugin-qt4
 
 Package: licq-plugin-qt4
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version}), licq-plugin-qt4-common
-Provides: licq-plugin
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4-common
+Recommends: licq (= ${binary:Version})
+Provides: licq-plugin-ui
 Replaces: licq-plugin-qt (<< 1.3.9-1)
 Breaks: licq-plugin-qt (<< 1.3.9-1)
 Description: graphical user interface plug-in for Licq using Qt4
@@ -182,7 +180,6 @@ Description: common data files for the Qt4 and KDE4 Licq plugins
 Package: licq-plugin-rms
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
-Provides: licq-plugin
 Description: remote management server plug-in for telnet Licq access
  This package provides the means to manage Licq instant messaging sessions
  remotely through a telnet connection.  For obvious reasons, if you don't
