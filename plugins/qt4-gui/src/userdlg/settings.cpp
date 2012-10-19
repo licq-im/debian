@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2008-2011 Licq developers
+ * Copyright (C) 2008-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,14 +54,9 @@ using Licq::User;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserPages::Settings */
 
-UserPages::Settings::Settings(bool isOwner, UserDlg* parent)
-  : QObject(parent),
-    myIsOwner(isOwner)
+UserPages::Settings::Settings(UserDlg* parent)
+  : QObject(parent)
 {
-  // No settings here for owner so don't create anything
-  if (myIsOwner)
-    return;
-
   parent->addPage(UserDlg::SettingsPage, createPageSettings(parent),
       tr("Settings"));
   parent->addPage(UserDlg::StatusPage, createPageStatus(parent),
@@ -81,19 +76,19 @@ QWidget* UserPages::Settings::createPageSettings(QWidget* parent)
   mySettingsBox = new QGroupBox(tr("Misc Modes"));
   mySettingsLayout = new QGridLayout(mySettingsBox);
 
-  myAcceptInAwayCheck = new QCheckBox(tr("Accept in away"));
+  myAcceptInAwayCheck = new QCheckBox(tr("Accept in Away"));
   myAcceptInAwayCheck->setToolTip(tr("Play sounds for this contact when my status is away."));
   mySettingsLayout->addWidget(myAcceptInAwayCheck, 0, 0);
 
-  myAcceptInNaCheck = new QCheckBox(tr("Accept in not available"));
+  myAcceptInNaCheck = new QCheckBox(tr("Accept in Not Available"));
   myAcceptInNaCheck->setToolTip(tr("Play sounds for this contact when my status is not available."));
   mySettingsLayout->addWidget(myAcceptInNaCheck, 1, 0);
 
-  myAcceptInOccupiedCheck = new QCheckBox(tr("Accept in occupied"));
+  myAcceptInOccupiedCheck = new QCheckBox(tr("Accept in Occupied"));
   myAcceptInOccupiedCheck->setToolTip(tr("Play sounds for this contact when my status is occupied."));
   mySettingsLayout->addWidget(myAcceptInOccupiedCheck, 2, 0);
 
-  myAcceptInDndCheck = new QCheckBox(tr("Accept in do not disturb"));
+  myAcceptInDndCheck = new QCheckBox(tr("Accept in Do not Disturb"));
   myAcceptInDndCheck->setToolTip(tr("Play sounds for this contact when my status is do not disturb."));
   mySettingsLayout->addWidget(myAcceptInDndCheck, 3, 0);
 
@@ -115,7 +110,7 @@ QWidget* UserPages::Settings::createPageSettings(QWidget* parent)
   if (!Licq::gDaemon.haveGpgSupport())
     myUseGpgCheck->setVisible(false);
 
-  myUseRealIpCheck = new QCheckBox(tr("Use real ip (LAN)"));
+  myUseRealIpCheck = new QCheckBox(tr("Use real IP (LAN)"));
   myUseRealIpCheck->setToolTip(tr("Use real IP for when sending to this contact."));
   mySettingsLayout->addWidget(myUseRealIpCheck, 4, 0);
 
@@ -238,15 +233,12 @@ QWidget* UserPages::Settings::createPageGroups(QWidget* parent)
   myGroupsBox = new QGroupBox(tr("Groups"));
   myGroupsLayout = new QVBoxLayout(myGroupsBox);
 
-  myGroupsTable = new QTableWidget(0, 3);
+  myGroupsTable = new QTableWidget(0, 2);
   myGroupsTable->setShowGrid(false);
   myGroupsTable->setSelectionMode(QTableWidget::NoSelection);
   myGroupsTable->setEditTriggers(QTableWidget::NoEditTriggers);
   myGroupsLayout->addWidget(myGroupsTable);
 
-  QStringList headerLabels;
-  headerLabels << tr("Group") << tr("Local") << tr("Server");
-  myGroupsTable->setHorizontalHeaderLabels(headerLabels);
   myGroupsTable->verticalHeader()->hide();
 
   myPageGroupsLayout->addWidget(myGroupsBox);
@@ -256,9 +248,6 @@ QWidget* UserPages::Settings::createPageGroups(QWidget* parent)
 
 void UserPages::Settings::load(const Licq::User* user)
 {
-  if (myIsOwner)
-    return;
-
   myAcceptInAwayCheck->setChecked(user->AcceptInAway());
   myAcceptInNaCheck->setChecked(user->AcceptInNA());
   myAcceptInOccupiedCheck->setChecked(user->AcceptInOccupied());
@@ -293,20 +282,26 @@ void UserPages::Settings::load(const Licq::User* user)
   myStatusOccupiedRadio->setEnabled(isIcq);
   myStatusDndRadio->setEnabled(isIcq);
 
-  myAutoRespEdit->setText(QString::fromLocal8Bit(user->customAutoResponse().c_str()));
+  myAutoRespEdit->setText(QString::fromUtf8(user->customAutoResponse().c_str()));
 
-  unsigned long sendFuncs = 0;
-  Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(ppid);
-  if (protocol.get() != NULL)
-    sendFuncs = protocol->capabilities();
-
+  unsigned long sendFuncs = user->protocolCapabilities();
   myAutoAcceptFileCheck->setEnabled(sendFuncs & Licq::ProtocolPlugin::CanSendFile);
   myAutoAcceptChatCheck->setEnabled(sendFuncs & Licq::ProtocolPlugin::CanSendChat);
   myAutoSecureCheck->setEnabled(Licq::gDaemon.haveCryptoSupport() && (sendFuncs & Licq::ProtocolPlugin::CanSendSecure));
 
   myGroupsTable->clearContents();
   myGroupsTable->setRowCount(0);
-  int serverGroup = (user->GetSID() ? Licq::gUserManager.GetGroupFromID(user->GetGSID()) : 0);
+
+  int serverGroup = user->serverGroup();
+  myGroupsTable->setColumnCount(serverGroup > -1 ? 3 : 2);
+  QStringList headerLabels;
+  headerLabels << tr("Group");
+  if (serverGroup > -1)
+    headerLabels << tr("Local") << tr("Server");
+  else
+    headerLabels << tr("Member");
+  myGroupsTable->setHorizontalHeaderLabels(headerLabels);
+
   int i = 0;
   Licq::GroupListGuard groups;
   BOOST_FOREACH(const Licq::Group* group, **groups)
@@ -323,19 +318,22 @@ void UserPages::Settings::load(const Licq::User* user)
 
     QCheckBox* localCheck = new QCheckBox("");
     myGroupsTable->setCellWidget(i, 1, localCheck);
-
-    QRadioButton* serverRadio = new QRadioButton("");
-    myGroupsTable->setCellWidget(i, 2, serverRadio);
-
-    // User must be member of group locally if member of the serve group
-    // Disable the local checkbox for the current server group and make sure
-    // the local group is checked when selecting a server group. This works
-    // since clicked() isn't called when radio button looses checked state
-    connect(serverRadio, SIGNAL(toggled(bool)), localCheck, SLOT(setDisabled(bool)));
-    connect(serverRadio, SIGNAL(clicked(bool)), localCheck, SLOT(setChecked(bool)));
-
     localCheck->setChecked(user->isInGroup(gid));
-    serverRadio->setChecked(gid == serverGroup);
+
+    if (serverGroup > -1)
+    {
+      QRadioButton* serverRadio = new QRadioButton("");
+      myGroupsTable->setCellWidget(i, 2, serverRadio);
+
+      // User must be member of group locally if member of the server group
+      // Disable the local checkbox for the current server group and make sure
+      // the local group is checked when selecting a server group. This works
+      // since clicked() isn't called when radio button looses checked state
+      connect(serverRadio, SIGNAL(toggled(bool)), localCheck, SLOT(setDisabled(bool)));
+      connect(serverRadio, SIGNAL(clicked(bool)), localCheck, SLOT(setChecked(bool)));
+
+      serverRadio->setChecked(gid == serverGroup);
+    }
 
     ++i;
   }
@@ -353,9 +351,6 @@ void UserPages::Settings::load(const Licq::User* user)
 
 void UserPages::Settings::apply(Licq::User* user)
 {
-  if (myIsOwner)
-    return;
-
   // Set misc modes
   user->SetAcceptInAway(myAcceptInAwayCheck->isChecked());
   user->SetAcceptInNA(myAcceptInNaCheck->isChecked());
@@ -386,7 +381,7 @@ void UserPages::Settings::apply(Licq::User* user)
   user->setStatusToUser(statusToUser);
 
   // Set auto response (empty string will disable custom auto response)
-  user->setCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toLocal8Bit().constData());
+  user->setCustomAutoResponse(myAutoRespEdit->toPlainText().trimmed().toUtf8().constData());
 
   // Save onevent settings
   Licq::OnEventData* userData = Licq::gOnEventManager.lockUser(user->id(), true);
@@ -396,9 +391,6 @@ void UserPages::Settings::apply(Licq::User* user)
 
 void UserPages::Settings::apply2(const Licq::UserId& userId)
 {
-  if (myIsOwner)
-    return;
-
   int serverGroup = 0;
   Licq::UserGroupList userGroups;
   bool visibleList;
@@ -410,23 +402,25 @@ void UserPages::Settings::apply2(const Licq::UserId& userId)
       return;
 
    // Get current group memberships so we only set those that have actually changed
-    if (u->GetSID() != 0)
-      serverGroup = Licq::gUserManager.GetGroupFromID(u->GetGSID());
+    serverGroup = u->serverGroup();
     userGroups = u->GetGroups();
     visibleList = u->VisibleList();
     invisibleList = u->InvisibleList();
     ignoreList = u->IgnoreList();
   }
 
-  // First set server group
-  for (int i = 0; i < myGroupsTable->rowCount(); ++i)
+  if (serverGroup > -1)
   {
-    int gid = myGroupsTable->item(i, 0)->data(Qt::UserRole).toInt();
-
-    if (dynamic_cast<QRadioButton*>(myGroupsTable->cellWidget(i, 2))->isChecked())
+    // First set server group
+    for (int i = 0; i < myGroupsTable->rowCount(); ++i)
     {
-      if (gid != serverGroup)
-        Licq::gUserManager.setUserInGroup(userId, gid, true, true);
+      int gid = myGroupsTable->item(i, 0)->data(Qt::UserRole).toInt();
+
+      if (dynamic_cast<QRadioButton*>(myGroupsTable->cellWidget(i, 2))->isChecked())
+      {
+        if (gid != serverGroup)
+          Licq::gUserManager.setUserInGroup(userId, gid, true, true);
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011 Licq developers
+ * Copyright (C) 2011-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,9 +27,20 @@
 #include "color.h"
 #include "userid.h"
 
-class CMSN;
+namespace LicqIcq
+{
 class IcqProtocol;
-namespace Jabber { class Plugin; }
+}
+
+namespace LicqMsn
+{
+class CMSN;
+}
+
+namespace LicqJabber
+{
+class Plugin;
+}
 
 namespace LicqDaemon
 {
@@ -57,6 +68,7 @@ public:
     FlagEncrypted       = 0x00100000,
     FlagSender          = 0x00200000,
     FlagOffline         = 0x00400000,
+    FlagUnicode         = 0x00800000,   // Only used in history files for UTF8 encoded messages
     FlagUnknown         = 0x80000000,
   };
 
@@ -76,8 +88,8 @@ public:
     TypeEmailPager      = 0x000E,
     TypeContactList     = 0x0013,
     TypeSms             = 0x001A,
-    TypeEmailAlert      = 0x00EC,
-    TypeUnknownSys      = 0xFFFF,
+    TypeEmailAlert      = 0x001C,
+    TypeUnknownSys      = 0x001F,
   };
 
   // Only used for history files, must be same as ICQ protocol commands
@@ -92,6 +104,9 @@ public:
 
   static const time_t TimeNow = 0;
 
+  /// Return translated event name for an event type
+  static std::string eventName(unsigned eventType);
+
   UserEvent(EventType eventType,
               unsigned short _nSequence, time_t _tTime,
               unsigned long _nFlags, unsigned long _nConvoId = 0);
@@ -99,7 +114,21 @@ public:
   virtual ~UserEvent();
 
   virtual UserEvent* Copy() const = 0;
+
+  /**
+   * Description (including message text) of event
+   *
+   * @return Text description (in UTF-8)
+   */
   const std::string& text() const;
+
+  /**
+   * Description (including message text) of event
+   *
+   * @return Text description (converted to current locale)
+   */
+  const std::string& textLoc() const;
+
   std::string description() const;
   time_t Time() const { return m_tTime; }
   const std::string licqVersionStr() const
@@ -112,7 +141,8 @@ public:
   unsigned eventType() const { return myEventType; }
 
   /// Returns translated event name
-  virtual std::string eventName() const = 0;
+  std::string eventName() const
+  { return eventName(eventType()); }
 
   int Id() const { return m_nId; }
   bool IsDirect() const { return m_nFlags & FlagDirect; }
@@ -168,7 +198,7 @@ protected:
 
   // m_szText is not initialized until it is accessed. Allow this delayed
   // initialization even if called in const context.
-  mutable std::string myText;
+  mutable std::string myText, myTextLoc;
   unsigned myEventType;
    unsigned short m_nSequence;
    int            m_nId;
@@ -179,10 +209,10 @@ protected:
   Color myColor;
    unsigned long  m_nConvoId;
 
-  friend class ::IcqProtocol;
+  friend class LicqIcq::IcqProtocol;
   friend class LicqDaemon::Daemon;
-  friend class ::CMSN;
-  friend class Jabber::Plugin;
+  friend class LicqMsn::CMSN;
+  friend class LicqJabber::Plugin;
   friend class User;
 };
 
@@ -200,7 +230,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myMessage;
 };
@@ -225,7 +254,6 @@ public:
   const unsigned long* MessageID() const { return m_nMsgID; }
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myFilename;
   std::string myFileDescription;
@@ -246,11 +274,8 @@ public:
   const std::string& url() const { return myUrl; }
   const std::string& urlDescription() const { return myUrlDescription; }
 
-  static EventUrl *Parse(char *sz, time_t nTime,
-     unsigned long nFlags, unsigned long nConvoId = 0);
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myUrl;
   std::string myUrlDescription;
@@ -275,7 +300,6 @@ public:
   const unsigned long* MessageID() const { return m_nMsgID; }
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myReason;
   std::string myClients;
@@ -297,7 +321,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   UserId myUserId;
   std::string myAlias;
@@ -322,7 +345,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   UserId myUserId;
   std::string myAlias;
@@ -346,7 +368,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   UserId myUserId;
   std::string myMessage;
@@ -366,7 +387,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   UserId myUserId;
   std::string myMessage;
@@ -385,7 +405,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myName;
   std::string myEmail;
@@ -405,7 +424,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myName;
   std::string myEmail;
@@ -440,10 +458,8 @@ public:
 
   const ContactList &Contacts() const { return m_vszFields; }
 
-  static EventContactList *Parse(char *sz, time_t nTime, unsigned long nFlags);
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   ContactList m_vszFields;
 };
@@ -460,10 +476,8 @@ public:
   const std::string& message() const { return myMessage; }
   virtual void AddToHistory(User* u, bool isReceiver) const;
 
-  static EventSms* Parse(const std::string& s, time_t nTime, unsigned long nFlags);
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myNumber;
   std::string myMessage;
@@ -479,11 +493,8 @@ public:
   const std::string& message() const { return myMessage; }
   virtual void AddToHistory(User* u, bool isReceiver) const;
 
-  static EventServerMessage *Parse(char *, unsigned short, time_t, unsigned long);
-
 protected:
  void CreateDescription() const;
-  std::string eventName() const;
 
   std::string myName;
   std::string myEmail;
@@ -519,7 +530,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   // Info
   std::string myName;
@@ -551,7 +561,6 @@ public:
 
 protected:
   void CreateDescription() const;
-  std::string eventName() const;
 
   unsigned short m_nCommand;
   unsigned short m_nSubCommand;

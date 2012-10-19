@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,17 +27,16 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QSpinBox>
 
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/daemon.h>
 #include <licq/plugin/pluginmanager.h>
 
 #include "config/iconmanager.h"
 #include "core/messagebox.h"
 #include "helpers/support.h"
 #include "widgets/skinnablelabel.h"
+#include "widgets/specialspinbox.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::OwnerEditDlg */
@@ -64,8 +63,11 @@ OwnerEditDlg::OwnerEditDlg(unsigned long ppid, QWidget* parent)
   connect(edtPassword, SIGNAL(returnPressed()), SLOT(slot_ok()));
 
   myHostEdit = new QLineEdit();
-  myPortSpin = new QSpinBox();
-  myPortSpin->setRange(0, 0xFFFF);
+#if (QT_VERSION >= QT_VERSION_CHECK(4, 7, 0))
+  myHostEdit->setPlaceholderText(tr("Protocol default"));
+#endif
+  myPortSpin = new SpecialSpinBox(0, 0xffff, tr("Auto"));
+  myPortSpin->setValue(0);
 
   int i = 0;
   QLabel* lbl;
@@ -88,6 +90,8 @@ OwnerEditDlg::OwnerEditDlg(unsigned long ppid, QWidget* parent)
 
 #undef ADDWIDGET
 
+  lay->setRowStretch(i++, 2);
+
   QDialogButtonBox* buttons = new QDialogButtonBox();
   buttons->addButton(QDialogButtonBox::Ok);
   buttons->addButton(QDialogButtonBox::Cancel);
@@ -106,8 +110,6 @@ OwnerEditDlg::OwnerEditDlg(unsigned long ppid, QWidget* parent)
 
   protocolName->setText(protocol->name().c_str());
   protocolName->setPrependPixmap(IconManager::instance()->iconForProtocol(ppid));
-  myHostEdit->setText(protocol->defaultServerHost().c_str());
-  myPortSpin->setValue(protocol->defaultServerPort());
 
   {
     Licq::OwnerReadGuard o(ppid);
@@ -154,9 +156,8 @@ void OwnerEditDlg::slot_ok()
     o->setPassword(pwd.toLocal8Bit().constData());
     o->SetSavePassword(chkSave->isChecked());
     o->setServer(myHostEdit->text().toLatin1().constData(), myPortSpin->value());
+    o->save(Licq::Owner::SaveOwnerInfo);
   }
-
-  Licq::gDaemon.SaveConf();
 
   close();
 }

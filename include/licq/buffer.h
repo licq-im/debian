@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010,2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,41 +22,11 @@
 
 #include "logging/log.h"
 
-#include <map>
 #include <string>
-
-#include <boost/shared_array.hpp>
-#include <boost/shared_ptr.hpp>
 
 
 namespace Licq
 {
-
-class OscarTlv
-{
-public:
-  OscarTlv(unsigned short type = 0, unsigned short length = 0, const char* data = NULL);
-
-  OscarTlv(const OscarTlv& c);
-
-  unsigned short getType() const                     { return myType; }
-  unsigned short getLength() const                   { return myLen; }
-  boost::shared_array<unsigned char> getData() const { return myData; }
-
-  void setType(unsigned short type) { myType = type; }
-  void setData(unsigned char* data, unsigned short length);
-
-private:
-  unsigned short myType;
-  unsigned short myLen;
-  boost::shared_array<unsigned char> myData;
-
-  friend class Buffer;
-};
-
-typedef boost::shared_ptr<OscarTlv> TlvPtr;
-typedef std::map<unsigned short, TlvPtr> TlvList;
-
 
 class Buffer
 {
@@ -64,33 +34,57 @@ public:
   Buffer();
   Buffer(unsigned long _nSize);
   Buffer(const Buffer&);
-  ~Buffer();
+  virtual ~Buffer();
 
-  Buffer& operator=(Buffer&);
-  Buffer& operator+=(Buffer&);
-  friend Buffer operator+(Buffer&, Buffer&);
+  virtual Buffer& operator=(const Buffer&);
+  Buffer& operator+=(const Buffer&);
+  friend Buffer operator+(const Buffer&, const Buffer&);
 
-   //-- Big Endian --
-  char* PackBE(Buffer*);
-   char *PackBE(const char *data, int size);
-   char *PackStringBE(const char *data, unsigned short max = 0);
-   char *PackUnsignedShortBE(unsigned short data);
-   char *PackUnsignedLongBE(unsigned long data);
+  /// Add an unsigned 32 bit little endian integer from the buffer
+  void packUInt32LE(uint32_t data);
 
-  char* Pack(Buffer*);
-   char *Pack(const char *data, int size);
+  /// Add an unsigned 32 bit big endian integer from the buffer
+  void packUInt32BE(uint32_t data);
 
-  char* pack(const std::string& data)
-  { return Pack(data.c_str(), data.size()); }
+  /// Add an unsigned 16 bit little endian integer from the buffer
+  void packUInt16LE(uint16_t data);
 
-   char *PackLNTS(const char *);
-   char *PackString(const char *data, unsigned short max = 0);
-  char* packString(const std::string& data, unsigned short max = 0)
-  { return PackString(data.c_str(), max); }
-   char *PackUnsignedShort(unsigned short data);
-   char *PackUnsignedLong(unsigned long data);
-   char *PackChar(char data);
+  /// Add an unsigned 16 bit big endian integer from the buffer
+  void packUInt16BE(uint16_t data);
+
+  /// Add an unsigned 8 bit integer from the buffer
+  void packUInt8(uint8_t data);
+
+  /// Add an signed 8 bit integer from the buffer
+  void packInt8(int8_t data);
+
+  /// Add binary data
+  void packRaw(const void* data, size_t length);
+  void packRaw(const std::string& data) { packRaw(data.c_str(), data.size()); }
+
+  /// Add a null terminated string preceded by a 16bit little endian length
+  void packShortNullStringLE(const std::string& data);
+
+  /// Add a string preceded by a 32bit little endian length
+  void packString32LE(const char* data, size_t length);
+  void packString32LE(const std::string& data)
+  { packString32LE(data.c_str(), data.size()); }
+
+  void Pack(Buffer*);
+
   void Copy(Buffer*);
+
+  // Deprecated add functions
+  void PackUnsignedLong(unsigned long data) { packUInt32LE(data); }
+  void PackUnsignedLongBE(unsigned long data) { packUInt32BE(data); }
+  void PackUnsignedShort(unsigned short data) { packUInt16LE(data); }
+  void PackUnsignedShortBE(unsigned short data) { packUInt16BE(data); }
+  void PackChar(char data) { packInt8(data); }
+  void Pack(const char* data, int size) { packRaw(data, size); }
+  void Pack(const uint8_t* data, int size) { packRaw(data, size); }
+  void pack(const std::string& data) { packRaw(data); }
+  void PackString(const char *data) { packShortNullStringLE(data); }
+  void packString(const std::string& data) { packShortNullStringLE(data); }
 
    /**
     * Log the packet with the given message.
@@ -101,16 +95,12 @@ public:
 #endif
    ;
 
-   void Clear();
+  virtual void Clear();
    void Reset();
    bool Empty() const;
    bool Full() const;
    bool End()  { return ( getDataPosRead() >= (getDataStart() + getDataSize()) ); }
    void Create(unsigned long _nDataSize = 0);
-
-   //-- Big Endian --
-   unsigned long UnpackUnsignedLongBE();
-   unsigned short UnpackUnsignedShortBE();
 
   Buffer& operator>>(char &in);
   Buffer& operator>>(unsigned char &in);
@@ -127,23 +117,68 @@ public:
 
   /**
    * Get a string from the buffer
-   * Length of string is a 16 bit word at beginning of data
+   * Length of string is a 8 bit byte at beginning of data
    *
    * @return String read
    */
-  std::string unpackString();
+  std::string unpackByteString();
 
-   char *UnpackRaw(char *, unsigned short);
-   char *UnpackBinBlock(char *, unsigned short);
-   char *UnpackString(char *, unsigned short);
-   char *UnpackString();                // Need to delete[] returned string
-   char *UnpackStringBE(char *, unsigned short);
-   char *UnpackStringBE();              // Need to delete[] returned string
-   char *UnpackUserString();            // Need to delete[] returned string
-   unsigned long UnpackUnsignedLong();
-   unsigned long UnpackUinString();
-   unsigned short UnpackUnsignedShort();
-   char UnpackChar();
+  /**
+   * Get a string from the buffer
+   * Length of string is a 16 bit little endian word at beginning of data
+   *
+   * @return String read
+   */
+  std::string unpackShortStringLE();
+
+  /**
+   * Get a string from the buffer
+   * Length of string is a 16 bit big endian word at beginning of data
+   *
+   * @return String read
+   */
+  std::string unpackShortStringBE();
+
+  /**
+   * Get a string from the buffer
+   * Length of string is a 32 bit little endian word at beginning of data
+   *
+   * @return String read
+   */
+  std::string unpackLongStringLE();
+
+  /**
+   * Get a string from the buffer
+   * Length of string is a 32 bit big endian word at beginning of data
+   *
+   * @return String read
+   */
+  std::string unpackLongStringBE();
+
+  /// Get an unsigned 32 bit little endian integer from the buffer
+  uint32_t unpackUInt32LE();
+
+  /// Get an unsigned 32 bit big endian integer from the buffer
+  uint32_t unpackUInt32BE();
+
+  /// Get an unsigned 16 bit little endian integer from the buffer
+  uint16_t unpackUInt16LE();
+
+  /// Get an unsigned 16 bit big endian integer from the buffer
+  uint16_t unpackUInt16BE();
+
+  /// Get an unsigned 8 bit integer from the buffer
+  uint8_t unpackUInt8();
+
+  /// Get a signed 8 bit integer from the buffer
+  int8_t unpackInt8();
+
+  // Deprecated integer access functions
+  unsigned long UnpackUnsignedLongBE() { return unpackUInt32BE(); }
+  unsigned short UnpackUnsignedShortBE() { return unpackUInt16BE(); }
+  unsigned long UnpackUnsignedLong() { return unpackUInt32LE(); }
+  unsigned short UnpackUnsignedShort() { return unpackUInt16LE(); }
+  char UnpackChar() { return unpackInt8(); }
 
    char *getDataStart() const           { return m_pDataStart; };
    char *getDataPosRead() const         { return m_pDataPosRead; };
@@ -151,35 +186,23 @@ public:
    unsigned long getDataSize() const    { return m_pDataPosWrite - m_pDataStart; };
    unsigned long getDataMaxSize() const { return m_nDataSize; };
 
+  /**
+   * Get number of available bytes left to read
+   */
+  size_t remainingDataToRead() const
+  { return m_pDataPosWrite - m_pDataPosRead; }
+
+  /**
+   * Get number of available bytes left to write
+   */
+  size_t remainingDataToWrite() const
+  { return m_pDataStart + m_nDataSize - m_pDataPosWrite; }
+
    void setDataSize(unsigned long _nDataSize)  { m_nDataSize = _nDataSize; };
    void setDataPosWrite(char *_pDataPosWrite)  { m_pDataPosWrite = _pDataPosWrite; };
    void setDataPosRead(char *_pDataPosRead)  { m_pDataPosRead = _pDataPosRead; };
    void incDataPosWrite(unsigned long c)  { m_pDataPosWrite += c; };
    void incDataPosRead(unsigned long c)  { m_pDataPosRead += c; };
-
-   //--- OSCAR Related Functions ------
-
-   bool readTLV(int count = -1, int bytes = -1); // This should be called automatically if m_pTLV == 0
-
-   void PackTLV(unsigned short, unsigned short, const char *);
-  void PackTLV(unsigned short, unsigned short, Buffer*);
-  void PackTLV(const TlvPtr&);
-
-   unsigned short getTLVLen(unsigned short);
-   bool hasTLV(unsigned short);
-
-   unsigned long UnpackUnsignedLongTLV(unsigned short);
-   unsigned short UnpackUnsignedShortTLV(unsigned short);
-   unsigned char UnpackCharTLV(unsigned short);
-   char *UnpackStringTLV(unsigned short); // Need to delete[] returned string
-   //std::string UnpackStringTLV(unsigned short);
-  Buffer UnpackTLV(unsigned short);
-
-  TlvList getTlvList();
-  TlvPtr getTLV(unsigned short _nType);
-
-private:
-  Buffer& operator=(const Buffer&);
 
 protected:
 
@@ -187,10 +210,9 @@ protected:
         *m_pDataPosWrite,
         *m_pDataPosRead;
    unsigned long m_nDataSize;
-  TlvList myTLVs;
 };
 
-Buffer operator+(Buffer& b0, Buffer& b1);
+Buffer operator+(const Buffer& b0, const Buffer& b1);
 
 } // namespace Licq
 

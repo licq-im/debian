@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QTextCodec>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -43,13 +42,14 @@
 #include "contactlist/contactlist.h"
 
 #include "core/gui-defines.h"
-#include "core/licqgui.h"
 #include "core/messagebox.h"
 #include "core/signalmanager.h"
 
 #include "dialogs/adduserdlg.h"
 
 #include "helpers/support.h"
+
+#include "userdlg/userdlg.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::SearchUserDlg */
@@ -133,9 +133,9 @@ SearchUserDlg::SearchUserDlg()
   grp_lay->setRowStretch(row++, 1);
 
   ADDLINE(tr("Alias:"), edtNick);
-  ADDLINE(tr("First Name:"), edtFirst);
-  ADDLINE(tr("Last Name:"), edtLast);
-  ADDCMB(tr("Age Range:"), cmbAge, ages);
+  ADDLINE(tr("First name:"), edtFirst);
+  ADDLINE(tr("Last name:"), edtLast);
+  ADDCMB(tr("Age range:"), cmbAge, ages);
   ADDCMB(tr("Gender:"), cmbGender, genders);
   ADDCMB(tr("Language:"), cmbLanguage, languages);
 
@@ -145,18 +145,18 @@ SearchUserDlg::SearchUserDlg()
   ADDLINE(tr("City:"), edtCity);
   ADDLINE(tr("State:"), edtState);
   ADDCMB(tr("Country:"), cmbCountry, countries);
-  ADDLINE(tr("Company Name:"), edtCoName);
-  ADDLINE(tr("Company Department:"), edtCoDept);
-  ADDLINE(tr("Company Position:"), edtCoPos);
+  ADDLINE(tr("Company name:"), edtCoName);
+  ADDLINE(tr("Company department:"), edtCoDept);
+  ADDLINE(tr("Company position:"), edtCoPos);
 
-  ADDFULLLINE(tr("Email Address:"), edtEmail);
+  ADDFULLLINE(tr("Email address:"), edtEmail);
   ADDFULLLINE(tr("Keyword:"), edtKeyword);
 
 #undef ADDLINE
 #undef ADDFULLLINE
 #undef ADDCMB
 
-  chkOnlineOnly = new QCheckBox(tr("Return Online Users Only"));
+  chkOnlineOnly = new QCheckBox(tr("Return online users only"));
   grp_lay->addWidget(chkOnlineOnly, row++, 0, 1, 7);
 
   // Don't let comboboxes grow too much.
@@ -244,25 +244,22 @@ void SearchUserDlg::startSearch()
 
   if (edtUin->text().trimmed().isEmpty())
   {
-    QTextCodec* codec = QTextCodec::codecForName(Licq::gUserManager.defaultUserEncoding().c_str());
-    if (codec == 0)
-      codec = QTextCodec::codecForLocale();
     searchTag = gLicqDaemon->icqSearchWhitePages(
-        codec->fromUnicode(edtFirst->text()).data(),
-        codec->fromUnicode(edtLast->text()).data(),
-        codec->fromUnicode(edtNick->text()).data(),
-        edtEmail->text().toLocal8Bit().constData(),
+        edtFirst->text().toUtf8().constData(),
+        edtLast->text().toUtf8().constData(),
+        edtNick->text().toUtf8().constData(),
+        edtEmail->text().toUtf8().constData(),
         mins[cmbAge->currentIndex()],
         maxs[cmbAge->currentIndex()],
         cmbGender->currentIndex(),
         GetLanguageByIndex(cmbLanguage->currentIndex())->nCode,
-        codec->fromUnicode(edtCity->text()).data(),
-        codec->fromUnicode(edtState->text()).data(),
+        edtCity->text().toUtf8().constData(),
+        edtState->text().toUtf8().constData(),
         GetCountryByIndex(cmbCountry->currentIndex())->nCode,
-        codec->fromUnicode(edtCoName->text()).data(),
-        codec->fromUnicode(edtCoDept->text()).data(),
-        codec->fromUnicode(edtCoPos->text()).data(),
-        codec->fromUnicode(edtKeyword->text()).data(),
+        edtCoName->text().toUtf8().constData(),
+        edtCoDept->text().toUtf8().constData(),
+        edtCoPos->text().toUtf8().constData(),
+        edtKeyword->text().toUtf8().constData(),
         chkOnlineOnly->isChecked());
   }
   else
@@ -340,17 +337,14 @@ void SearchUserDlg::searchFound(const Licq::SearchData* s)
 {
   QString text;
   QTreeWidgetItem* item = new QTreeWidgetItem(foundView);
-  QTextCodec* codec = QTextCodec::codecForName(Licq::gUserManager.defaultUserEncoding().c_str());
-  if (codec == NULL)
-    codec = QTextCodec::codecForLocale();
 
   item->setData(0, Qt::UserRole, QVariant::fromValue(s->userId()));
-  item->setText(0, codec->toUnicode(s->alias().c_str()));
+  item->setText(0, QString::fromUtf8(s->alias().c_str()));
 
   item->setTextAlignment(1, Qt::AlignRight);
   item->setText(1, s->userId().accountId().c_str());
 
-  item->setText(2, codec->toUnicode(s->firstName().c_str()) + " " + codec->toUnicode(s->lastName().c_str()));
+  item->setText(2, QString::fromUtf8(s->firstName().c_str()) + " " + QString::fromUtf8(s->lastName().c_str()));
 
   item->setText(3, s->email().c_str());
 
@@ -435,7 +429,7 @@ void SearchUserDlg::viewInfo()
     Licq::UserId userId = current->data(0, Qt::UserRole).value<Licq::UserId>();
 
     Licq::gUserManager.addUser(userId, false);
-    gLicqGui->showInfoDialog(mnuUserGeneral, userId, false, true);
+    UserDlg::showDialog(userId, UserDlg::GeneralPage, true);
   }
 }
 

@@ -1,8 +1,20 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 /* Socket routine descriptions */
@@ -47,6 +59,7 @@ extern "C" {
   #define socklen_t SOCKS5_OPTLEN
 #endif
 
+#include <licq/buffer.h>
 #include <licq/proxy.h>
 #include <licq/logging/log.h>
 
@@ -56,7 +69,6 @@ extern "C" {
 using namespace std;
 using Licq::Buffer;
 using Licq::INetSocket;
-using Licq::SrvSocket;
 using Licq::TCPSocket;
 using Licq::UDPSocket;
 using Licq::UserId;
@@ -66,11 +78,6 @@ char* Licq::ip_ntoa(unsigned long in, char *buf)
   inet_ntop(AF_INET, &in, buf, 32);
   return buf;
 }
-
-
-//=====Constants================================================================
-const unsigned long MAX_RECV_SIZE = 4096;
-
 
 
 //=====INetSocket===============================================================
@@ -171,7 +178,6 @@ INetSocket::INetSocket(int sockType, const string& logId, const UserId& userId)
   : myDescriptor(-1),
     myLogId(logId),
     mySockType(sockType),
-    myVersion(0),
     myErrorType(ErrorNone),
     myProxy(NULL),
     myUserId(userId)
@@ -190,15 +196,15 @@ void INetSocket::DumpPacket(Buffer *b, bool isReceiver)
 {
   if (!isReceiver)
   {
-    b->log(Log::Debug, "Packet (%sv%lu, %lu bytes) sent:\n(%s:%d -> %s:%d)",
-           myLogId.c_str(), Version(), b->getDataSize(),
+    b->log(Log::Debug, "Packet (%s, %lu bytes) sent:\n(%s:%d -> %s:%d)",
+           myLogId.c_str(), b->getDataSize(),
            getLocalIpString().c_str(), getLocalPort(),
            getRemoteIpString().c_str(), getRemotePort());
   }
   else
   {
-    b->log(Log::Debug, "Packet (%sv%lu, %lu bytes) received:\n(%s:%d <- %s:%d)",
-           myLogId.c_str(), Version(), b->getDataSize(),
+    b->log(Log::Debug, "Packet (%s, %lu bytes) received:\n(%s:%d <- %s:%d)",
+           myLogId.c_str(), b->getDataSize(),
            getLocalIpString().c_str(), getLocalPort(),
            getRemoteIpString().c_str(), getRemotePort());
   }
@@ -457,7 +463,6 @@ bool INetSocket::StartServer(unsigned int _nPort)
 //-----INetSocket::CloseConnection-------------------------------------------
 void INetSocket::CloseConnection()
 {
-  myRecvBuffer.Clear();
   if (myDescriptor != -1)
   {
     ::shutdown(myDescriptor, 2);
@@ -466,190 +471,60 @@ void INetSocket::CloseConnection()
   }
 }
 
-//-----INetSocket::SendRaw------------------------------------------------------
-bool INetSocket::SendRaw(Buffer *b)
+bool INetSocket::send(Buffer& buf)
 {
   // send the packet
-  int nBytesSent;
-  unsigned long nTotalBytesSent = 0;
-  while (nTotalBytesSent < b->getDataSize())
+  int bytesLeft = buf.getDataSize();
+  char* dataPos = buf.getDataStart();
+  while (bytesLeft > 0)
   {
-    nBytesSent = send(myDescriptor, b->getDataStart() + nTotalBytesSent,
-                      b->getDataSize() - nTotalBytesSent, 0);
-    if (nBytesSent < 0)
+    ssize_t bytesSent = ::send(myDescriptor, dataPos, bytesLeft, 0);
+    if (bytesSent < 0)
     {
+      if (errno == EINTR)
+        continue;
       myErrorType = ErrorErrno;
       return(false);
     }
-    nTotalBytesSent += nBytesSent;
+    bytesLeft -= bytesSent;
+    dataPos += bytesSent;
   }
 
   // Print the packet
-  DumpPacket(b, false);
+  DumpPacket(&buf, false);
   return (true);
 }
 
-
-/*-----INetSocket::RecvRaw---------------------------------------------------
- * Receive data on the socket.
- *---------------------------------------------------------------------------*/
-bool INetSocket::RecvRaw()
+bool INetSocket::receive(Buffer& buf, size_t maxlength, bool dump)
 {
-  char *buffer = new char[MAX_RECV_SIZE];
+  // Don't try to read more than the buffer has room for
+  if (buf.Full())
+    return true;
+  if (!buf.Empty() && maxlength > buf.remainingDataToWrite())
+    maxlength = buf.remainingDataToWrite();
+
+  char* buffer = new char[maxlength];
   errno = 0;
-  int nBytesReceived = recv(myDescriptor, buffer, MAX_RECV_SIZE, 0);
-  if (nBytesReceived <= 0)
+  int f = fcntl(myDescriptor, F_GETFL);
+  fcntl(myDescriptor, F_SETFL, f | O_NONBLOCK);
+  ssize_t bytesReceived = recv(myDescriptor, buffer, maxlength, 0);
+  fcntl(myDescriptor, F_SETFL, f & ~O_NONBLOCK);
+  if (bytesReceived <= 0)
   {
     delete[] buffer;
     myErrorType = ErrorErrno;
+    if (errno == EAGAIN || errno == EWOULDBLOCK)
+      return true;
     return (false);
   }
-  myRecvBuffer.Create(nBytesReceived);
-  myRecvBuffer.Pack(buffer, nBytesReceived);
+  if (buf.Empty())
+    buf.Create(bytesReceived);
+  buf.packRaw(buffer, bytesReceived);
   delete[] buffer;
 
   // Print the packet
-  DumpPacket(&myRecvBuffer, true);
-
-  return (true);
-}
-
-//=====SrvSocket===============================================================
-
-SrvSocket::SrvSocket(const UserId& userId)
-  : INetSocket(SOCK_STREAM, "SRV", userId)
-{
-  // Empty
-}
-
-SrvSocket::~SrvSocket()
-{
-  // Empty
-}
-
-
-/*-----SrvSocket::SendPacket---------------------------------------------------
- * Sends a packet on a socket.  The socket is blocking, so we are guaranteed
- * that the entire packet will be sent, however, it may block if the tcp
- * buffer is full.  This should not be a problem unless we are sending a huge
- * packet.
- *---------------------------------------------------------------------------*/
-
-bool SrvSocket::SendPacket(Buffer *b_in)
-{
-  Buffer *b = b_in;
-
-  unsigned long nTotalBytesSent = 0;
-  int nBytesSent = 0;
-
-  // send the packet
-  nTotalBytesSent = 0;
-  errno = 0;
-  while (nTotalBytesSent < b->getDataSize())
-  {
-    nBytesSent = send(myDescriptor, b->getDataStart() + nTotalBytesSent,
-                      b->getDataSize() - nTotalBytesSent, 0);
-    if (nBytesSent <= 0)
-    {
-      if (nBytesSent < 0 && errno == EINTR) continue;
-      myErrorType = ErrorErrno;
-      if (b != b_in) delete b;
-      return(false);
-    }
-    nTotalBytesSent += nBytesSent;
-  }
-
-  // Print the packet
-  DumpPacket(b, false);
-
-  if (b != b_in) delete b;
-  return (true);
-}
-
-/*-----SrvSocket::ReceivePacket------------------------------------------------
- * Receive data on the socket.  Checks the buffer to see if it is empty, if
- * so, then it will create it using either the size read in from the socket
- * (the first two bytes available) or the given size.
- *---------------------------------------------------------------------------*/
-bool SrvSocket::RecvPacket()
-{
-  if (!myRecvBuffer.Empty())
-  {
-    gLog.error("Internal error: SrvSocket::RecvPacket(): Called with full buffer (%lu bytes).",
-        myRecvBuffer.getDataSize());
-    return (true);
-  }
-
-  int nBytesReceived = 0;
-  errno = 0;
-
-  // Check if the buffer is empty
-  char *buffer = new char[6];
-  int nSixBytes = 0;
-  while (nSixBytes != 6)
-  {
-    nBytesReceived = read(myDescriptor, buffer + nSixBytes, 6 - nSixBytes);
-    if (nBytesReceived <= 0)
-    {
-      if (nBytesReceived == 0)
-        gLog.warning(tr("server socket was closed!!!\n"));
-      else {
-        myErrorType = ErrorErrno;
-        gLog.warning(tr("Error during receiving from server socket:\n%s"),
-                     errorStr().c_str());
-      }
-      delete[] buffer;
-      return (false);
-    }
-    nSixBytes += nBytesReceived;
-  }
-
-  // now we start to verify the FLAP header
-  if (buffer[0] != 0x2a) {
-    gLog.warning("Server send bad packet start code: %d.", buffer[0]);
-    gLog.warning("Sixbyte: %02x %02x %02x %02x %02x %02x",
-              buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5]);
-    myErrorType = ErrorErrno;
-    delete[] buffer;
-    return false;
-  }
-
-  // DAW maybe verify sequence number ?
-
-  unsigned short nLen = ((unsigned char)buffer[5]) + (((unsigned char)buffer[4]) << 8);
-#if 0
-  // JON Recv size does not matter here i believe, m_xRevBuffer can create
-  // a large enough packet, if there is enough memory.  It is not a static
-  // buffer like RecvRaw
-  if (nLen >= MAX_RECV_SIZE) {
-    gLog.warning(tr("Server send bad packet with suspiciously large size: %d."), nLen);
-    myErrorType = ErrorErrno;
-    delete[] buffer;
-    return false;
-  }
-#endif
-  // push the 6 bytes at the beginning of the packet again..
-  myRecvBuffer.Create(nLen + 6);
-  myRecvBuffer.Pack(buffer, 6);
-  delete[] buffer;
-
-  while (!myRecvBuffer.Full())
-  {
-    // Determine the number of bytes left to be read into the buffer
-    unsigned long nBytesLeft = myRecvBuffer.getDataStart() +
-        myRecvBuffer.getDataMaxSize() - myRecvBuffer.getDataPosWrite();
-
-    nBytesReceived = read(myDescriptor, myRecvBuffer.getDataPosWrite(), nBytesLeft);
-    if (nBytesReceived == 0 ||
-        (nBytesReceived < 0 && errno != EINTR) )
-    {
-      myErrorType = ErrorErrno;
-      return (false);
-    }
-    myRecvBuffer.incDataPosWrite(nBytesReceived);
-  }
-
-  DumpPacket(&myRecvBuffer, true);
+  if (dump)
+    DumpPacket(&buf, true);
 
   return (true);
 }
@@ -657,15 +532,13 @@ bool SrvSocket::RecvPacket()
 
 //=====TCPSocket===============================================================
 TCPSocket::TCPSocket(const UserId& userId)
-  : INetSocket(SOCK_STREAM, "TCP", userId),
-    myChannel(ChannelNormal)
+  : INetSocket(SOCK_STREAM, "TCP", userId)
 {
   m_p_SSL = NULL;
 }
 
 TCPSocket::TCPSocket()
-  : INetSocket(SOCK_STREAM, "TCP", UserId()),
-    myChannel(ChannelNormal)
+  : INetSocket(SOCK_STREAM, "TCP", UserId())
 {
   m_p_SSL = NULL;
 }
@@ -727,7 +600,6 @@ void TCPSocket::TransferConnectionFrom(TCPSocket &from)
   myRemoteAddr = from.myRemoteAddr;
   myUserId = from.myUserId;
 
-  myVersion = from.myVersion;
   if (from.m_p_SSL)
   {
     pthread_mutex_lock(&from.mutex_ssl);
@@ -741,7 +613,6 @@ void TCPSocket::TransferConnectionFrom(TCPSocket &from)
   }
   else
     m_p_SSL = NULL;
-  ClearRecvBuffer();
   from.myDescriptor = -1;
   from.CloseConnection();
 }
@@ -752,254 +623,16 @@ void TCPSocket::TransferConnectionFrom(TCPSocket &from)
  * buffer is full.  This should not be a problem unless we are sending a huge
  * packet.
  *---------------------------------------------------------------------------*/
-bool TCPSocket::SendPacket(Buffer *b_in)
+bool TCPSocket::send(Buffer& buf)
 {
-  char *pcSize = new char[2];
-  Buffer *b = b_in;
-
-  pcSize[0] = (b->getDataSize()) & 0xFF;
-  pcSize[1] = (b->getDataSize() >> 8) & 0xFF;
+  if (m_pSSL == NULL)
+    return INetSocket::send(buf);
 
 #ifdef USE_OPENSSL
-  if (m_pSSL != NULL)
-  {
-    int i, j;
-    ERR_clear_error();
-    pthread_mutex_lock(&mutex_ssl);
-    i = SSL_write(m_pSSL, pcSize, 2);
-    j = SSL_get_error(m_pSSL, i);
-    pthread_mutex_unlock(&mutex_ssl);
-    if (j != SSL_ERROR_NONE)
-    {
-      const char *file; int line;
-      unsigned long err;
-      switch (j)
-      {
-        case SSL_ERROR_SSL:
-          err = ERR_get_error_line(&file, &line);
-          gLog.error("SSL_write error = %lx, %s:%i", err, file, line);
-          ERR_clear_error();
-          break;
-        default:
-          gLog.error("SSL_write error %d, SSL_%d", i, j);
-          break;
-      }
-    }
-
-    ERR_clear_error();
-    pthread_mutex_lock(&mutex_ssl);
-    i = SSL_write(m_pSSL, b->getDataStart(), b->getDataSize());
-    j = SSL_get_error(m_pSSL, i);
-    pthread_mutex_unlock(&mutex_ssl);
-    if (j != SSL_ERROR_NONE)
-    {
-      const char *file; int line;
-      unsigned long err;
-      switch (j)
-      {
-        case SSL_ERROR_SSL:
-          err = ERR_get_error_line(&file, &line);
-          gLog.error("SSL_write error = %lx, %s:%i", err, file, line);
-          ERR_clear_error();
-          break;
-        default:
-          gLog.error("SSL_write error %d, SSL_%d\n", i, j);
-          break;
-      }
-    }
-  }
-  else
-  {
-#endif
-
-  unsigned long nTotalBytesSent = 0;
-  int nBytesSent = 0;
-
-  //  send the length of the packet, close the connection and return false if unable to send
-  while (nTotalBytesSent < 2) {
-    nBytesSent = send(myDescriptor, pcSize + nTotalBytesSent, 2 - nTotalBytesSent, 0);
-    if (nBytesSent <= 0) {
-      delete[] pcSize;
-      if (b != b_in) delete b;
-      myErrorType = ErrorErrno;
-      return (false);
-    }
-    nTotalBytesSent += nBytesSent;
-  }
-  delete[] pcSize;
-
-  // send the rest of the packet
-  nTotalBytesSent = 0;
-  while (nTotalBytesSent < b->getDataSize())
-  {
-    nBytesSent = send(myDescriptor, b->getDataStart() + nTotalBytesSent,
-                      b->getDataSize() - nTotalBytesSent, 0);
-    if (nBytesSent <= 0)
-    {
-      myErrorType = ErrorErrno;
-      if (b != b_in) delete b;
-      return(false);
-    }
-    nTotalBytesSent += nBytesSent;
-  }
-
-#ifdef USE_OPENSSL
-  }
-#endif
-
-  // Print the packet
-  DumpPacket(b, false);
-
-  if (b != b_in) delete b;
-  return (true);
-}
-
-
-/*-----TCPSocket::ReceivePacket------------------------------------------------
- * Receive data on the socket.  Checks the buffer to see if it is empty, if
- * so, then it will create it using either the size read in from the socket
- * (the first two bytes available) or the given size.  Then determine the
- * number of bytes needed to fill the buffer and call recv with this amount.
- * Note if the buffer is not filled, then the next call to this function will
- * append more bytes until the buffer is full.  If more bytes are available
- * then we take, then the socket will still be readable after we end.  Also
- * note that it is the responsibility of the calling procedure to reset the
- * RecvBuffer if it is full as this is not done here.
- *---------------------------------------------------------------------------*/
-bool TCPSocket::RecvPacket()
-{
-  if (myRecvBuffer.Full())
-  {
-    gLog.warning(tr("Internal error: TCPSocket::RecvPacket(): Called with full buffer (%lu bytes)."),
-        myRecvBuffer.getDataSize());
-    return (true);
-  }
-
-  int nBytesReceived = 0;
-  errno = 0;
-
-  // Check if the buffer is empty
-  if (myRecvBuffer.Empty())
-  {
-    char *buffer = new char[2];
-    int nTwoBytes = 0;
-    while (nTwoBytes != 2)
-    {
-#ifdef USE_OPENSSL
-      if (m_pSSL)
-      {
-        pthread_mutex_lock(&mutex_ssl);
-        nBytesReceived = SSL_read(m_pSSL, buffer, 2);
-        int tmp = SSL_get_error(m_pSSL, nBytesReceived);
-        pthread_mutex_unlock(&mutex_ssl);
-        switch (tmp)
-        {
-          case SSL_ERROR_NONE:
-            break;
-          case SSL_ERROR_WANT_READ:
-          case SSL_ERROR_WANT_WRITE:
-          case SSL_ERROR_WANT_X509_LOOKUP:
-            break;
-          case SSL_ERROR_ZERO_RETURN:
-            myErrorType = ErrorErrno;
-            errno = 0;
-            delete[] buffer;
-            return (false);
-          case SSL_ERROR_SYSCALL:
-            myErrorType = ErrorErrno;
-            delete[] buffer;
-            return (false);
-          case SSL_ERROR_SSL:
-            myErrorType = ErrorInternal;
-            delete[] buffer;
-            return (false);
-        }
-      }
-      else
-      {
-#endif
-      nBytesReceived = recv(myDescriptor, buffer + nTwoBytes, 2 - nTwoBytes, 0);
-      if (nBytesReceived <= 0)
-      {
-        myErrorType = ErrorErrno;
-        delete[] buffer;
-        return (false);
-      }
-#ifdef USE_OPENSSL
-      }
-#endif
-      nTwoBytes += nBytesReceived;
-    }
-    myRecvBuffer.Create(((unsigned char)buffer[0]) +
-                         (((unsigned char)buffer[1]) << 8 ));
-    delete[] buffer;
-  }
-
-  // Determine the number of bytes left to be read into the buffer
-  unsigned long nBytesLeft = myRecvBuffer.getDataStart() +
-      myRecvBuffer.getDataMaxSize() - myRecvBuffer.getDataPosWrite();
-#ifdef USE_OPENSSL
-  if (m_pSSL != NULL)
-  {
-    pthread_mutex_lock(&mutex_ssl);
-    nBytesReceived = SSL_read(m_pSSL, myRecvBuffer.getDataPosWrite(), nBytesLeft);
-    int tmp = SSL_get_error(m_pSSL, nBytesReceived);
-    pthread_mutex_unlock(&mutex_ssl);
-    switch (tmp)
-    {
-      case SSL_ERROR_NONE:
-        break;
-      case SSL_ERROR_WANT_READ:
-      case SSL_ERROR_WANT_WRITE:
-      case SSL_ERROR_WANT_X509_LOOKUP:
-        return (true);
-      case SSL_ERROR_ZERO_RETURN:
-        myErrorType = ErrorErrno;
-        errno = 0;
-        return (false);
-      case SSL_ERROR_SYSCALL:
-        myErrorType = ErrorErrno;
-        return (false);
-      case SSL_ERROR_SSL:
-        myErrorType = ErrorInternal;
-        return (false);
-    }
-  }
-  else
-  {
-#endif
-  int f = fcntl(myDescriptor, F_GETFL);
-  fcntl(myDescriptor, F_SETFL, f | O_NONBLOCK);
-  nBytesReceived = recv(myDescriptor, myRecvBuffer.getDataPosWrite(), nBytesLeft, 0);
-  fcntl(myDescriptor, F_SETFL, f & ~O_NONBLOCK);
-  if (nBytesReceived <= 0)
-  {
-    myErrorType = ErrorErrno;
-    if (errno == EAGAIN || errno == EWOULDBLOCK) return (true);
-    return (false);
-  }
-#ifdef USE_OPENSSL
-  }
-#endif
-  myRecvBuffer.incDataPosWrite(nBytesReceived);
-
-  // Print the packet if it's full
-  if (myRecvBuffer.Full())
-    DumpPacket(&myRecvBuffer, true);
-
-  return (true);
-}
-
-
-bool TCPSocket::SSLSend(Buffer *b_in)
-{
-#ifdef USE_OPENSSL
-  if (m_pSSL == 0) return false;
-
   int i, j;
   ERR_clear_error();
   pthread_mutex_lock(&mutex_ssl);
-  i = SSL_write(m_pSSL, b_in->getDataStart(), b_in->getDataSize());
+  i = SSL_write(m_pSSL, buf.getDataStart(), buf.getDataSize());
   j = SSL_get_error(m_pSSL, i);
   pthread_mutex_unlock(&mutex_ssl);
   if (j != SSL_ERROR_NONE)
@@ -1019,24 +652,28 @@ bool TCPSocket::SSLSend(Buffer *b_in)
     }
   }
 
-  DumpPacket(b_in, false);
+  DumpPacket(&buf, false);
 
   return true;
-#else
-  return false;
 #endif
 }
 
-
-bool TCPSocket::SSLRecv()
+bool TCPSocket::receive(Buffer& buf, size_t maxlength, bool dump)
 {
-#ifdef USE_OPENSSL
-  if (m_pSSL == 0) return false;
+  // If SSL not enabled for this socket, use normal receive
+  if (m_pSSL == NULL)
+    return INetSocket::receive(buf, maxlength, dump);
 
-  char *buffer = new char[MAX_RECV_SIZE];
+#ifdef USE_OPENSSL
+  if (buf.Full())
+    return true;
+  if (!buf.Empty() && maxlength > buf.remainingDataToWrite())
+    maxlength = buf.remainingDataToWrite();
+
+  char* buffer = new char[maxlength];
   errno = 0;
   pthread_mutex_lock(&mutex_ssl);
-  int nBytesReceived = SSL_read(m_pSSL, buffer, MAX_RECV_SIZE);
+  int nBytesReceived = SSL_read(m_pSSL, buffer, maxlength);
   int tmp = SSL_get_error(m_pSSL, nBytesReceived);
   pthread_mutex_unlock(&mutex_ssl);
   switch (tmp)
@@ -1064,16 +701,16 @@ bool TCPSocket::SSLRecv()
     myErrorType = ErrorErrno;
     return (false);
   }
-  myRecvBuffer.Create(nBytesReceived);
-  myRecvBuffer.Pack(buffer, nBytesReceived);
+  if (buf.Empty())
+    buf.Create(nBytesReceived);
+  buf.packRaw(buffer, nBytesReceived);
   delete[] buffer;
 
   // Print the packet
-  DumpPacket(&myRecvBuffer, true);
+  if (dump)
+    DumpPacket(&buf, true);
 
   return (true);
-#else
-  return false;
 #endif
 }
 

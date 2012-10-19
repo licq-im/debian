@@ -2176,7 +2176,6 @@ void Level::flush()
     if (encoding == NULL) encoding = p->encoding;
     p->icq->client->toUTF(text, encoding);*/
 /*text = Licq::gTranslator.toUnicode(text);*/
-  text = Licq::gTranslator.serverToClient(text);
     p->PrintQuoted(text.c_str());
     text = "";
 }
@@ -2442,7 +2441,7 @@ std::string RTF2HTML::Parse(const char *rtf)
     return s;
 }
 
-std::string IcqProtocol::parseRtf(const std::string& rtf)
+std::string LicqIcq::IcqProtocol::parseRtf(const std::string& rtf)
 {
     std::string str;
     char _RTF[] = "{\\rtf";

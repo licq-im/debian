@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -25,10 +25,11 @@
 #include <gloox/vcard.h>
 #include <licq/contactlist/user.h>
 
+#include <cstdlib>
 #include <iomanip>
 #include <sstream>
 
-using namespace Jabber;
+using namespace LicqJabber;
 
 gloox::VCard* UserToVCard::createVCard() const
 {
@@ -42,17 +43,17 @@ gloox::VCard* UserToVCard::createVCard() const
     card->addEmail(myUser->getEmail(), gloox::VCard::AddrTypePref);
 
   std::ostringstream tz;
-  if (myUser->GetTimezone() == Licq::User::TimezoneUnknown)
+  int offset = myUser->timezone();
+  if (offset == Licq::User::TimezoneUnknown)
     tz << "-00:00";
   else
   {
-    int offset = myUser->LocalTimeGMTOffset();
-    tz << (offset > 0 ? '-' : '+')
+    tz << (offset >= 0 ? '+' : '-')
        << std::setw(2) << std::setfill('0')
        << std::abs(offset) / 3600
        << ':'
        << std::setw(2) << std::setfill('0')
-       << std::abs(offset) % 3600;
+       << std::abs(offset / 60) % 60;
   }
   card->setTz(tz.str());
 

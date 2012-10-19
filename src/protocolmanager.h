@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,8 @@
 
 #include <licq/protocolmanager.h>
 
+#include <licq/thread/mutex.h>
+
 namespace Licq
 {
 class ProtocolSignal;
@@ -42,20 +44,11 @@ public:
    * Plugins should call gUserManager.addUser() instead
    *
    * @param userId User to add
-   * @param groupId Initial group, only used for ICQ contacts
    */
-  void addUser(const Licq::UserId& userId, int groupId);
-
-  /**
-   * Remove a user from the server side list
-   * Used by UserManager before removing user from local list.
-   * Plugins should call gUserManageer.removeUser() instead
-   *
-   * @param userId Id of user to remove
-   */
-  void removeUser(const Licq::UserId& userId);
+  void addUser(const Licq::UserId& userId);
 
   // From Licq::ProtocolManager
+  unsigned long getNextEventId();
   void updateUserAlias(const Licq::UserId& userId);
   unsigned long setStatus(const Licq::UserId& ownerId,
       unsigned newStatus, const std::string& message = KeepAutoResponse);
@@ -64,13 +57,11 @@ public:
       unsigned flags, const Licq::Color* color = NULL, unsigned long convoId = 0);
   unsigned long sendUrl(const Licq::UserId& userId, const std::string& url,
       const std::string& message, unsigned flags, const Licq::Color* color = NULL);
-  unsigned long requestUserAutoResponse(const Licq::UserId& userId);
   unsigned long fileTransferPropose(const Licq::UserId& userId, const std::string& filename,
       const std::string& message, const std::list<std::string>& files, unsigned flags);
   void fileTransferRefuse(const Licq::UserId& userId, const std::string& message,
       unsigned long eventId, unsigned long flag1, unsigned long flag2,
       bool viaServer = true);
-  void fileTransferCancel(const Licq::UserId& userId, unsigned long eventId);
   void fileTransferAccept(const Licq::UserId& userId, unsigned short port,
       unsigned long eventId = 0, unsigned long flag1 = 0, unsigned long flag2 = 0,
       const std::string& message = "", const std::string filename = "",
@@ -83,23 +74,19 @@ public:
   unsigned long requestUserPicture(const Licq::UserId& userId);
   unsigned long secureChannelOpen(const Licq::UserId& userId);
   unsigned long secureChannelClose(const Licq::UserId& userId);
-  void secureChannelCancelOpen(const Licq::UserId& userId, unsigned long eventId);
+  void cancelEvent(const Licq::UserId& userId, unsigned long eventId);
   void visibleListSet(const Licq::UserId& userId, bool visible);
   void invisibleListSet(const Licq::UserId& userId, bool invisible);
   void ignoreListSet(const Licq::UserId& userId, bool ignore);
 
 private:
   /**
-   * Get next available id to use for an event
-   */
-  unsigned long getNextEventId();
-
-  /**
    * @return true if the protocol is connected
    */
   bool isProtocolConnected(const Licq::UserId& userId);
 
-  void pushProtoSignal(Licq::ProtocolSignal* s, const Licq::UserId& userId);
+  unsigned long myNextEventId;
+  Licq::Mutex myNextEventIdMutex;
 };
 
 extern ProtocolManager gProtocolManager;

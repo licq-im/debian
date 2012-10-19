@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -126,6 +126,20 @@ public:
   virtual bool startProtocolPlugin(const std::string& name) = 0;
 
   /**
+   * Shut down and unload a general plugin
+   *
+   * @param plugin The plugin to shut down
+   */
+  virtual void unloadGeneralPlugin(GeneralPlugin::Ptr plugin) = 0;
+
+  /**
+   * Shut down and unload a protocol plugin
+   *
+   * @param plugin The plugin to shut down
+   */
+  virtual void unloadProtocolPlugin(ProtocolPlugin::Ptr plugin) = 0;
+
+  /**
    * Send an event to a general plugin
    *
    * Note: This function will return immediately. The event will be processed
@@ -149,12 +163,11 @@ public:
    * Send a signal to a protocol plugin
    *
    * Note: This function will return immediately. The event will be processed
-   * by the plugin asynchrony
+   * by the plugin asynchronously
    *
    * @param signal Signal to forward to the plugin, will be deleted by receiver
-   * @param protocolId Protocol to forward signal to
    */
-  virtual void pushProtocolSignal(ProtocolSignal* signal, unsigned long protocolId) = 0;
+  virtual void pushProtocolSignal(ProtocolSignal* signal) = 0;
 
 protected:
   virtual ~PluginManager() { /* Empty */ }

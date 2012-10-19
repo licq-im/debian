@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2010 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -123,8 +123,6 @@ private slots:
   void aboutToShowMenu();
   void aboutToShowGroupMenu();
   void aboutToShowFollowMeMenu();
-  void aboutToShowDebugMenu();
-  void changeDebug(QAction* action);
   void setFollowMeStatus(QAction* action);
   void setMainStatus(QAction* action);
   void toggleMainInvisibleStatus();
@@ -141,7 +139,6 @@ private slots:
   void showEditGrpDlg();
   void showRandomChatSearchDlg();
   void showSettingsDlg();
-  void showPluginDlg();
   void showGPGKeyManager();
 
 private:
@@ -159,13 +156,10 @@ private:
   QAction* myShowOfflineAction;
   QAction* myShowEmptyGroupsAction;
   QAction* myOptionsAction;
-  QAction* myPluginManagerAction;
+  QAction* myAccountManagerAction;
   QAction* myKeyManagerAction;
   QAction* mySaveOptionsAction;
   QAction* myShutdownAction;
-
-  // Actions on system menu
-  QAction* myAccountManagerAction;
 
   // Actions on user menu
   QAction* myAddGroupAction;
@@ -194,7 +188,6 @@ private:
   QAction* myStatusInvisibleAction;
 
   // Sub menus
-  QMenu* myDebugMenu;
   QMenu* myOwnerAdmMenu;
   QMenu* myUserAdmMenu;
   QMenu* myStatusMenu;
@@ -206,7 +199,6 @@ private:
   QActionGroup* myUserGroupActions;
   QActionGroup* myFollowMeActions;
 
-  QAction* myOwnerAdmSeparator;
   QAction* myGroupSeparator;
   QAction* myStatusSeparator;
   QAction* myIcqFollowMeSeparator;
@@ -228,12 +220,12 @@ public:
   /**
    * Constructor
    *
-   * @param ppid Protocol id for this owner
+   * @param userId Owner id
    * @param protoName Name of protocol to show in menus
    * @param sendFunctions Send function capabilities for protocol
    * @param parent Parent widget
    */
-  OwnerData(unsigned long ppid, const QString& protoName,
+  OwnerData(const Licq::UserId& userId, const QString& protoName,
       unsigned long sendFunctions, SystemMenu* parent);
 
   /**
@@ -282,14 +274,12 @@ private slots:
   void aboutToShowStatusMenu();
   void viewInfo();
   void viewHistory();
-  void showSecurityDlg();
-  void showRandomChatGroupDlg();
+  void showSettingsDlg();
   void setStatus(QAction* action);
   void toggleInvisibleStatus();
 
 private:
   Licq::UserId myUserId;
-  unsigned long myPpid;
   bool myUseAwayMessage;
 
   QMenu* myStatusMenu;
@@ -298,6 +288,7 @@ private:
   // Actions on owner menu
   QAction* myOwnerAdmInfoAction;
   QAction* myOwnerAdmHistoryAction;
+  QAction* myOwnerAdmSettingsAction;
 
   // Actions on status menu
   QAction* myStatusOnlineAction;

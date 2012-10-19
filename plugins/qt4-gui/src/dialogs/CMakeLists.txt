@@ -3,7 +3,7 @@ set(dialogs_SRCS
   aboutdlg.cpp
   addgroupdlg.cpp
   adduserdlg.cpp
-  authuserdlg.cpp
+  authdlg.cpp
   awaymsgdlg.cpp
   chatdlg.cpp
   customautorespdlg.cpp
@@ -12,6 +12,7 @@ set(dialogs_SRCS
   editfilelistdlg.cpp
   editgrpdlg.cpp
   filedlg.cpp
+  filterruledlg.cpp
   forwarddlg.cpp
   gpgkeymanager.cpp
   gpgkeyselect.cpp
@@ -25,13 +26,10 @@ set(dialogs_SRCS
   ownereditdlg.cpp
   ownermanagerdlg.cpp
   phonedlg.cpp
-  plugindlg.cpp
   randomchatdlg.cpp
   refusedlg.cpp
   registeruser.cpp
-  reqauthdlg.cpp
   searchuserdlg.cpp
-  securitydlg.cpp
   showawaymsgdlg.cpp
   statsdlg.cpp
   userselectdlg.cpp

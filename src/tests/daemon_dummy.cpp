@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq Developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
 
 #include <licq/daemon.h>
 
+namespace LicqTest {
+
 /**
  * This is a dummy implementation of the daemon class
  * The purpose of this class is to make sure gDaemon is defined so unittest
@@ -30,12 +32,14 @@ public:
   DaemonDummy() { }
 
   // From Licq::Daemon
-  pthread_t* Shutdown() { return NULL; }
+  void Shutdown() { /* Empty */ }
   const char* Version() const { return NULL; }
   void SaveConf() { }
   bool addUserEvent(Licq::User*, Licq::UserEvent*) { return false; }
   void rejectEvent(const Licq::UserId&, Licq::UserEvent*) { }
 };
 
-DaemonDummy gDaemonDummy;
+} // namespace LicqTest
+
+LicqTest::DaemonDummy gDaemonDummy;
 Licq::Daemon& Licq::gDaemon(gDaemonDummy);

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,9 +31,9 @@
 #include <QVBoxLayout>
 
 #include <licq/daemon.h>
-#include <licq/icq/icq.h>
 
 #include "settingsdlg.h"
+#include "widgets/specialspinbox.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::Settings::Network */
@@ -69,16 +69,12 @@ QWidget* Settings::Network::createPageNetwork(QWidget* parent)
   myPortsInLabel = new QLabel(tr("Port range:"));
   myPortsInLabel->setToolTip(tr("TCP port range for incoming connections."));
   myPortsInLayout->addWidget(myPortsInLabel);
-  myPortLowSpin = new QSpinBox();
-  myPortLowSpin->setRange(0, 0xFFFF);
-  myPortLowSpin->setSpecialValueText(tr("Auto"));
+  myPortLowSpin = new SpecialSpinBox(0, 0xFFFF, tr("Auto"));
   myPortsInLabel->setBuddy(myPortLowSpin);
   myPortsInLayout->addWidget(myPortLowSpin);
   myPortsIn2Label = new QLabel(tr("to"));
   myPortsInLayout->addWidget(myPortsIn2Label);
-  myPortHighSpin = new QSpinBox();
-  myPortHighSpin->setRange(0, 0xFFFF);
-  myPortHighSpin->setSpecialValueText(tr("Auto"));
+  myPortHighSpin = new SpecialSpinBox(0, 0xFFFF, tr("Auto"));
   myPortsIn2Label->setBuddy(myPortHighSpin);
   myPortsInLayout->addWidget(myPortHighSpin);
   myFirewallLayout->addLayout(myPortsInLayout, 1, 1);
@@ -114,6 +110,7 @@ QWidget* Settings::Network::createPageNetwork(QWidget* parent)
 
   myProxyPortSpin = new QSpinBox();
   myProxyPortSpin->setRange(0, 0xFFFF);
+  myProxyPortSpin->setAccelerated(true);
   myProxyPortLabel->setBuddy(myProxyPortSpin);
   myProxyLayout->addWidget(myProxyPortSpin, 2, 1);
 
@@ -139,21 +136,8 @@ QWidget* Settings::Network::createPageNetwork(QWidget* parent)
   connect(myProxyAuthEnabledCheck, SIGNAL(toggled(bool)), myProxyPasswdEdit, SLOT(setEnabled(bool)));
 
 
-  myIcqConnectionBox = new QGroupBox(tr("Connection"));
-  myIcqConnectionLayout = new QVBoxLayout(myIcqConnectionBox);
-
-  myReconnectAfterUinClashCheck = new QCheckBox(tr("Reconnect after Uin clash"));
-  myReconnectAfterUinClashCheck->setToolTip(tr("Licq can reconnect you when you got "
-        "disconnected because your Uin was used "
-        "from another location. Check this if you "
-        "want Licq to reconnect automatically."));
-
-  myIcqConnectionLayout->addWidget(myReconnectAfterUinClashCheck);
-
-
   myPageNetworkLayout->addWidget(myFirewallBox);
   myPageNetworkLayout->addWidget(myProxyBox);
-  myPageNetworkLayout->addWidget(myIcqConnectionBox);
   myPageNetworkLayout->addStretch(1);
 
   return w;
@@ -226,8 +210,6 @@ void Settings::Network::load()
   myProxyLoginEdit->setText(Licq::gDaemon.proxyLogin().c_str());
   myProxyPasswdEdit->setText(Licq::gDaemon.proxyPasswd().c_str());
 
-  myReconnectAfterUinClashCheck->setChecked(gLicqDaemon->ReconnectAfterUinClash());
-
   if (!Licq::gDaemon.proxyEnabled())
   {
     myProxyTypeCombo->setEnabled(false);
@@ -255,6 +237,4 @@ void Settings::Network::apply()
   Licq::gDaemon.setProxyAuthEnabled(myProxyAuthEnabledCheck->isChecked());
   Licq::gDaemon.setProxyLogin(myProxyLoginEdit->text().toLocal8Bit().constData());
   Licq::gDaemon.setProxyPasswd(myProxyPasswdEdit->text().toLocal8Bit().constData());
-
-  gLicqDaemon->setReconnectAfterUinClash(myReconnectAfterUinClashCheck->isChecked());
 }

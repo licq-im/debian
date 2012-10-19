@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2010 Licq developers
+ * Copyright (C) 2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,44 +17,35 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef SECURITYDLG_H
-#define SECURITYDLG_H
+#include "owner.h"
 
-#include <QDialog>
+#include <licq/inifile.h>
 
-class QCheckBox;
-class QPushButton;
+using namespace LicqMsn;
 
-namespace Licq
+Owner::Owner(const Licq::UserId& id)
+  : Licq::User(id, false, true), Licq::Owner(id), User(id, false, true)
 {
-class Event;
+  Licq::IniFile& conf(userConf());
+  if (!conf.get("ListVersion", myListVersion, 0))
+  {
+    // List version is missing, this could be due to upgrade from Licq 1.6.x or older
+    Licq::IniFile oldConf("licq_msn.conf");
+    oldConf.loadFile();
+    oldConf.setSection("network");
+    oldConf.set("ListVersion", myListVersion);
+  }
 }
 
-namespace LicqQtGui
+Owner::~Owner()
 {
-class SecurityDlg : public QDialog
+  // Empty
+}
+
+void Owner::saveOwnerInfo()
 {
-  Q_OBJECT
+  Licq::Owner::saveOwnerInfo();
 
-public:
-  SecurityDlg(QWidget* parent = NULL);
-
-private:
-  QPushButton* btnUpdate;
-
-  QCheckBox* chkWebAware;
-  QCheckBox* chkAuthorization;
-  QCheckBox* chkHideIp;
-
-  QString title;
-
-  unsigned long eSecurityInfo;
-
-private slots:
-  void ok();
-  void doneUserFcn(const Licq::Event* e);
-};
-
-} // namespace LicqQtGui
-
-#endif
+  Licq::IniFile& conf(userConf());
+  conf.set("ListVersion", myListVersion);
+}

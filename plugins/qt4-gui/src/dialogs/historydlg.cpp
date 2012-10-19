@@ -21,6 +21,7 @@
 
 #include "config.h"
 
+#include <cstdio>
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QGroupBox>
@@ -30,7 +31,6 @@
 #include <QPushButton>
 #include <QRegExp>
 #include <QShortcut>
-#include <QTextCodec>
 #include <QVBoxLayout>
 
 #include <licq/contactlist/owner.h>
@@ -45,7 +45,6 @@
 #include "core/signalmanager.h"
 #include "core/usermenu.h"
 #include "helpers/support.h"
-#include "helpers/usercodec.h"
 #include "widgets/calendar.h"
 #include "widgets/historyview.h"
 
@@ -162,10 +161,6 @@ HistoryDlg::HistoryDlg(const Licq::UserId& userId, QWidget* parent)
 
   {
     Licq::UserReadGuard u(myUserId);
-
-    myContactCodec = QTextCodec::codecForLocale();
-    if (u.isLocked())
-      myContactCodec = UserCodec::codecForUser(*u);
 
     setTitle(*u);
 
@@ -293,7 +288,7 @@ void HistoryDlg::setTitle(const Licq::User* user)
   }
   else
   {
-    name = myContactCodec->toUnicode(user->getFullName().c_str());
+    name = QString::fromUtf8(user->getFullName().c_str());
     if (!name.isEmpty())
       name = " (" + name + ")";
     name.prepend(QString::fromUtf8(user->getAlias().c_str()));
@@ -346,12 +341,7 @@ void HistoryDlg::showHistory()
     if (date.date() != myCalendar->selectedDate())
       continue;
 
-    QString messageText;
-    if ((*item)->eventType() == Licq::UserEvent::TypeSms) // SMSs are always in UTF-8
-      messageText = QString::fromUtf8((*item)->text().c_str());
-    else
-      messageText = myContactCodec->toUnicode((*item)->text().c_str());
-
+    QString messageText = QString::fromUtf8((*item)->text().c_str());
     QString name = (*item)->isReceiver() ? myContactName : myOwnerName;
 
     QRegExp highlight;
@@ -419,12 +409,7 @@ void HistoryDlg::find(bool backwards)
     Licq::HistoryList::iterator i;
     for (i = myHistoryList.begin(); i != myHistoryList.end(); ++i)
     {
-      QString messageText;
-      if ((*i)->eventType() == Licq::UserEvent::TypeSms) // SMSs are always in UTF-8
-        messageText = QString::fromUtf8((*i)->text().c_str());
-      else
-        messageText = myContactCodec->toUnicode((*i)->text().c_str());
-
+      QString messageText = QString::fromUtf8((*i)->text().c_str());
       if (messageText.contains(regExp))
       {
         QDate date = QDateTime::fromTime_t((*i)->Time()).date();
@@ -472,12 +457,7 @@ void HistoryDlg::find(bool backwards)
     // end is outside list so don't try to match it
     if (mySearchPos != myHistoryList.end())
     {
-      QString messageText;
-      if ((*mySearchPos)->eventType() == Licq::UserEvent::TypeSms) // SMSs are always in UTF-8
-        messageText = QString::fromUtf8((*mySearchPos)->text().c_str());
-      else
-        messageText = myContactCodec->toUnicode((*mySearchPos)->text().c_str());
-
+      QString messageText = QString::fromUtf8((*mySearchPos)->text().c_str());
       if (messageText.contains(regExp))
         // We have a match
         break;

@@ -33,7 +33,6 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QRegExp;
-class QTextCodec;
 
 namespace Licq
 {
@@ -159,7 +158,6 @@ private:
   bool myIsOwner;
   QString myContactName;
   QString myOwnerName;
-  const QTextCodec* myContactCodec;
   bool myUseHtml;
   bool myPatternChanged;
 

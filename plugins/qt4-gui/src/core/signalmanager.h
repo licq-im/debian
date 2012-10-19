@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -89,7 +89,30 @@ signals:
    * @param userId User to open dialog for
    */
   void ui_message(const Licq::UserId& userId);
-  void protocolPlugin(unsigned long);
+
+  /**
+   * Show and raise the user list (main window)
+   */
+  void ui_showuserlist();
+
+  /**
+   * Hide the user list (main window)
+   */
+  void ui_hideuserlist();
+
+  /**
+   * A new protocol plugin has been loaded
+   *
+   * @param protocolId Id of protocol
+   */
+  void protocolPluginLoaded(unsigned long protocolId);
+
+  /**
+   * A protocol plugin has been unloaded
+   *
+   * @param protocolId Id of protocol
+   */
+  void protocolPluginUnloaded(unsigned long protocolId);
 
   /**
    * A conversation id has been associated with a user

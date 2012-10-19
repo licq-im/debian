@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,7 +64,7 @@ KeyRequestDlg::KeyRequestDlg(const Licq::UserId& userId, QWidget* parent)
   {
     case Licq::User::SecureChannelSupported:
       t2 = tr("The remote uses %1.")
-        .arg(u->clientInfo().c_str());
+        .arg(QString::fromUtf8(u->clientInfo().c_str()));
       if (Licq::gDaemon.haveCryptoSupport())
         QTimer::singleShot(0, this, SLOT(startSend()));
       break;
@@ -73,7 +73,7 @@ KeyRequestDlg::KeyRequestDlg(const Licq::UserId& userId, QWidget* parent)
       t2 = tr("The remote uses %1, however it\n"
               "has no secure channel support compiled in.\n"
               "This probably won't work.")
-        .arg(u->clientInfo().c_str());
+        .arg(QString::fromUtf8(u->clientInfo().c_str()));
       break;
 
     default:
@@ -122,7 +122,7 @@ KeyRequestDlg::~KeyRequestDlg()
 {
   if (myIcqEventTag != 0)
   {
-    Licq::gDaemon.cancelEvent(myIcqEventTag);
+    gProtocolManager.cancelEvent(myUserId, myIcqEventTag);
     myIcqEventTag = 0;
   }
 }
@@ -181,6 +181,7 @@ void KeyRequestDlg::doneEvent(const Licq::Event* e)
         text = tr("Remote client does not support OpenSSL.");
         break;
       case Licq::Event::ResultError: // could not connect to remote host (or out of memory)
+      case Licq::Event::ResultUnsupported:
         text = tr("Could not connect to remote client.");
         break;
       case Licq::Event::ResultSuccess:

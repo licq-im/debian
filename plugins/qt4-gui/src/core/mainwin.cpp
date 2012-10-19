@@ -56,7 +56,6 @@
 #include <QShortcut>
 #include <QStyle>
 #include <QStyleFactory>
-#include <QTextCodec>
 #include <QTextEdit>
 #include <QVBoxLayout>
 
@@ -95,7 +94,6 @@
 #include "dialogs/userselectdlg.h"
 
 #include "helpers/support.h"
-#include "helpers/usercodec.h"
 
 #include "widgets/skinnablebutton.h"
 #include "widgets/skinnablecombobox.h"
@@ -197,6 +195,7 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
   usprintfHelp = tr(
       "<ul>"
       "<li><tt>%a - </tt>user alias</li>"
+      "<li><tt>%c - </tt>cellular number</li>"
       "<li><tt>%e - </tt>email</li>"
       "<li><tt>%f - </tt>first name</li>"
       "<li><tt>%h - </tt>phone number</li>"
@@ -209,6 +208,7 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       "<li><tt>%o - </tt>last seen online</li>"
       "<li><tt>%O - </tt>online since</li>"
       "<li><tt>%p - </tt>user port</li>"
+      "<li><tt>%P - </tt>Protocol</li>"
       "<li><tt>%s - </tt>full status</li>"
       "<li><tt>%S - </tt>abbreviated status</li>"
       "<li><tt>%u - </tt>uin</li>"
@@ -226,12 +226,16 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       SLOT(updateStatus()));
   connect(gGuiSignalManager, SIGNAL(logon()),
       SLOT(slot_logon()));
-  connect(gGuiSignalManager, SIGNAL(protocolPlugin(unsigned long)),
+  connect(gGuiSignalManager, SIGNAL(protocolPluginLoaded(unsigned long)),
       SLOT(slot_protocolPlugin(unsigned long)));
+  connect(gGuiSignalManager, SIGNAL(protocolPluginUnloaded(unsigned long)),
+      SLOT(slot_pluginUnloaded(unsigned long)));
   connect(gGuiSignalManager, SIGNAL(ownerAdded(const Licq::UserId&)),
       mySystemMenu, SLOT(addOwner(const Licq::UserId&)));
   connect(gGuiSignalManager, SIGNAL(ownerRemoved(const Licq::UserId&)),
       mySystemMenu, SLOT(removeOwner(const Licq::UserId&)));
+  connect(gGuiSignalManager, SIGNAL(ui_showuserlist()), SLOT(unhide()));
+  connect(gGuiSignalManager, SIGNAL(ui_hideuserlist()), SLOT(hide()));
 
   if (conf->mainwinRect().isValid())
     setGeometry(conf->mainwinRect());
@@ -348,27 +352,28 @@ void MainWindow::updateShortcuts()
 void MainWindow::trayIconClicked()
 {
   if (isVisible() && !isMinimized() && isActiveWindow())
-  {
     hide();
-  }
   else
-  {
-    show();
+    unhide();
+}
+
+void MainWindow::unhide()
+{
+  show();
 #ifdef USE_KDE
-    KWindowSystem::setOnDesktop(winId(), KWindowSystem::currentDesktop());
+  KWindowSystem::setOnDesktop(winId(), KWindowSystem::currentDesktop());
 #endif
-    if (isMaximized())
-      showMaximized();
-    else
-      showNormal();
+  if (isMaximized())
+    showMaximized();
+  else
+    showNormal();
 
-    // Sticky state is lost when window is hidden so restore it now
-    if (Config::General::instance()->mainwinSticky())
-      setMainwinSticky(true);
+  // Sticky state is lost when window is hidden so restore it now
+  if (Config::General::instance()->mainwinSticky())
+    setMainwinSticky(true);
 
-    activateWindow();
-    raise();
-  }
+  activateWindow();
+  raise();
 }
 
 void MainWindow::updateSkin()
@@ -1112,22 +1117,6 @@ void MainWindow::showHints()
     "<li>Change your auto response by double-clicking on the status label.</li>"
     "<li>View system messages by double clicking on the message label.</li>"
     "<li>Change groups by right clicking on the message label.</li>"
-    "<li>Use the following shortcuts from the contact list:<ul>"
-    "<li><tt>Ctrl-M : </tt>Toggle mini-mode</li>"
-    "<li><tt>Ctrl-O : </tt>Toggle show offline users</li>"
-    "<li><tt>Ctrl-X : </tt>Exit</li>"
-    "<li><tt>Ctrl-H : </tt>Hide</li>"
-    "<li><tt>Ctrl-I : </tt>View the next message</li>"
-    "<li><tt>Ctrl-V : </tt>View message</li>"
-    "<li><tt>Ctrl-S : </tt>Send message</li>"
-    "<li><tt>Ctrl-U : </tt>Send Url</li>"
-    "<li><tt>Ctrl-C : </tt>Send chat request</li>"
-    "<li><tt>Ctrl-F : </tt>Send File</li>"
-    "<li><tt>Ctrl-A : </tt>Check Auto response</li>"
-    "<li><tt>Ctrl-P : </tt>Popup all messages</li>"
-    "<li><tt>Ctrl-L : </tt>Redraw user window</li>"
-    "<li><tt>Delete : </tt>Delete user from current group</li>"
-    "<li><tt>Ctrl-Delete : </tt>Delete user from contact list</li></ul>"
     "<li>Hold control while clicking on close in the function window to remove"
     "   the user from your contact list.</li>"
     "<li>Hit Ctrl-Enter from most text entry fields to select \"Ok\" or \"Accept\"."

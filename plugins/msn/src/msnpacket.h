@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2011 Licq developers
+ * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,8 +17,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __MSNPACKET_H
-#define __MSNPACKET_H
+#ifndef LICQMSN_MSNPACKET_H
+#define LICQMSN_MSNPACKET_H
 
 #include <cstdlib>
 #include <pthread.h>
@@ -27,6 +27,9 @@
 #include <licq/packet.h>
 
 #include "msnbuffer.h"
+
+namespace LicqMsn
+{
 
 static const std::string base64_chars =
              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -38,8 +41,8 @@ class CMSNPacket : public Licq::Packet
 public:
   CMSNPacket(bool = false);
   virtual ~CMSNPacket() { if (m_pBuffer) delete m_pBuffer; if (m_szCommand) free(m_szCommand); }
-  CMSNBuffer *getBuffer() { return m_pBuffer; }
-  
+  Licq::Buffer* getBuffer() { return m_pBuffer; }
+
   unsigned short Command() { return 0; }
   unsigned short SubSequence() { return 0; }
   unsigned short SubCommand() { return 0; }
@@ -136,30 +139,10 @@ protected:
   char *m_szUserName;
 };
 
-class CPS_MSNGetServer : public CMSNPacket
-{
-public:
-  CPS_MSNGetServer();
-};
-
-class CPS_MSNAuthenticate : public CMSNPacket
-{
-public:
-  CPS_MSNAuthenticate(char *, const std::string& password, const char *);
-  virtual ~CPS_MSNAuthenticate() { if (m_szCookie) free(m_szCookie); }
-  
-protected:
-  char *m_szCookie;
-};
-
 class CPS_MSNSendTicket : public CMSNPacket
 {
 public:
-  CPS_MSNSendTicket(const char *);
-  virtual ~CPS_MSNSendTicket() { if (m_szTicket) free(m_szTicket); }
-  
-protected:
-  char *m_szTicket;
+  CPS_MSNSendTicket(const std::string& ticket);
 };
 
 class CPS_MSNChangeStatus : public CMSNPacket
@@ -327,5 +310,6 @@ public:
 		unsigned long nDataSizeLO);
 };
 
-#endif // __MSNPACKET_H
+} // namespace LicqMsn
 
+#endif

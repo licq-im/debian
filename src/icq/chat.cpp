@@ -1,13 +1,25 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include "config.h"
 
-#include <licq/icq/chat.h>
+#include "chat.h"
 
 #include <cctype>
 #include <cstdio>
@@ -21,12 +33,16 @@
 #include <licq/translator.h>
 
 #include "icq.h"
-#include "packet.h"
+#include "packet-tcp.h"
+#include "socket.h"
+#include "user.h"
 #include "../gettext.h"
 
 using namespace std;
+using namespace LicqIcq;
 using Licq::gDaemon;
 using Licq::gLog;
+using Licq::gTranslator;
 
 #define MAX_CONNECTS  256
 #define DEBUG_THREADS(x)
@@ -68,7 +84,7 @@ CPChat_Color::CPChat_Color(const string& localName, unsigned short _nLocalPort,
   buffer->PackUnsignedLong(-ICQ_VERSION_TCP);
   buffer->PackUnsignedLong(m_nUin);
   buffer->PackString(localName.c_str());
-  buffer->PackUnsignedShort(ReversePort(_nLocalPort));
+  buffer->packUInt16BE(_nLocalPort);
   buffer->PackChar(nColorForeRed);
   buffer->PackChar(nColorForeGreen);
   buffer->PackChar(nColorForeBlue);
@@ -83,13 +99,14 @@ CPChat_Color::CPChat_Color(const string& localName, unsigned short _nLocalPort,
 
 CPChat_Color::CPChat_Color(CBuffer &b)
 {
+  b.unpackUInt16LE(); // Packet length
   b.UnpackUnsignedLong();
   b.UnpackUnsignedLong();
   unsigned long m_nUin = b.UnpackUnsignedLong();
   char szUin[24];
   sprintf(szUin, "%lu", m_nUin);
   myUserId = Licq::UserId(szUin, LICQ_PPID);
-  myName = b.unpackString();
+  myName = b.unpackShortStringLE();
   m_nPort = b.UnpackUnsignedShort();
   m_nPort = (m_nPort >> 8) + (m_nPort << 8);
   m_nColorForeRed = (unsigned char)b.UnpackChar();
@@ -116,7 +133,7 @@ CChatClient::CChatClient()
 }
 
 
-CChatClient::CChatClient(const Licq::User* u)
+CChatClient::CChatClient(const User* u)
 {
   m_nVersion = u->Version();
   myUserId = u->id();
@@ -185,6 +202,7 @@ bool CChatClient::LoadFromBuffer(CBuffer &b)
 bool CChatClient::LoadFromHandshake_v2(CBuffer &b)
 {
   b.Reset();
+  b.unpackUInt16LE(); // Packet length
 
   if ((unsigned char)b.UnpackChar() != ICQ_CMDxTCP_HANDSHAKE) return false;
 
@@ -210,6 +228,7 @@ bool CChatClient::LoadFromHandshake_v2(CBuffer &b)
 bool CChatClient::LoadFromHandshake_v4(CBuffer &b)
 {
   b.Reset();
+  b.unpackUInt16LE(); // Packet length
 
   if ((unsigned char)b.UnpackChar() != ICQ_CMDxTCP_HANDSHAKE) return false;
 
@@ -350,12 +369,13 @@ CPChat_ColorFont::CPChat_ColorFont(const string& localName, unsigned short nLoca
 
 CPChat_ColorFont::CPChat_ColorFont(CBuffer &b)
 {
+  b.unpackUInt16LE(); // Packet length
   b.UnpackUnsignedLong();
   unsigned long m_nUin = b.UnpackUnsignedLong();
   char szUin[24];
   sprintf(szUin, "%lu", m_nUin);
   myUserId = Licq::UserId(szUin, LICQ_PPID);
-  myName = b.unpackString();
+  myName = b.unpackShortStringLE();
   m_nColorForeRed = (unsigned char)b.UnpackChar();
   m_nColorForeGreen = (unsigned char)b.UnpackChar();
   m_nColorForeBlue = (unsigned char)b.UnpackChar();
@@ -373,7 +393,7 @@ CPChat_ColorFont::CPChat_ColorFont(CBuffer &b)
   m_nSession = b.UnpackUnsignedShort();
   m_nFontSize = b.UnpackUnsignedLong();
   m_nFontFace = b.UnpackUnsignedLong();
-  myFontFamily = b.unpackString();
+  myFontFamily = b.unpackShortStringLE();
   m_nFontEncoding = b.UnpackChar();
   m_nFontStyle = b.UnpackChar();
 
@@ -427,6 +447,7 @@ CPChat_Font::CPChat_Font(unsigned short nLocalPort, unsigned short nSession,
 
 CPChat_Font::CPChat_Font(CBuffer &b)
 {
+  b.unpackUInt16LE(); // Packet length
   b.UnpackUnsignedLong();
   m_nPort = b.UnpackUnsignedLong();
   b.UnpackUnsignedLong();
@@ -435,7 +456,7 @@ CPChat_Font::CPChat_Font(CBuffer &b)
   m_nSession = b.UnpackUnsignedShort();
   m_nFontSize = b.UnpackUnsignedLong();
   m_nFontFace = b.UnpackUnsignedLong();
-  myFontFamily = b.unpackString();
+  myFontFamily = b.unpackShortStringLE();
   m_nFontEncoding = b.UnpackChar();
   m_nFontStyle = b.UnpackChar();
 }
@@ -466,7 +487,7 @@ CPChat_ChangeFontFamily::CPChat_ChangeFontFamily(const string& fontFamily)
 CPChat_ChangeFontFamily::CPChat_ChangeFontFamily(CBuffer &b)
 {
   //b.UnpackChar(); // CHAT_CHANGExFONT
-  myFontFamily = b.unpackString();
+  myFontFamily = b.unpackShortStringLE();
   b.UnpackUnsignedShort();  // Charset?
 }
 
@@ -583,6 +604,16 @@ CPChat_Beep::CPChat_Beep()
 //=====ChatUser==============================================================
 CChatUser::CChatUser()
 {
+  // Empty
+}
+
+CChatUser::~CChatUser()
+{
+  // Empty
+}
+
+ChatUser::ChatUser()
+{
   nToKick = 0;
   state = CHAT_STATE_DISCONNECTED;
   colorFore[0] = colorFore[1] = colorFore[2] = 0x00;
@@ -599,11 +630,12 @@ CChatUser::CChatUser()
   pthread_mutex_init(&mutex, NULL);
 }
 
-CChatUser::~CChatUser()
+ChatUser::~ChatUser()
 {
+  // Empty
 }
 
-CChatEvent::CChatEvent(unsigned char nCommand, CChatUser *u, const string& data)
+CChatEvent::CChatEvent(unsigned char nCommand, ChatUser* u, const string& data)
   : myData(data)
 {
   m_nCommand = nCommand;
@@ -618,6 +650,10 @@ CChatEvent::~CChatEvent()
     pthread_mutex_unlock(&m_pUser->mutex);
 }
 
+CChatUser* CChatEvent::Client()
+{
+  return m_pUser;
+}
 
 //=====ChatManager===========================================================
 ChatManagerList CChatManager::cmList;
@@ -716,7 +752,7 @@ void CChatManager::StartAsClient(unsigned short nPort)
   if (!StartChatServer()) return;
 
   {
-    Licq::UserReadGuard u(myUserId);
+    UserReadGuard u(myUserId);
     if (!u.isLocked())
       return;
     m_pChatClient = new CChatClient(*u);
@@ -735,7 +771,7 @@ void CChatManager::StartAsClient(unsigned short nPort)
 //-----CChatManager::ConnectToChat-------------------------------------------
 bool CChatManager::ConnectToChat(CChatClient *c)
 {
-  CChatUser *u = new CChatUser;
+  ChatUser* u = new ChatUser;
   u->m_pClient = c;
   u->m_pClient->m_nSession = m_nSession;
   u->myUserId = c->myUserId;
@@ -745,7 +781,7 @@ bool CChatManager::ConnectToChat(CChatClient *c)
   bool bResult = false;
 
   {
-    Licq::UserReadGuard temp_user(u->myUserId);
+    UserReadGuard temp_user(u->myUserId);
     if (temp_user.isLocked())
     {
       bSendIntIp = temp_user->SendIntIp();
@@ -801,22 +837,22 @@ bool CChatManager::ConnectToChat(CChatClient *c)
   return bResult;
 }
 
-bool CChatManager::SendChatHandshake(CChatUser *u)
+bool CChatManager::SendChatHandshake(ChatUser* u)
 {
   CChatClient *c = u->m_pClient;
 
-  gLog.info(tr("Chat: Shaking hands [v%d]."), VersionToUse(c->m_nVersion));
+  gLog.info(tr("Chat: Shaking hands [v%d]."), IcqProtocol::dcVersionToUse(c->m_nVersion));
 
   // Send handshake packet:
   if (!IcqProtocol::handshake_Send(&u->sock, c->myUserId, LocalPort(),
-     VersionToUse(c->m_nVersion), false))
+      IcqProtocol::dcVersionToUse(c->m_nVersion), false))
     return false;
 
   // Send color packet
   CPChat_Color p_color(myName, LocalPort(),
      m_nColorFore[0], m_nColorFore[1], m_nColorFore[2],
      m_nColorBack[0], m_nColorBack[1], m_nColorBack[2]);
-  u->sock.SendPacket(p_color.getBuffer());
+  u->sock.send(*p_color.getBuffer());
 
   gLog.info(tr("Chat: Waiting for color/font response."));
 
@@ -830,9 +866,9 @@ bool CChatManager::SendChatHandshake(CChatUser *u)
 
 
 //-----CChatManager::AcceptReverseConnection---------------------------------
-void CChatManager::AcceptReverseConnection(Licq::TCPSocket* s)
+void CChatManager::AcceptReverseConnection(DcSocket* s)
 {
-  CChatUser *u = new CChatUser;
+  ChatUser* u = new ChatUser;
   u->sock.TransferConnectionFrom(*s);
 
   u->m_pClient = new CChatClient();
@@ -861,7 +897,7 @@ void CChatManager::AcceptReverseConnection(Licq::TCPSocket* s)
 
 
 //-----CChatManager::FindChatUser--------------------------------------------
-CChatUser *CChatManager::FindChatUser(int sd)
+ChatUser* CChatManager::FindChatUser(int sd)
 {
   // Find the right user (possible race condition, but we ignore it for now)
   ChatUserList::iterator iter;
@@ -876,7 +912,7 @@ CChatUser *CChatManager::FindChatUser(int sd)
 
 
 //-----CChatManager::ProcessPacket-------------------------------------------
-bool CChatManager::ProcessPacket(CChatUser *u)
+bool CChatManager::ProcessPacket(ChatUser* u)
 {
   if (!u->sock.RecvPacket())
   {
@@ -950,7 +986,7 @@ bool CChatManager::ProcessPacket(CChatUser *u)
         CPChat_Color p_color(myName, LocalPort(),
         m_nColorFore[0], m_nColorFore[1], m_nColorFore[2],
         m_nColorBack[0], m_nColorBack[1], m_nColorBack[2]);
-        u->sock.SendPacket(p_color.getBuffer());
+        u->sock.send(*p_color.getBuffer());
 
         gLog.info(tr("Chat: Waiting for color/font response."));
 
@@ -999,7 +1035,7 @@ bool CChatManager::ProcessPacket(CChatUser *u)
          m_nFontSize, m_nFontFace & FONT_BOLD, m_nFontFace & FONT_ITALIC,
          m_nFontFace & FONT_UNDERLINE, m_nFontFace & FONT_STRIKEOUT,
           myFontFamily, m_nFontEncoding, m_nFontStyle, l);
-      if (!u->sock.SendPacket(p_colorfont.getBuffer()))
+      if (!u->sock.send(*p_colorfont.getBuffer()))
       {
         gLog.error(tr("Chat: Send error (color/font packet): %s"), u->sock.errorStr().c_str());
         return false;
@@ -1079,7 +1115,7 @@ bool CChatManager::ProcessPacket(CChatUser *u)
          m_nFontSize, m_nFontFace & FONT_BOLD, m_nFontFace & FONT_ITALIC,
          m_nFontFace & FONT_UNDERLINE, m_nFontFace & FONT_STRIKEOUT,
           myFontFamily, m_nFontEncoding, m_nFontStyle);
-      if (!u->sock.SendPacket(p_font.getBuffer()))
+      if (!u->sock.send(*p_font.getBuffer()))
       {
         gLog.error(tr("Chat: Send error (font packet): %s"), u->sock.errorStr().c_str());
         return false;
@@ -1133,9 +1169,10 @@ void CChatManager::PushChatEvent(CChatEvent *e)
 
 
 //-----CChatManager::ProcessRaw----------------------------------------------
-bool CChatManager::ProcessRaw(CChatUser *u)
+bool CChatManager::ProcessRaw(ChatUser* u)
 {
-  if (!u->sock.RecvRaw())
+  Licq::Buffer buf;
+  if (!u->sock.receive(buf))
   {
     if (u->sock.Error() == 0)
       gLog.info(tr("Chat: Remote end disconnected."));
@@ -1144,9 +1181,8 @@ bool CChatManager::ProcessRaw(CChatUser *u)
     return false;
   }
 
-  while (!u->sock.RecvBuffer().End())
-    u->chatQueue.push_back(u->sock.RecvBuffer().UnpackChar());
-  u->sock.ClearRecvBuffer();
+  while (!buf.End())
+    u->chatQueue.push_back(buf.unpackUInt8());
 
   if (u->sock.Version() >= 6)
     return ProcessRaw_v6(u);
@@ -1155,7 +1191,7 @@ bool CChatManager::ProcessRaw(CChatUser *u)
 }
 
 
-bool CChatManager::ProcessRaw_v2(CChatUser *u)
+bool CChatManager::ProcessRaw_v2(ChatUser* u)
 {
   char chatChar;
   while (u->chatQueue.size() > 0)
@@ -1165,7 +1201,8 @@ bool CChatManager::ProcessRaw_v2(CChatUser *u)
     {
       case CHAT_NEWLINE:   // new line
         // add to irc window
-        PushChatEvent(new CChatEvent(CHAT_NEWLINE, u, u->myLinebuf));
+        PushChatEvent(new CChatEvent(CHAT_NEWLINE, u,
+            gTranslator.toUtf8(u->myLinebuf, userEncoding(u))));
         u->myLinebuf.clear();
         u->chatQueue.pop_front();
         break;
@@ -1221,15 +1258,10 @@ bool CChatManager::ProcessRaw_v2(CChatUser *u)
       case CHAT_FONTxFAMILY: // change font type
       {
          if (u->chatQueue.size() < 3) return true;
-         unsigned short sizeFontName, i;
+         unsigned short sizeFontName;
          sizeFontName = u->chatQueue[1] | (u->chatQueue[2] << 8);
          if (u->chatQueue.size() < (unsigned long)(sizeFontName + 2 + 3)) return true;
-         char* nameFont = new char[sizeFontName + 1];
-         for (i = 0; i < sizeFontName; i++)
-            nameFont[i] = u->chatQueue[i + 3];
-         nameFont[sizeFontName] = '\0';
-         u->myFontFamily = nameFont;
-         delete [] nameFont;
+         u->myFontFamily = gTranslator.toUtf8(string((const char*)(&u->chatQueue[3]), sizeFontName), userEncoding(u));
          u->fontEncoding = u->chatQueue[sizeFontName + 3];
          u->fontStyle = u->chatQueue[sizeFontName + 4];
 
@@ -1459,19 +1491,21 @@ bool CChatManager::ProcessRaw_v2(CChatUser *u)
       {
         if (!iscntrl((int)(unsigned char)chatChar))
         {
-          Licq::gTranslator.ServerToClient(chatChar);
-          char tempStr[2] = { chatChar, '\0' };
+          string tempStr;
+          // If there are multiple chars, get them all
+          do {
+            tempStr += *u->chatQueue.begin();
+            u->chatQueue.pop_front();
+          } while (u->chatQueue.size() > 0 && !iscntrl((int)(unsigned char)(*u->chatQueue.begin())));
+
           // Add to the users irc line buffer
           u->myLinebuf += tempStr;
-          PushChatEvent(new CChatEvent(CHAT_CHARACTER, u, tempStr));
-          if (u->myLinebuf.size() > 1000) // stop a little early
-          {
-            u->myLinebuf.erase(1000);
-            PushChatEvent(new CChatEvent(CHAT_NEWLINE, u, u->myLinebuf));
-            u->myLinebuf.clear();
-          }
+          PushChatEvent(new CChatEvent(CHAT_CHARACTER, u, gTranslator.toUtf8(tempStr, userEncoding(u))));
         }
-        u->chatQueue.pop_front();
+        else
+        {
+          u->chatQueue.pop_front();
+        }
         break;
       }
     } // switch
@@ -1481,7 +1515,7 @@ bool CChatManager::ProcessRaw_v2(CChatUser *u)
 }
 
 
-bool CChatManager::ProcessRaw_v6(CChatUser *u)
+bool CChatManager::ProcessRaw_v6(ChatUser* u)
 {
   char chatChar;
   unsigned long chatSize = 0;
@@ -1538,14 +1572,9 @@ bool CChatManager::ProcessRaw_v6(CChatUser *u)
 
         case CHAT_FONTxFAMILY: // change font type
         {
-           unsigned short sizeFontName, i;
+           unsigned short sizeFontName;
            sizeFontName = u->chatQueue[0] | (u->chatQueue[1] << 8);
-           char* nameFont = new char [sizeFontName + 1];
-           for (i = 0; i < sizeFontName; i++)
-              nameFont[i] = u->chatQueue[i + 2];
-           nameFont[sizeFontName] = '\0';
-           u->myFontFamily = nameFont;
-           delete [] nameFont;
+          u->myFontFamily = gTranslator.toUtf8(string((const char*)(&u->chatQueue[2]), sizeFontName), userEncoding(u));
            u->fontEncoding = u->chatQueue[sizeFontName + 2];
            u->fontStyle = u->chatQueue[sizeFontName + 3];
 
@@ -1750,8 +1779,9 @@ bool CChatManager::ProcessRaw_v6(CChatUser *u)
       {
         case CHAT_NEWLINE:   // new line
           // add to irc window
-          PushChatEvent(new CChatEvent(CHAT_NEWLINE, u, u->myLinebuf));
+          PushChatEvent(new CChatEvent(CHAT_NEWLINE, u, gTranslator.toUtf8(u->myLinebuf, userEncoding(u))));
           u->myLinebuf.clear();
+          u->chatQueue.pop_front();
           break;
 
         case CHAT_BACKSPACE:   // backspace
@@ -1759,6 +1789,7 @@ bool CChatManager::ProcessRaw_v6(CChatUser *u)
           if (u->myLinebuf.size() > 0)
             u->myLinebuf.erase(u->myLinebuf.size() - 1);
           PushChatEvent(new CChatEvent(CHAT_BACKSPACE, u));
+          u->chatQueue.pop_front();
           break;
         }
 
@@ -1766,23 +1797,24 @@ bool CChatManager::ProcessRaw_v6(CChatUser *u)
         {
           if (!iscntrl((int)(unsigned char)chatChar))
           {
-            Licq::gTranslator.ServerToClient(chatChar);
-            char tempStr[2] = { chatChar, '\0' };
+            string tempStr;
+            // If there are multiple chars, get them all
+            do {
+              tempStr += *u->chatQueue.begin();
+              u->chatQueue.pop_front();
+            } while (u->chatQueue.size() > 0 && !iscntrl((int)(unsigned char)(*u->chatQueue.begin())));
+
             // Add to the users irc line buffer
             u->myLinebuf += tempStr;
-            PushChatEvent(new CChatEvent(CHAT_CHARACTER, u, tempStr));
-            if (u->myLinebuf.size() > 1000) // stop a little early
-            {
-              u->myLinebuf.erase(1000);
-              PushChatEvent(new CChatEvent(CHAT_NEWLINE, u, u->myLinebuf));
-              u->myLinebuf.clear();
-            }
+            PushChatEvent(new CChatEvent(CHAT_CHARACTER, u, gTranslator.toUtf8(tempStr, userEncoding(u))));
+          }
+          else
+          {
+            u->chatQueue.pop_front();
           }
           break;
         }
       }
-      // Remove the character
-      u->chatQueue.pop_front();
     }
 
   }
@@ -1854,7 +1886,7 @@ void CChatManager::SendBuffer(CBuffer *b, unsigned char cmd,
 }
 
 
-bool CChatManager::SendBufferToClient(CBuffer *b, unsigned char cmd, CChatUser *u)
+bool CChatManager::SendBufferToClient(CBuffer *b, unsigned char cmd, ChatUser* u)
 {
   CBuffer b_out(128);
 
@@ -1876,7 +1908,7 @@ bool CChatManager::SendBufferToClient(CBuffer *b, unsigned char cmd, CChatUser *
     b_out.Pack(b->getDataStart(), b->getDataSize());
   }
 
-  if (!u->sock.SendRaw(&b_out))
+  if (!u->sock.send(b_out))
   {
     gLog.warning(tr("Chat: Send error: %s"), u->sock.errorStr().c_str());
     CloseClient(u);
@@ -1893,7 +1925,7 @@ bool CChatManager::SendBufferToClient(CBuffer *b, unsigned char cmd, CChatUser *
 void CChatManager::SendBuffer_Raw(CBuffer *b)
 {
   ChatUserList::iterator iter;
-  CChatUser *u = NULL;
+  ChatUser* u = NULL;
   bool ok = false;
   while (!ok)
   {
@@ -1905,7 +1937,7 @@ void CChatManager::SendBuffer_Raw(CBuffer *b)
       // If the socket was closed, ignore the key event
       if (u->state != CHAT_STATE_CONNECTED || u->sock.Descriptor() == -1) continue;
 
-      if (!u->sock.SendRaw(b))
+      if (!u->sock.send(*b))
       {
         gLog.warning(tr("Chat: Send error: %s"), u->sock.errorStr().c_str());
         CloseClient(u);
@@ -1946,12 +1978,10 @@ void CChatManager::SendLaugh()
   SendBuffer(&buf, CHAT_LAUGH);
 }
 
-
-void CChatManager::SendCharacter(char c)
+void CChatManager::sendText(const string& text)
 {
-  CBuffer buf(1);
-  Licq::gTranslator.ClientToServer(c);
-  buf.PackChar(c);
+  CBuffer buf(text.size());
+  buf.pack(gTranslator.fromUtf8(text, getEncoding(m_nFontEncoding)));
   SendBuffer_Raw(&buf);
 }
 
@@ -2156,7 +2186,7 @@ void CChatManager::CloseChat()
     pthread_join(thread_chat, NULL);
   m_bThreadCreated = false;
 
-  CChatUser *u = NULL;
+  ChatUser* u = NULL;
   CBuffer buf;
   SendBuffer(&buf, CHAT_DISCONNECTION);
   while (chatUsers.size() > 0)
@@ -2222,7 +2252,7 @@ void CChatManager::FinishKickVote(VoteInfoList::iterator iter, bool bPassed)
 
 
 //----CChatManager::CloseClient----------------------------------------------
-void CChatManager::CloseClient(CChatUser *u)
+void CChatManager::CloseClient(ChatUser* u)
 {
   // Remove the user from the user list
   ChatUserList::iterator iter;
@@ -2261,7 +2291,29 @@ string CChatManager::clientsString() const
   return sz;
 }
 
+string CChatManager::getEncoding(int chatEncoding)
+{
+  switch (chatEncoding) {
+    case ENCODING_ANSI: return "CP 1252";
+    case ENCODING_SHIFTJIS: return "Shift-JIS";
+    case ENCODING_GB2312: return "GBK";
+    case ENCODING_CHINESEBIG5: return "Big5";
+    case ENCODING_GREEK: return "CP 1253";
+    case ENCODING_TURKISH: return "CP 1254";
+    case ENCODING_HEBREW: return "CP 1255";
+    case ENCODING_ARABIC: return "CP 1256";
+    case ENCODING_BALTIC: return "CP 1257";
+    case ENCODING_RUSSIAN: return "CP 1251";
+    case ENCODING_THAI: return "TIS-620";
+    case ENCODING_EASTEUROPE: return "CP 1250";
+    default: return "UTF-8";
+  }
+}
 
+string CChatManager::userEncoding(const ChatUser* u)
+{
+  return getEncoding(u->fontEncoding);
+}
 
 void *ChatManager_tep(void *arg)
 {
@@ -2322,7 +2374,7 @@ void *ChatManager_tep(void *arg)
           }
           else
           {
-            CChatUser *u = new CChatUser;
+            ChatUser* u = new ChatUser;
             u->m_pClient = new CChatClient;
 
             if (chatman->chatServer.RecvConnection(u->sock))
@@ -2345,7 +2397,7 @@ void *ChatManager_tep(void *arg)
         // Message from connected socket----------------------------------------
         else
         {
-          CChatUser *u = chatman->FindChatUser(nCurrentSocket);
+          ChatUser* u = chatman->FindChatUser(nCurrentSocket);
           if (u == NULL)
           {
             gLog.warning(tr("Chat: No user owns socket %d."), nCurrentSocket);
@@ -2560,7 +2612,7 @@ CChatManager::~CChatManager()
   CloseChat();
 
   // Delete all the users
-  CChatUser *u = NULL;
+  ChatUser* u = NULL;
   while (chatUsersClosed.size() > 0)
   {
     u = chatUsersClosed.front();

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QMenu>
-#include <QTextCodec>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -48,6 +47,7 @@
 
 #include "dialogs/historydlg.h"
 #include "dialogs/keyrequestdlg.h"
+#include "userdlg/userdlg.h"
 
 #include "helpers/support.h"
 #include "helpers/usercodec.h"
@@ -64,20 +64,13 @@ using std::string;
 
 UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, const char* name)
   : QWidget(parent),
+    myPpid(userId.protocolId()),
     myHighestEventId(-1)
 {
   Support::setWidgetProps(this, name);
   setAttribute(Qt::WA_DeleteOnClose, true);
 
   myUsers.push_back(userId);
-  {
-    Licq::UserReadGuard user(userId);
-    if (user.isLocked())
-    {
-      myId = user->accountId().c_str();
-      myPpid = user->protocolId();
-    }
-  }
 
   // Find out what's supported for the protocol
   mySendFuncs = 0;
@@ -85,7 +78,6 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
   if (protocol.get() != NULL)
     mySendFuncs = protocol->capabilities();
 
-  myCodec = QTextCodec::codecForLocale();
   myIsOwner = Licq::gUserManager.isOwner(myUsers.front());
   myDeleteUser = false;
   myConvoId = 0;
@@ -126,6 +118,8 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
   myEncodingsMenu = new QMenu(this);
   myEncoding = myToolBar->addAction(tr("Encoding"), this, SLOT(showEncodingsMenu()));
   myEncoding->setMenu(myEncodingsMenu);
+  if (!(mySendFuncs & Licq::ProtocolPlugin::CanVaryEncoding))
+    myEncoding->setVisible(false);
 
   myToolBar->addSeparator();
 
@@ -136,6 +130,7 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
   myTimeTimer = NULL;
   myTypingTimer = NULL;
 
+  QString userEncoding;
   {
     Licq::UserReadGuard u(myUsers.front());
     if (u.isLocked())
@@ -151,33 +146,31 @@ UserEventCommon::UserEventCommon(const Licq::UserId& userId, QWidget* parent, co
       updateWidgetInfo(*u);
 
       // restore prefered encoding
-      myCodec = UserCodec::codecForUser(*u);
+      userEncoding = u->userEncoding().c_str();
 
       setTyping(u->isTyping());
+    }
+    else
+    {
+      userEncoding = Licq::gUserManager.defaultUserEncoding().c_str();
     }
   }
 
   myEncodingsGroup = new QActionGroup(this);
   connect(myEncodingsGroup, SIGNAL(triggered(QAction*)), SLOT(setEncoding(QAction*)));
 
-  QString codec_name = QString::fromLatin1(myCodec->name()).toLower();
-
   // populate the popup menu
-  for (UserCodec::encoding_t* it = &UserCodec::m_encodings[0]; it->encoding != NULL; ++it)
+  for (int i = 0; UserCodec::m_encodings[i].encoding != NULL; ++i)
   {
-    // Use check_codec since the QTextCodec name will be different from the
-    // user codec. But QTextCodec will recognize both, so let's make it standard
-    // for the purpose of checking for the same string.
-    QTextCodec* check_codec = QTextCodec::codecForName(it->encoding);
-
-    bool currentCodec = check_codec != NULL && QString::fromLatin1(check_codec->name()).toLower() == codec_name;
+    UserCodec::encoding_t* it = &UserCodec::m_encodings[i];
+    bool currentCodec = it->encoding == userEncoding;
 
     if (!currentCodec && !Config::Chat::instance()->showAllEncodings() && !it->isMinimal)
       continue;
 
-    QAction* a = new QAction(UserCodec::nameForEncoding(it->encoding), myEncodingsGroup);
+    QAction* a = new QAction(UserCodec::nameForEncoding(i), myEncodingsGroup);
     a->setCheckable(true);
-    a->setData(it->mib);
+    a->setData(i);
 
     if (currentCodec)
       a->setChecked(true);
@@ -254,7 +247,7 @@ void UserEventCommon::updateShortcuts()
   pushToolTip(myHistory, tr("Show user history"));
   pushToolTip(myInfo, tr("Show user information"));
   pushToolTip(myEncoding, tr("Select the text encoding used for outgoing messages."));
-  pushToolTip(mySecure, tr("Open / Close secure channel"));
+  pushToolTip(mySecure, tr("Open / close secure channel"));
 }
 
 bool UserEventCommon::isUserInConvo(const Licq::UserId& userId) const
@@ -290,9 +283,7 @@ void UserEventCommon::flashTaskbar()
 
 void UserEventCommon::updateWidgetInfo(const Licq::User* u)
 {
-  const QTextCodec* codec = UserCodec::codecForUser(u);
-
-  if (u->GetTimezone() == Licq::User::TimezoneUnknown)
+  if (u->timezone() == Licq::User::TimezoneUnknown)
     myTimezone->setText(tr("Unknown"));
   else
   {
@@ -318,7 +309,7 @@ void UserEventCommon::updateWidgetInfo(const Licq::User* u)
   else
     mySecure->setIcon(IconManager::instance()->getIcon(IconManager::SecureOffIcon));
 
-  QString tmp = codec->toUnicode(u->getFullName().c_str());
+  QString tmp = QString::fromUtf8(u->getFullName().c_str());
   if (!tmp.isEmpty())
     tmp = " (" + tmp + ")";
   myBaseTitle = QString::fromUtf8(u->getAlias().c_str()) + tmp;
@@ -358,29 +349,20 @@ void UserEventCommon::connectSignal()
 
 void UserEventCommon::setEncoding(QAction* action)
 {
-  int encodingMib = action->data().toUInt();
+  int index = action->data().toUInt();
 
   /* initialize a codec according to the encoding menu item id */
-  QString encoding(UserCodec::encodingForMib(encodingMib));
+  QString encoding = UserCodec::m_encodings[index].encoding;
 
   if (!encoding.isNull())
   {
-    QTextCodec* codec = QTextCodec::codecForName(encoding.toLatin1());
-    if (codec == NULL)
-    {
-      WarnUser(this, tr("Unable to load encoding <b>%1</b>.<br>"
-            "Message contents may appear garbled.").arg(encoding));
-      return;
-    }
-    myCodec = codec;
-
     /* save preferred character set */
     {
       Licq::UserWriteGuard u(myUsers.front());
       if (u.isLocked())
       {
         u->SetEnableSave(false);
-        u->setUserEncoding(encoding.toLatin1().constData());
+        u->setUserEncoding(encoding.toLocal8Bit().constData());
         u->SetEnableSave(true);
         u->save(Licq::User::SaveLicqInfo);
       }
@@ -402,7 +384,7 @@ void UserEventCommon::showHistory()
 
 void UserEventCommon::showUserInfo()
 {
-  gLicqGui->showInfoDialog(mnuUserGeneral, myUsers.front(), true);
+  UserDlg::showDialog(myUsers.front());
 }
 
 void UserEventCommon::switchSecurity()

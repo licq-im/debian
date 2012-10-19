@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,13 +25,24 @@
 
 #include "userid.h"
 
-class CMSN;
+namespace LicqIcq
+{
 class COscarService;
 class IcqProtocol;
-namespace Jabber { class Plugin; }
 void* ProcessRunningEvent_Client_tep(void* p);
 void* ProcessRunningEvent_Server_tep(void* p);
 void* OscarServiceSendQueue_tep(void* p);
+}
+
+namespace LicqMsn
+{
+class CMSN;
+}
+
+namespace LicqJabber
+{
+class Plugin;
+}
 
 namespace LicqDaemon
 {
@@ -41,6 +52,7 @@ class PluginManager;
 namespace Licq
 {
 class Packet;
+class ProtocolSignal;
 class UserEvent;
 
 //-----CExtendedAck----------------------------------------------------------
@@ -71,7 +83,7 @@ protected:
   unsigned short myPort;
   std::string myResponse;
 
-  friend class ::IcqProtocol;
+  friend class LicqIcq::IcqProtocol;
 };
 
 
@@ -139,7 +151,7 @@ protected:
   char myAge;
   char myAuth;
 
-  friend class ::IcqProtocol;
+  friend class LicqIcq::IcqProtocol;
 };
 
 
@@ -168,6 +180,7 @@ public:
     ResultTimedout      = 4,    // Time out while communicating with remote socket
     ResultError         = 5,    // Other error
     ResultCancelled     = 6,    // Event cancelled by the user
+    ResultUnsupported   = 7,    // Event is unsupported
   };
 
   enum SubResultType
@@ -252,8 +265,11 @@ public:
   ~Event();
 
 protected:
-  Event(unsigned long id, int _nSocketDesc, Packet* p, ConnectType _eConnect,
+  Event(ProtocolSignal* ps, ResultType result = ResultSuccess, UserEvent* ue = NULL);
+  Event(pthread_t caller, unsigned long id, int _nSocketDesc, Packet* p, ConnectType _eConnect,
       const UserId& userId = UserId(), UserEvent* e = NULL);
+  Event(int _nSocketDesc, Packet* p, ConnectType _eConnect, const UserId& userId = UserId(),
+      UserEvent* e = NULL);
   Event(const Event* e);
 
   // Daemon only
@@ -298,14 +314,14 @@ protected:
 
   unsigned long  m_nEventId;
 
-  friend class ::COscarService;
-  friend class ::CMSN;
-  friend class ::IcqProtocol;
-  friend class Jabber::Plugin;
+  friend class LicqIcq::COscarService;
+  friend class LicqIcq::IcqProtocol;
+  friend void* LicqIcq::ProcessRunningEvent_Client_tep(void* p);
+  friend void* LicqIcq::ProcessRunningEvent_Server_tep(void* p);
+  friend void* LicqIcq::OscarServiceSendQueue_tep(void* p);
+  friend class LicqMsn::CMSN;
+  friend class LicqJabber::Plugin;
   friend class LicqDaemon::PluginManager;
-  friend void* ::ProcessRunningEvent_Client_tep(void* p);
-  friend void* ::ProcessRunningEvent_Server_tep(void* p);
-  friend void* ::OscarServiceSendQueue_tep(void* p);
 };
 
 } // namespace Licq

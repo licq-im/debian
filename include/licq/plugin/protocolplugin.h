@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011 Licq developers
+ * Copyright (C) 2011-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,10 @@
 
 namespace Licq
 {
+class Owner;
 class ProtocolSignal;
+class User;
+class UserId;
 
 /**
  * Base class for protocol plugins implementing support for an IM protocol
@@ -54,6 +57,8 @@ public:
     CanSendSecure       = 1<<8,
     CanSendDirect       = 1<<9,
     CanHoldStatusMsg     = 1<<10,
+    CanVaryEncoding     = 1<<11,
+    CanSingleGroup      = 1<<12,    // Contacts have only a single group in server list
   };
 
   /// A smart pointer to a ProtocolPlugin instance
@@ -99,6 +104,27 @@ protected:
 
   /// Destructor
   virtual ~ProtocolPlugin();
+
+  /**
+   * Create a user object
+   * Called by UserManager when users are loaded or added
+   * Override this if protocol has subclassed Licq::User
+   *
+   * @param id User id
+   * @param temporary True if user isn't permanently added to contact list
+   * @return A newly created user object
+   */
+  virtual User* createUser(const UserId& id, bool temporary = false);
+
+  /**
+   * Create an owner object
+   * Called by UserManager when owner is loaded or added
+   * Override this if protocol has subclassed Licq::Owner (or Licq::User)
+   *
+   * @param id User id of owner
+   * @return A newly created owner object
+   */
+  virtual Owner* createOwner(const UserId& id);
 
   /**
    * Get a signal from the signal queue

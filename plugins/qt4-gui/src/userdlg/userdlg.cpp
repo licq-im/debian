@@ -24,7 +24,6 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QPushButton>
-#include <QTextCodec>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -36,14 +35,40 @@
 #include "core/signalmanager.h"
 #include "core/usermenu.h"
 #include "helpers/support.h"
-#include "helpers/usercodec.h"
 #include "widgets/treepager.h"
 
 #include "info.h"
+#include "owner.h"
 #include "settings.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::UserDlg */
+
+QMap<Licq::UserId, UserDlg*> UserDlg::myDialogs;
+
+void UserDlg::showDialog(const Licq::UserId& userId, UserPage page,
+    bool updateNow)
+{
+  if (!userId.isValid())
+    return;
+
+  UserDlg* dialog = myDialogs.value(userId);
+  if (dialog == NULL)
+  {
+    dialog = new UserDlg(userId);
+    myDialogs.insert(userId, dialog);
+  }
+
+  if (page != UnknownPage)
+    dialog->showPage(page);
+
+  dialog->show();
+  dialog->raise();
+  dialog->activateWindow();
+
+  if (updateNow)
+    dialog->retrieve();
+}
 
 UserDlg::UserDlg(const Licq::UserId& userId, QWidget* parent)
   : QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
@@ -98,14 +123,26 @@ UserDlg::UserDlg(const Licq::UserId& userId, QWidget* parent)
   top_lay->addLayout(buttonsLayout);
 
   myUserInfo = new UserPages::Info(myIsOwner, myUserId.protocolId(), this);
-  myUserSettings = new UserPages::Settings(myIsOwner, this);
+  if (!myIsOwner)
+  {
+    myUserSettings = new UserPages::Settings(this);
+    myOwnerSettings = NULL;
+  }
+  else
+  {
+    myUserSettings = NULL;
+    myOwnerSettings = new UserPages::Owner(myUserId.protocolId(), this);
+  }
 
   {
      Licq::UserReadGuard user(myUserId);
     if (user.isLocked())
     {
       myUserInfo->load(*user);
-      myUserSettings->load(*user);
+      if (!myIsOwner)
+        myUserSettings->load(*user);
+      else
+        myOwnerSettings->load(*user);
     }
     setBasicTitle(*user);
   }
@@ -120,7 +157,7 @@ UserDlg::UserDlg(const Licq::UserId& userId, QWidget* parent)
 
 UserDlg::~UserDlg()
 {
-  emit finished(this);
+  myDialogs.remove(myUserId);
 }
 
 void UserDlg::addPage(UserPage page, QWidget* widget, const QString& title, UserPage parent)
@@ -153,7 +190,8 @@ void UserDlg::pageChanged(QWidget* widget)
 
   myRetrieveButton->setEnabled(infoPage);
   if (myIsOwner)
-    mySendButton->setEnabled(infoPage);
+    mySendButton->setEnabled(infoPage ||
+        page == OwnerSecurityPage || page == OwnerChatGroupPage);
 }
 
 void UserDlg::retrieve()
@@ -172,7 +210,23 @@ void UserDlg::retrieve()
 
 void UserDlg::send()
 {
-  myIcqEventTag = myUserInfo->send(currentPage());
+  switch (currentPage())
+  {
+    case SettingsPage:
+    case StatusPage:
+    case OnEventPage:
+    case GroupsPage:
+    case OwnerPage:
+      return;
+
+    case OwnerSecurityPage:
+    case OwnerChatGroupPage:
+      myIcqEventTag = myOwnerSettings->send(currentPage());
+      break;
+
+    default:
+      myIcqEventTag = myUserInfo->send(currentPage());
+  }
 
   if (myIcqEventTag != 0)
   {
@@ -200,7 +254,10 @@ void UserDlg::apply()
     user->SetEnableSave(false);
 
     myUserInfo->apply(*user);
-    myUserSettings->apply(*user);
+    if (!myIsOwner)
+      myUserSettings->apply(*user);
+    else
+      myOwnerSettings->apply(*user);
 
     user->SetEnableSave(true);
     user->save(Licq::User::SaveAll);
@@ -208,7 +265,8 @@ void UserDlg::apply()
 
   // Special stuff that must be called without holding lock
   myUserInfo->apply2(myUserId);
-  myUserSettings->apply2(myUserId);
+  if (!myIsOwner)
+    myUserSettings->apply2(myUserId);
 
   // Notify all plugins (including ourselves)
   Licq::gUserManager.notifyUserUpdated(myUserId, Licq::PluginSignal::UserBasic);
@@ -230,7 +288,30 @@ void UserDlg::userUpdated(const Licq::UserId& userId, unsigned long subSignal)
     setBasicTitle(*user);
 
   myUserInfo->userUpdated(*user, subSignal);
-  myUserSettings->userUpdated(*user, subSignal);
+  if (!myIsOwner)
+    myUserSettings->userUpdated(*user, subSignal);
+  else
+    myOwnerSettings->userUpdated(*user, subSignal);
+}
+
+void UserDlg::listUpdated(unsigned long subSignal, int /* argument */,
+    const Licq::UserId& userId)
+{
+  if (userId != myUserId)
+    return;
+
+  switch (subSignal)
+  {
+    case Licq::PluginSignal::ListInvalidate:
+      if (Licq::gUserManager.userExists(myUserId))
+        break;
+      // User no longer exists, fall through to handle the removed user
+
+    case Licq::PluginSignal::ListUserRemoved:
+    case Licq::PluginSignal::ListOwnerRemoved:
+      close();
+      break;
+  }
 }
 
 void UserDlg::setBasicTitle(const Licq::User* user)
@@ -244,8 +325,7 @@ void UserDlg::setBasicTitle(const Licq::User* user)
   }
   else
   {
-    const QTextCodec* codec = UserCodec::codecForUser(user);
-    name = codec->toUnicode(user->getFullName().c_str());
+    name = QString::fromUtf8(user->getFullName().c_str());
     if (!name.isEmpty())
       name = " (" + name + ")";
     name.prepend(QString::fromUtf8(user->getAlias().c_str()));
@@ -273,6 +353,7 @@ void UserDlg::doneFunction(const Licq::Event* event)
       result = tr("done");
         break;
       case Licq::Event::ResultFailed:
+      case Licq::Event::ResultUnsupported:
       result = tr("failed");
         break;
       case Licq::Event::ResultTimedout:

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2011 Licq developers
+ * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,18 +31,19 @@
 
 #include <licq/logging/log.h>
 #include <licq/socket.h>
-#include <licq/contactlist/owner.h>
-#include <licq/contactlist/user.h>
 #include <licq/conversation.h>
 #include <licq/event.h>
-#include <licq/inifile.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/protocolsignal.h>
 
 #include "msn.h"
 #include "msnpacket.h"
+#include "owner.h"
 #include "pluginversion.h"
+#include "user.h"
 
 using namespace std;
+using namespace LicqMsn;
 using Licq::gConvoManager;
 using Licq::gLog;
 
@@ -98,8 +99,6 @@ CMSN::~CMSN()
     delete m_pPacketBuf;
   if (m_szUserName)
     free(m_szUserName);
-
-  saveConfig();
 }
 
 std::string CMSN::name() const
@@ -137,17 +136,6 @@ int CMSN::defaultServerPort() const
 bool CMSN::init(int, char**)
 {
   return true;
-}
-
-
-void CMSN::saveConfig()
-{
-  // Config file
-  Licq::IniFile msnConf("licq_msn.conf");
-  msnConf.loadFile();
-  msnConf.setSection("network");
-  msnConf.set("ListVersion", m_nListVersion);
-  msnConf.writeFile();
 }
 
 void CMSN::StorePacket(SBuffer *_pBuf, int _nSock)
@@ -412,12 +400,6 @@ int CMSN::run()
   int nCurrent; 
   fd_set f;
 
-  // Config file
-  Licq::IniFile msnConf("licq_msn.conf");
-  msnConf.loadFile();
-  msnConf.setSection("network");
-  msnConf.get("ListVersion", m_nListVersion, 0);
-
   pthread_mutex_init(&mutex_StartList, 0);
   pthread_mutex_init(&mutex_MSNEventList, 0);
   pthread_mutex_init(&mutex_ServerSocket, 0);
@@ -472,12 +454,10 @@ int CMSN::run()
         
         else if (nCurrent == m_nServerSocket)
         {
-          Licq::INetSocket* s = gSocketMan.FetchSocket(m_nServerSocket);
-          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
-          if (sock->RecvRaw())
+          Licq::INetSocket* sock = gSocketMan.FetchSocket(m_nServerSocket);
+          CMSNBuffer packet;
+          if (sock->receive(packet))
           {
-            CMSNBuffer packet(sock->RecvBuffer());
-            sock->ClearRecvBuffer();
             gSocketMan.DropSocket(sock);
 
             HandlePacket(m_nServerSocket, packet, m_szUserName);
@@ -497,12 +477,10 @@ int CMSN::run()
         
         else if (nCurrent == m_nNexusSocket)
         {
-          Licq::INetSocket* s = gSocketMan.FetchSocket(m_nNexusSocket);
-          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
-          if (sock->SSLRecv())
+          Licq::INetSocket* sock = gSocketMan.FetchSocket(m_nNexusSocket);
+          CMSNBuffer packet;
+          if (sock->receive(packet))
           {
-            CMSNBuffer packet(sock->RecvBuffer());
-            sock->ClearRecvBuffer();
             gSocketMan.DropSocket(sock);
             ProcessNexusPacket(packet);
           }
@@ -510,12 +488,10 @@ int CMSN::run()
 
         else if (nCurrent == m_nSSLSocket)
         {
-          Licq::INetSocket* s = gSocketMan.FetchSocket(m_nSSLSocket);
-          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
-          if (sock->SSLRecv())
+          Licq::INetSocket* sock = gSocketMan.FetchSocket(m_nSSLSocket);
+          CMSNBuffer packet;
+          if (sock->receive(packet))
           {
-            CMSNBuffer packet(sock->RecvBuffer());
-            sock->ClearRecvBuffer();
             gSocketMan.DropSocket(sock);
             ProcessSSLServerPacket(packet);
           }
@@ -524,12 +500,10 @@ int CMSN::run()
         else
         {
           //SB socket
-          Licq::INetSocket* s = gSocketMan.FetchSocket(nCurrent);
-          Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
-          if (sock && sock->RecvRaw())
+          Licq::INetSocket* sock = gSocketMan.FetchSocket(nCurrent);
+          CMSNBuffer packet;
+          if (sock && sock->receive(packet))
           {
-            CMSNBuffer packet(sock->RecvBuffer());
-            sock->ClearRecvBuffer();
             char *szUser = strdup(sock->userId().accountId().c_str());
             gSocketMan.DropSocket(sock);
 
@@ -567,6 +541,16 @@ void CMSN::destructor()
   delete this;
 }
 
+Licq::User* CMSN::createUser(const Licq::UserId& id, bool temporary)
+{
+  return new User(id, temporary);
+}
+
+Licq::Owner* CMSN::createOwner(const Licq::UserId& id)
+{
+  return new Owner(id);
+}
+
 void CMSN::ProcessPipe()
 {
   char buf[16];
@@ -601,14 +585,14 @@ void CMSN::ProcessSignal(Licq::ProtocolSignal* s)
     {
       if (m_nServerSocket < 0)
       {
-        Licq::ProtoLogonSignal* sig = static_cast<Licq::ProtoLogonSignal*>(s);
+        Licq::ProtoLogonSignal* sig = dynamic_cast<Licq::ProtoLogonSignal*>(s);
         Logon(sig->status());
       }
       break;
     }
     case Licq::ProtocolSignal::SignalChangeStatus:
     {
-      Licq::ProtoChangeStatusSignal* sig = static_cast<Licq::ProtoChangeStatusSignal*>(s);
+      Licq::ProtoChangeStatusSignal* sig = dynamic_cast<Licq::ProtoChangeStatusSignal*>(s);
       MSNChangeStatus(sig->status());
       break;
     }
@@ -619,77 +603,75 @@ void CMSN::ProcessSignal(Licq::ProtocolSignal* s)
     }
     case Licq::ProtocolSignal::SignalAddUser:
     {
-      Licq::ProtoAddUserSignal* sig = static_cast<Licq::ProtoAddUserSignal*>(s);
+      Licq::ProtoAddUserSignal* sig = dynamic_cast<Licq::ProtoAddUserSignal*>(s);
       MSNAddUser(sig->userId());
       break;
     }
     case Licq::ProtocolSignal::SignalRemoveUser:
     {
-      Licq::ProtoRemoveUserSignal* sig = static_cast<Licq::ProtoRemoveUserSignal*>(s);
+      Licq::ProtoRemoveUserSignal* sig = dynamic_cast<Licq::ProtoRemoveUserSignal*>(s);
       MSNRemoveUser(sig->userId());
       break;
     }
     case Licq::ProtocolSignal::SignalRenameUser:
     {
-      Licq::ProtoRenameUserSignal* sig = static_cast<Licq::ProtoRenameUserSignal*>(s);
+      Licq::ProtoRenameUserSignal* sig = dynamic_cast<Licq::ProtoRenameUserSignal*>(s);
       MSNRenameUser(sig->userId());
       break;
     }
     case Licq::ProtocolSignal::SignalNotifyTyping:
     {
-      Licq::ProtoTypingNotificationSignal* sig = static_cast<Licq::ProtoTypingNotificationSignal*>(s);
+      Licq::ProtoTypingNotificationSignal* sig = dynamic_cast<Licq::ProtoTypingNotificationSignal*>(s);
       if (sig->active())
         MSNSendTypingNotification(sig->userId(), sig->convoId());
       break;
     }
     case Licq::ProtocolSignal::SignalSendMessage:
     {
-      Licq::ProtoSendMessageSignal* sig = static_cast<Licq::ProtoSendMessageSignal*>(s);
+      Licq::ProtoSendMessageSignal* sig = dynamic_cast<Licq::ProtoSendMessageSignal*>(s);
       MSNSendMessage(sig->eventId(), sig->userId(), sig->message(), sig->callerThread(), sig->convoId());
       break;
     }
     case Licq::ProtocolSignal::SignalGrantAuth:
     {
-      Licq::ProtoGrantAuthSignal* sig = static_cast<Licq::ProtoGrantAuthSignal*>(s);
+      Licq::ProtoGrantAuthSignal* sig = dynamic_cast<Licq::ProtoGrantAuthSignal*>(s);
       MSNGrantAuth(sig->userId());
-      break;
-    }
-    case Licq::ProtocolSignal::SignalRefuseAuth:
-    {
-//      Licq::ProtoRefuseAuthSignal* sig = static_cast<Licq::ProtoRefuseAuthSignal*>(s);
-      break;
-    }
-    case Licq::ProtocolSignal::SignalRequestInfo:
-    {
-//      Licq::ProtoRequestInfo* sig = static_cast<Licq::ProtoRequestInfo*>(s);
+      Licq::gPluginManager.pushPluginEvent(new Licq::Event(s));
       break;
     }
     case Licq::ProtocolSignal::SignalUpdateInfo:
     {
       string newAlias;
       {
-        Licq::OwnerReadGuard o(MSN_PPID);
-        if (o.isLocked())
+        Licq::OwnerReadGuard o(s->userId());
+        if (!o.isLocked())
           newAlias = o->getAlias();
       }
       MSNUpdateUser(newAlias);
+      Licq::gPluginManager.pushPluginEvent(new Licq::Event(s));
       break;
     }
     case Licq::ProtocolSignal::SignalBlockUser:
     {
-      Licq::ProtoBlockUserSignal* sig = static_cast<Licq::ProtoBlockUserSignal*>(s);
+      Licq::ProtoBlockUserSignal* sig = dynamic_cast<Licq::ProtoBlockUserSignal*>(s);
       MSNBlockUser(sig->userId());
       break;
     }
     case Licq::ProtocolSignal::SignalUnblockUser:
     {
-      Licq::ProtoUnblockUserSignal* sig = static_cast<Licq::ProtoUnblockUserSignal*>(s);
+      Licq::ProtoUnblockUserSignal* sig = dynamic_cast<Licq::ProtoUnblockUserSignal*>(s);
       MSNUnblockUser(sig->userId());
       break;
     }
    
     default:
-      break;  //Do nothing now...
+    {
+      /* Unsupported action, if it has an eventId, cancel it */
+      if (s->eventId() != 0)
+        Licq::gPluginManager.pushPluginEvent(
+            new Licq::Event(s, Licq::Event::ResultUnsupported));
+      break;
+    }
   }
 
   delete s;

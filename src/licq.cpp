@@ -1,14 +1,27 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include "config.h"
 
 #include <boost/foreach.hpp>
 #include <boost/scoped_array.hpp>
+#include <cassert>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -18,6 +31,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <iostream>
+#include <poll.h>
 #include <pwd.h>
 #include <string>
 #include <sys/stat.h>
@@ -35,7 +49,6 @@
 
 #include "contactlist/usermanager.h"
 #include "daemon.h"
-#include "fifo.h"
 #include "filter.h"
 #include "gettext.h"
 #include "logging/logservice.h"
@@ -45,13 +58,19 @@
 #include "sarmanager.h"
 #include "statistics.h"
 
+#ifdef USE_FIFO
+#include "fifo.h"
+#endif
+
 using namespace std;
 using Licq::GeneralPlugin;
 using Licq::ProtocolPlugin;
 using LicqDaemon::Daemon;
 using LicqDaemon::PluginManager;
 using LicqDaemon::gDaemon;
+#ifdef USE_FIFO
 using LicqDaemon::gFifo;
+#endif
 using LicqDaemon::gFilterManager;
 using LicqDaemon::gLogService;
 using LicqDaemon::gOnEventManager;
@@ -194,12 +213,12 @@ static bool setupBaseDirPath(const std::string& path)
  * Prints the @a error to stderr (by means of gLog), and if the user is running
  * X, tries to show a dialog with the error.
  */
-void displayFatalError(const char* error, int useLicqLog)
+void displayFatalError(const string& error, int useLicqLog)
 {
   if (useLicqLog)
-    gLog.error("%s", error);
+    gLog.error("%s", error.c_str());
   else
-    fprintf(stderr, "\n%s\n", error);
+    fprintf(stderr, "\n%s\n", error.c_str());
 
   // Try to show the error if we're running X
   if (getenv("DISPLAY") != NULL)
@@ -208,9 +227,9 @@ void displayFatalError(const char* error, int useLicqLog)
     if (child == 0)
     {
       // execlp never returns (except on error).
-      execlp("kdialog", "kdialog", "--error", error, NULL);
-      execlp("Xdialog", "Xdialog", "--title", "Error", "--msgbox", error, "0", "0", NULL);
-      execlp("xmessage", "xmessage", "-center", error, NULL);
+      execlp("kdialog", "kdialog", "--error", error.c_str(), NULL);
+      execlp("Xdialog", "Xdialog", "--title", "Error", "--msgbox", error.c_str(), "0", "0", NULL);
+      execlp("xmessage", "xmessage", "-center", error.c_str(), NULL);
 
       exit(EXIT_FAILURE);
     }
@@ -245,17 +264,15 @@ bool CLicq::Init(int argc, char **argv)
 
   gDaemon.preInitialize(this);
 
-  char *szRedirect = NULL;
-  vector <char *> vszPlugins;
-  vector <char *> vszProtoPlugins;
+  string redirect;
+  list<string> generalPlugins;
+  list<string> protocolPlugins;
 
   // parse command line for arguments
   bool bHelp = false;
   bool bFork = false;
   bool bBaseDir = false;
   bool bForceInit = false;
-  bool bCmdLinePlugins = false;
-  bool bCmdLineProtoPlugins = false;
   bool bRedirect_ok = false;
   bool bUseColor = true;
   // Check the no one is trying session management on us
@@ -292,17 +309,15 @@ bool CLicq::Init(int argc, char **argv)
       case 'I':  // force init
         bForceInit = true;
         break;
-      case 'p':  // new plugin
-        vszPlugins.push_back(strdup(optarg));
-        bCmdLinePlugins = true;
-        break;
-      case 'l':  // new protocol plugin
-        vszProtoPlugins.push_back(strdup(optarg));
-        bCmdLineProtoPlugins = true;
-        break;
-      case 'o':  // redirect stderr
-        szRedirect = strdup(optarg);
-        break;
+        case 'p':  // new plugin
+          generalPlugins.push_back(optarg);
+          break;
+        case 'l':  // new protocol plugin
+          protocolPlugins.push_back(optarg);
+          break;
+        case 'o':  // redirect stderr
+          redirect = optarg;
+          break;
       case 'f':  // fork
         bFork = true;
         break;
@@ -324,9 +339,9 @@ bool CLicq::Init(int argc, char **argv)
 
   // See if redirection works, set bUseColor to false if we redirect
   // to a file.
-  if (szRedirect)
+  if (!redirect.empty())
   {
-    int fd = open(szRedirect, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    int fd = open(redirect.c_str(), O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     bRedirect_ok = (fd != -1 && dup2(fd, STDERR_FILENO) != -1);
   }
 
@@ -342,13 +357,11 @@ bool CLicq::Init(int argc, char **argv)
   myConsoleLog->setUseColors(bUseColor);
 
   // Redirect stdout and stderr if asked to
-  if (szRedirect) {
+  if (!redirect.empty()) {
     if (bRedirect_ok)
-      gLog.info(tr("Output redirected to \"%s\""), szRedirect);
+      gLog.info(tr("Output redirected to \"%s\""), redirect.c_str());
     else
-      gLog.warning(tr("Redirection to \"%s\" failed: %s"), szRedirect, strerror(errno));
-    free (szRedirect);
-    szRedirect = NULL;
+      gLog.warning(tr("Redirection to \"%s\" failed: %s"), redirect.c_str(), strerror(errno));
   }
 
   // if no base directory set on the command line then get it from HOME
@@ -373,10 +386,9 @@ bool CLicq::Init(int argc, char **argv)
   gPluginManager.loadProtocolPlugin("", true, true);
 
   // Load up the plugins
-  vector <char *>::iterator iter;
-  for (iter = vszPlugins.begin(); iter != vszPlugins.end(); ++iter)
+  BOOST_FOREACH(string& pluginName, generalPlugins)
   {
-    GeneralPlugin::Ptr plugin = LoadPlugin(*iter, argc, argv, !bHelp);
+    GeneralPlugin::Ptr plugin = LoadPlugin(pluginName, argc, argv, !bHelp);
     if (!plugin)
       return false;
     if (bHelp)
@@ -384,11 +396,10 @@ bool CLicq::Init(int argc, char **argv)
       fprintf(stderr, "----------\nLicq Plugin: %s %s\n%s\n",
           plugin->name().c_str(), plugin->version().c_str(), plugin->usage().c_str());
     }
-    free(*iter);
   }
-  for (iter = vszProtoPlugins.begin(); iter != vszProtoPlugins.end(); ++iter)
+  BOOST_FOREACH(string& pluginName, protocolPlugins)
   {
-    ProtocolPlugin::Ptr plugin = LoadProtoPlugin(*iter, !bHelp);
+    ProtocolPlugin::Ptr plugin = LoadProtoPlugin(pluginName, !bHelp);
     if (!plugin)
       return false;
     if (bHelp)
@@ -396,7 +407,6 @@ bool CLicq::Init(int argc, char **argv)
       fprintf(stderr, "----------\nLicq Protocol Plugin: %s %s\n",
           plugin->name().c_str(), plugin->version().c_str());
     }
-    free(*iter);
   }
   if (bHelp) return false;
 
@@ -491,10 +501,11 @@ bool CLicq::Init(int argc, char **argv)
   }
 
   // Open the config file
-  Licq::IniFile licqConf("licq.conf");
+  Licq::IniFile& licqConf(gDaemon.getLicqConf());
   if (!licqConf.loadFile())
   {
     gLog.error("Could not load config file '%s'", licqConf.filename().c_str());
+    gDaemon.releaseLicqConf();
     return false;
   }
 
@@ -511,6 +522,7 @@ bool CLicq::Init(int argc, char **argv)
     {
       gLog.error("Upgrade failed. Please save your licq directory and "
                  "report this as a bug.");
+      gDaemon.releaseLicqConf();
       return false;
     }
   }
@@ -521,7 +533,7 @@ bool CLicq::Init(int argc, char **argv)
   }
 
   // Find and load the protocol plugins before the UI plugins
-  if (!bHelp && !bCmdLineProtoPlugins)
+  if (protocolPlugins.empty())
   {
     unsigned nNumProtoPlugins = 0;
     if (licqConf.setSection("plugins", false)
@@ -535,14 +547,17 @@ bool CLicq::Init(int argc, char **argv)
         if (!licqConf.get(szKey, pluginName))
           continue;
         if (!LoadProtoPlugin(pluginName.c_str()))
+        {
+          gDaemon.releaseLicqConf();
           return false;
+        }
       }
     }
   }
 
 
   // Find and load the plugins from the conf file
-  if (!bHelp && !bCmdLinePlugins)
+  if (generalPlugins.empty())
   {
     unsigned nNumPlugins = 0;
     string pluginName;
@@ -554,7 +569,7 @@ bool CLicq::Init(int argc, char **argv)
         if (!licqConf.get(szKey, pluginName))
           continue;
 
-        bool loaded = LoadPlugin(pluginName.c_str(), argc, argv);
+        bool loaded = LoadPlugin(pluginName, argc, argv);
 
         // Make upgrade from 1.3.x and older easier by automatically switching from kde/qt-gui to kde4/qt4-gui
         if (!loaded && pluginName == "kde-gui")
@@ -569,7 +584,10 @@ bool CLicq::Init(int argc, char **argv)
         }
 
         if (!loaded)
+        {
+          gDaemon.releaseLicqConf();
           return false;
+        }
       }
     }
     else  // If no plugins, try some defaults one by one
@@ -581,9 +599,14 @@ bool CLicq::Init(int argc, char **argv)
       while (i < size && !plugin)
         plugin = LoadPlugin(plugins[i++], argc, argv);
       if (!plugin)
+      {
+        gDaemon.releaseLicqConf();
         return false;
+      }
     }
   }
+
+  gDaemon.releaseLicqConf();
 
 #ifdef USE_OPENSSL
   // Initialize SSL
@@ -621,7 +644,9 @@ bool CLicq::Init(int argc, char **argv)
 
 CLicq::~CLicq()
 {
+#ifdef USE_FIFO
   gFifo.shutdown();
+#endif
 
   gLogService.unregisterLogSink(myConsoleLog);
 }
@@ -740,8 +765,7 @@ bool CLicq::upgradeLicq128(Licq::IniFile& licqConf)
  *
  * Loads the given plugin using the given command line arguments.
  *---------------------------------------------------------------------------*/
-GeneralPlugin::Ptr CLicq::
-LoadPlugin(const char *_szName, int argc, char **argv, bool keep)
+GeneralPlugin::Ptr CLicq::LoadPlugin(const string& name, int argc, char** argv, bool keep)
 {
   // Set up the argument vector
   static int argcndx = 0;
@@ -757,30 +781,39 @@ LoadPlugin(const char *_szName, int argc, char **argv, bool keep)
     while (++argcndx < argc && strcmp(argv[argcndx], "--") != 0)
       argccnt++;
   }
-  return gPluginManager.loadGeneralPlugin(_szName, argccnt,
+  return gPluginManager.loadGeneralPlugin(name, argccnt,
       &argv[argcndx - argccnt], keep);
 }
 
 
-ProtocolPlugin::Ptr CLicq::
-LoadProtoPlugin(const char *_szName, bool keep)
+ProtocolPlugin::Ptr CLicq::LoadProtoPlugin(const string& name, bool keep)
 {
-  return gPluginManager.loadProtocolPlugin(_szName, keep);
+  return gPluginManager.loadProtocolPlugin(name, keep);
 }
 
 
 int CLicq::Main()
 {
-  int nResult = 0;
-
   if (gPluginManager.getGeneralPluginsCount() == 0)
   {
     gLog.warning(tr("No plugins specified on the command-line (-p option).\n"
                     "See the README for more information."));
-    return nResult;
+    return 0;
   }
 
+  // Setup file descriptors to manage
+  struct pollfd fds[2];
+  int numfds = 1;
+  fds[0].fd = myPipe.getReadFd();
+  fds[0].events = POLLIN;
+
+#ifdef USE_FIFO
+  // Init the fifo
   gFifo.initialize();
+  struct pollfd *const fds_fifo = &fds[numfds++];
+  fds_fifo->fd = gFifo.fifo_fd;
+  fds_fifo->events = POLLIN;
+#endif
 
   // Run the plugins
   gPluginManager.startAllPlugins();
@@ -792,35 +825,57 @@ int CLicq::Main()
   // Logon all protocols according to owner configuration
   gDaemon.autoLogon();
 
-  try
+  bool shuttingDown = false;
+  int timeout = 60 * 1000;
+  while (true)
   {
-    bool bDaemonShutdown = false;
-
-    while (true)
+    int ret = poll(fds, numfds, timeout);
+    if (ret < 0)
     {
-      if (bDaemonShutdown)
-        gPluginManager.waitForPluginExit(PluginManager::MAX_WAIT_PLUGIN);
-      else
+      // Interrupted by a signal is ok, anything else is bad
+      assert(errno == EINTR);
+      continue;
+    }
+
+    if (shuttingDown && ret == 0)
+      break;
+
+    // Flush statistics data regulary
+    gStatistics.flush();
+
+    if (fds[0].revents & POLLIN)
+    {
+      char c = myPipe.getChar();
+      if (c == NotifyReapPlugin)
       {
-        if (gPluginManager.waitForPluginExit() == PluginManager::DAEMON_ID)
-        {
-          bDaemonShutdown = true;
-          continue;
-        }
+        gPluginManager.reapPlugin();
+
+        // Exit when there are no plugins left running
+        if (gPluginManager.pluginCount() == 0)
+          break;
+      }
+
+      if (c == NotifyShuttingDown)
+      {
+        shuttingDown = true;
+        timeout = PluginManager::MAX_WAIT_PLUGIN * 1000;
       }
     }
-  }
-  catch (const Licq::Exception&)
-  {
-    // Empty
+
+#ifdef USE_FIFO
+    if (fds_fifo->revents & POLLIN)
+      gFifo.process();
+#endif
   }
 
   gPluginManager.cancelAllPlugins();
 
-  pthread_t* t = gDaemon.Shutdown();
-  pthread_join(*t, NULL);
+  gDaemon.Shutdown();
 
   gUserManager.shutdown();
+
+  // Flush statistics counters
+  gStatistics.flush();
 
   return gPluginManager.getGeneralPluginsCount();
 }
@@ -890,13 +945,15 @@ void CLicq::SaveLoadedPlugins()
 }
 
 
-void CLicq::ShutdownPlugins()
+void CLicq::shutdown()
 {
   // Save plugins
   if (gPluginManager.getGeneralPluginsCount() > 0)
     SaveLoadedPlugins();
 
   gPluginManager.shutdownAllPlugins();
+
+  notify(NotifyShuttingDown);
 }
 
 

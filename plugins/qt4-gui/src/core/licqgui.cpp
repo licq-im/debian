@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,7 +36,6 @@
 #include <QMimeData>
 #include <QSessionManager>
 #include <QStyle>
-#include <QTextCodec>
 #include <QTranslator>
 #include <QUrl>
 
@@ -72,7 +71,6 @@ extern "C"
 #endif /* defined(Q_WS_X11) */
 
 #include <licq/inifile.h>
-#include <licq/logging/log.h>
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
@@ -93,7 +91,7 @@ extern "C"
 
 #include "contactlist/contactlist.h"
 
-#include "dialogs/reqauthdlg.h"
+#include "dialogs/authdlg.h"
 #include "dialogs/logwindow.h"
 
 #include "dockicons/dockicon.h"
@@ -104,9 +102,6 @@ extern "C"
 #endif
 
 #include "helpers/support.h"
-#include "helpers/usercodec.h"
-
-#include "userdlg/userdlg.h"
 
 #include "userevents/usereventcommon.h"
 #include "userevents/usereventtabdlg.h"
@@ -421,12 +416,6 @@ int LicqGui::Run()
   mySignalManager = new SignalManager;
   myLogWindow = new LogWindow;
 
-  using Licq::Log;
-  myLogWindow->pluginLogSink()->setLogLevel(Log::Unknown, true);
-  myLogWindow->pluginLogSink()->setLogLevel(Log::Info, true);
-  myLogWindow->pluginLogSink()->setLogLevel(Log::Warning, true);
-  myLogWindow->pluginLogSink()->setLogLevel(Log::Error, true);
-
   // Check for qt-gui directory in current base dir
   if (!QDir(QString("%1%2").arg(Licq::gDaemon.baseDir().c_str()).arg(QTGUI_DIR)).exists())
   {
@@ -621,9 +610,8 @@ void LicqGui::changeStatus(unsigned status, const Licq::UserId& userId, bool inv
     }
   }
 
-  const QTextCodec* codec = UserCodec::defaultEncoding();
   gProtocolManager.setStatus(userId, status,
-      (autoMessage.isNull() ? gProtocolManager.KeepAutoResponse : codec->fromUnicode(autoMessage).data()));
+      (autoMessage.isNull() ? gProtocolManager.KeepAutoResponse : autoMessage.toUtf8().constData()));
 }
 
 bool LicqGui::removeUserFromList(const Licq::UserId& userId, QWidget* parent)
@@ -649,53 +637,6 @@ bool LicqGui::removeUserFromList(const Licq::UserId& userId, QWidget* parent)
     return true;
   }
   return false;
-}
-
-void LicqGui::showInfoDialog(int /* fcn */, const Licq::UserId& userId, bool toggle, bool updateNow)
-{
-  if (!userId.isValid())
-    return;
-
-  UserDlg* f = NULL;
-
-  for (int i = 0; i < myUserDlgList.size(); ++i)
-  {
-    UserDlg* item = myUserDlgList.at(i);
-    if (item->userId() == userId)
-    {
-      f = item;
-      break;
-    }
-  }
-
-  UserDlg::UserPage tab = UserDlg::GeneralPage;
-
-  if (f != NULL)
-  {
-    if (toggle && f->currentPage() == tab)
-    {
-      delete f; // will notify us about deletion
-      return;
-    }
-    else
-    {
-      f->show();
-      f->raise();
-    }
-  }
-  else
-  {
-    f = new UserDlg(userId);
-    connect(f, SIGNAL(finished(UserDlg*)), SLOT(userDlgFinished(UserDlg*)));
-    f->show();
-    myUserDlgList.append(f);
-  }
-
-  f->showPage(tab);
-  f->show();
-  f->raise();
-  if (updateNow)
-    f->retrieveSettings();
 }
 
 UserViewEvent* LicqGui::showViewEventDialog(const Licq::UserId& userId)
@@ -826,13 +767,11 @@ UserEventCommon* LicqGui::showEventDialog(int fcn, const Licq::UserId& userId, i
     parent = myUserEventTabDlg;
   }
 
-  UserEventCommon* e = NULL;
-
   // Creating a new message dialog may steal focus
   // Save the widget currently in focus so we can restore it afterwards
   QWidget* oldFocus = QApplication::focusWidget();
 
-  e = new UserSendEvent(fcn, userId, parent);
+  UserSendEvent* e = new UserSendEvent(fcn, userId, parent);
   if (e == NULL) return NULL;
 
   QWidget* msgWindow = e;
@@ -879,7 +818,7 @@ UserEventCommon* LicqGui::showEventDialog(int fcn, const Licq::UserId& userId, i
   // make sure we only remember one, or it will get complicated
   sendEventFinished(userId);
   connect(e, SIGNAL(finished(const Licq::UserId&)), SLOT(sendEventFinished(const Licq::UserId&)));
-  myUserSendList.append(static_cast<UserSendEvent*>(e));
+  myUserSendList.append(e);
 
   return e;
 }
@@ -1014,15 +953,6 @@ void LicqGui::viewUrl(const QString& url)
 #endif
 }
 
-void LicqGui::userDlgFinished(UserDlg* dialog)
-{
-  if (myUserDlgList.removeAll(dialog) > 0)
-    return;
-
-  gLog.warning("User Info finished signal for user with no window (%s)",
-      dialog->userId().toString().c_str());
-}
-
 void LicqGui::userEventTabDlgDone()
 {
   myUserEventTabDlg = NULL;
@@ -1058,7 +988,7 @@ void LicqGui::showDefaultEventDialog(const Licq::UserId& userId)
     return;
 
   QString id = userId.accountId().c_str();
-  unsigned long ppid = userId.protocolId();
+  unsigned long sendFuncs = 0;
 
   bool send;
   int convoId = -1;
@@ -1066,6 +996,9 @@ void LicqGui::showDefaultEventDialog(const Licq::UserId& userId)
     Licq::UserReadGuard u(userId);
     if (!u.isLocked())
       return;
+
+    // Get message types supported for this protocol
+    sendFuncs = u->protocolCapabilities();
 
     // set default function to read or send depending on whether or not
     // there are new messages
@@ -1096,21 +1029,9 @@ void LicqGui::showDefaultEventDialog(const Licq::UserId& userId)
   if (Config::Chat::instance()->sendFromClipboard())
   {
     QClipboard* clip = QApplication::clipboard();
-    QClipboard::Mode mode = QClipboard::Clipboard;
-
-    QString c = clip->text(mode);
-
+    QString c = clip->text(QClipboard::Clipboard);
     if (c.isEmpty() && clip->supportsSelection())
-    {
-      mode = QClipboard::Selection;
-      c = clip->text(mode);
-    }
-
-    // Check which message types are supported for this protocol
-    unsigned long sendFuncs = 0;
-    Licq::ProtocolPlugin::Ptr protocol = gPluginManager.getProtocolPlugin(ppid);
-    if (protocol.get() != NULL)
-      sendFuncs = protocol->capabilities();
+      c = clip->text(QClipboard::Selection);
 
     if (sendFuncs & Licq::ProtocolPlugin::CanSendUrl &&
         (c.left(5) == "http:" || c.left(4) == "ftp:" || c.left(6) == "https:"))
@@ -1121,8 +1042,6 @@ void LicqGui::showDefaultEventDialog(const Licq::UserId& userId)
         return;
       // Set the url
       e->setUrl(c, "");
-      // Clear the buffer now
-      clip->clear(mode);
       return;
     }
     else if (sendFuncs & Licq::ProtocolPlugin::CanSendFile &&
@@ -1139,8 +1058,6 @@ void LicqGui::showDefaultEventDialog(const Licq::UserId& userId)
         c.remove(0, 1);
       c.prepend('/');
       e->setFile(c, "");
-      // Clear the buffer now
-      clip->clear(mode);
       return;
     }
   }
@@ -1307,17 +1224,6 @@ void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const Lic
           break;
         }
       }
-      // if their info box is open, kill it
-      for (int i = 0; i < myUserDlgList.size(); ++i)
-      {
-        UserDlg* item = myUserDlgList.at(i);
-        if (item->userId() == userId)
-        {
-          item->close();
-          myUserDlgList.removeAll(item);
-          break;
-        }
-      }
       // if their send box is open, kill it
       for (int i = 0; i < myUserSendList.size(); ++i)
       {
@@ -1343,7 +1249,7 @@ void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const Lic
         awaitingAuth = (u.isLocked() && u->GetAwaitingAuth());
       }
       if (awaitingAuth)
-        new ReqAuthDlg(userId);
+        new AuthDlg(AuthDlg::RequestAuth, userId);
       break;
     }
     case Licq::PluginSignal::ListInvalidate:
@@ -1359,7 +1265,6 @@ void LicqGui::listUpdated(unsigned long subSignal, int /* argument */, const Lic
 
 void LicqGui::userUpdated(const Licq::UserId& userId, unsigned long subSignal, int argument, unsigned long cid)
 {
-  QString id = userId.accountId().c_str();
   unsigned long ppid = userId.protocolId();
 
   switch (subSignal)
@@ -1652,7 +1557,7 @@ void LicqGui::autoAway()
       if (!autoResponse.isNull())
       {
         Licq::OwnerWriteGuard o(owner);
-        o->setAutoResponse(autoResponse.toLocal8Bit().constData());
+        o->setAutoResponse(autoResponse.toUtf8().constData());
         o->save(Licq::Owner::SaveOwnerInfo);
       }
 

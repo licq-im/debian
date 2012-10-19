@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include <pthread.h>
 #include <string>
 
+#include "color.h"
 #include "userid.h"
 
 namespace Licq
@@ -58,11 +59,12 @@ public:
     SignalSendChat      = 22,   // Send chat request
     SignalCancelEvent   = 23,   // Cancel an event (chat, secure, file, etc.)
     SignalSendReply     = 24,   // Accept/refuse file/chat request
-    SignalOpenedWindow  = 25,   // Chat window has been opened for a user
-    SignalClosedWindow  = 26,   // Chat window has been closed for a user
     SignalOpenSecure    = 27,   // Request secure channel with user
     SignalCloseSecure   = 28,   // Close secure channel with user
     SignalRequestAuth   = 29,   // Request authorization from user
+    SignalRenameGroup   = 30,   // Rename a user group
+    SignalRemoveGroup   = 31,   // Remove a user group
+    SignalSendUrl       = 32,   // Send an URL to a user
   };
 
   // Flags for send events
@@ -74,15 +76,9 @@ public:
     SendToMultiple      = 8,    // Message is sent to multiple recipients
   };
 
-  ProtocolSignal(SignalType signal, const UserId& userId = UserId(), unsigned long eventId = 0)
-    : mySignal(signal),
-      myUserId(userId),
-      myEventId(eventId),
-      myCallerThread(pthread_self())
-  { /* Empty */ }
+  ProtocolSignal(SignalType signal, const UserId& userId, unsigned long eventId = 0);
 
-  virtual ~ProtocolSignal()
-  { /* Empty */ }
+  virtual ~ProtocolSignal();
 
   //! The signal is being sent to the plugin.
   SignalType signal() const
@@ -112,10 +108,8 @@ private:
 class ProtoLogonSignal : public ProtocolSignal
 {
 public:
-  ProtoLogonSignal(unsigned status)
-    : ProtocolSignal(SignalLogon),
-      myStatus(status)
-  { /* Empty */ }
+  ProtoLogonSignal(const UserId& ownerId, unsigned status);
+  ~ProtoLogonSignal();
 
   //! The requested initial status.
   unsigned status() const { return myStatus; }
@@ -127,18 +121,15 @@ private:
 class ProtoLogoffSignal : public ProtocolSignal
 {
 public:
-  ProtoLogoffSignal()
-    : ProtocolSignal(SignalLogoff)
-  { /* Empty */ }
+  ProtoLogoffSignal(const UserId& ownerId);
+  ~ProtoLogoffSignal();
 };
 
 class ProtoChangeStatusSignal : public ProtocolSignal
 {
 public:
-  ProtoChangeStatusSignal(unsigned status)
-    : ProtocolSignal(SignalChangeStatus),
-      myStatus(status)
-  { /* Empty */ }
+  ProtoChangeStatusSignal(const UserId& ownerId, unsigned status);
+  ~ProtoChangeStatusSignal();
 
   //! The requested status.
   unsigned status() const { return myStatus; }
@@ -150,75 +141,60 @@ private:
 class ProtoAddUserSignal : public ProtocolSignal
 {
 public:
-  ProtoAddUserSignal(const UserId& userId, bool authRequired)
-    : ProtocolSignal(SignalAddUser, userId),
-      myAuthRequired(authRequired)
-  { /* Empty */ }
-
-  //! True if authorization is required to add this user.
-  bool authRequired() const { return myAuthRequired; }
-
-private:
-  bool myAuthRequired;
+  ProtoAddUserSignal(const UserId& userId);
+  ~ProtoAddUserSignal();
 };
 
 class ProtoRemoveUserSignal : public ProtocolSignal
 {
 public:
-  ProtoRemoveUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalRemoveUser, userId)
-  { /* Empty */ }
+  ProtoRemoveUserSignal(const UserId& userId);
+  ~ProtoRemoveUserSignal();
 };
 
 class ProtoRenameUserSignal : public ProtocolSignal
 {
 public:
-  ProtoRenameUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalRenameUser, userId)
-  { /* Empty */ }
+  ProtoRenameUserSignal(const UserId& userId);
+  ~ProtoRenameUserSignal();
 };
 
 class ProtoChangeUserGroupsSignal : public ProtocolSignal
 {
 public:
-  ProtoChangeUserGroupsSignal(const UserId& userId)
-    : ProtocolSignal(SignalChangeUserGroups, userId)
-  { /* Empty */ }
+  ProtoChangeUserGroupsSignal(const UserId& userId);
+  ~ProtoChangeUserGroupsSignal();
 };
 
 class ProtoSendMessageSignal : public ProtocolSignal
 {
 public:
   ProtoSendMessageSignal(unsigned long eventId, const UserId& userId,
-      const std::string& message, unsigned flags,
-      unsigned long convoId = 0)
-    : ProtocolSignal(SignalSendMessage, userId, eventId),
-      myMessage(message),
-      myFlags(flags),
-      myConvoId(convoId)
-  { /* Empty */ }
+      const std::string& message, unsigned flags, const Color* color = NULL,
+      unsigned long convoId = 0);
+  ~ProtoSendMessageSignal();
 
   //! The message to be sent
   const std::string& message() const { return myMessage; }
   //! The message flags
   unsigned flags() const { return myFlags; }
+  /// Message color
+  const Color* color() const { return &myColor; }
   //! The conversation id to use (gets the socket).
   unsigned long convoId() const { return myConvoId; }
 
 private:
   std::string myMessage;
   unsigned myFlags;
+  Color myColor;
   unsigned long myConvoId;
 };
 
 class ProtoTypingNotificationSignal : public ProtocolSignal
 {
 public:
-  ProtoTypingNotificationSignal(const UserId& userId, bool active, unsigned long convoId = 0)
-    : ProtocolSignal(SignalNotifyTyping, userId),
-      myActive(active),
-      myConvoId(convoId)
-  { /* Empty */ }
+  ProtoTypingNotificationSignal(const UserId& userId, bool active, unsigned long convoId = 0);
+  ~ProtoTypingNotificationSignal();
 
   bool active() const { return myActive; }
   //! The conversation id to use (gets the socket).
@@ -232,10 +208,8 @@ private:
 class ProtoGrantAuthSignal : public ProtocolSignal
 {
 public:
-  ProtoGrantAuthSignal(const UserId& userId, const std::string& message)
-    : ProtocolSignal(SignalGrantAuth, userId),
-      myMessage(message)
-  { /* Empty */ }
+  ProtoGrantAuthSignal(unsigned long eventId, const UserId& userId, const std::string& message);
+  ~ProtoGrantAuthSignal();
 
   const std::string& message() const { return myMessage; }
 
@@ -246,10 +220,8 @@ private:
 class ProtoRefuseAuthSignal : public ProtocolSignal
 {
 public:
-  ProtoRefuseAuthSignal(const UserId& userId, const std::string& message)
-    : ProtocolSignal(SignalRefuseAuth, userId),
-      myMessage(message)
-  { /* Empty */ }
+  ProtoRefuseAuthSignal(unsigned long eventId, const UserId& userId, const std::string& message);
+  ~ProtoRefuseAuthSignal();
 
   const std::string& message() const { return myMessage; }
 
@@ -260,103 +232,90 @@ private:
 class ProtoRequestInfo : public ProtocolSignal
 {
 public:
-  ProtoRequestInfo(const UserId& userId)
-    : ProtocolSignal(SignalRequestInfo, userId)
-  { /* Empty */ }
+  ProtoRequestInfo(unsigned long eventId, const UserId& userId);
+  ~ProtoRequestInfo();
 };
 
 class ProtoUpdateInfoSignal : public ProtocolSignal
 {
 public:
-  ProtoUpdateInfoSignal()
-    : ProtocolSignal(SignalUpdateInfo)
-  { /* Empty */ }
+  ProtoUpdateInfoSignal(unsigned long eventId, const UserId& ownerId);
+  ~ProtoUpdateInfoSignal();
 };
 
 class ProtoRequestPicture : public ProtocolSignal
 {
 public:
-  ProtoRequestPicture(const UserId& userId)
-    : ProtocolSignal(SignalRequestPicture, userId)
-  { /* Empty */ }
+  ProtoRequestPicture(unsigned long eventId, const UserId& userId);
+  ~ProtoRequestPicture();
 };
 
 class ProtoBlockUserSignal : public ProtocolSignal
 {
 public:
-  ProtoBlockUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalBlockUser, userId)
-  { /* Empty */ }
+  ProtoBlockUserSignal(const UserId& userId);
+  ~ProtoBlockUserSignal();
 };
 
 class ProtoUnblockUserSignal : public ProtocolSignal
 {
 public:
-  ProtoUnblockUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalUnblockUser, userId)
-  { /* Empty */ }
+  ProtoUnblockUserSignal(const UserId& userId);
+  ~ProtoUnblockUserSignal();
 };
 
 class ProtoAcceptUserSignal : public ProtocolSignal
 {
 public:
-  ProtoAcceptUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalAcceptUser, userId)
-  { /* Empty */ }
+  ProtoAcceptUserSignal(const UserId& userId);
+  ~ProtoAcceptUserSignal();
 };
 
 class ProtoUnacceptUserSignal : public ProtocolSignal
 {
 public:
-  ProtoUnacceptUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalUnacceptUser, userId)
-  { /* Empty */ }
+  ProtoUnacceptUserSignal(const UserId& userId);
+  ~ProtoUnacceptUserSignal();
 };
 
 class ProtoIgnoreUserSignal : public ProtocolSignal
 {
 public:
-  ProtoIgnoreUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalIgnoreUser, userId)
-  { /* Empty */ }
+  ProtoIgnoreUserSignal(const UserId& userId);
+  ~ProtoIgnoreUserSignal();
 };
 
 class ProtoUnignoreUserSignal : public ProtocolSignal
 {
 public:
-  ProtoUnignoreUserSignal(const UserId& userId)
-    : ProtocolSignal(SignalUnignoreUser, userId)
-  { /* Empty */ }
+  ProtoUnignoreUserSignal(const UserId& userId);
+  ~ProtoUnignoreUserSignal();
 };
 
 class ProtoSendFileSignal : public ProtocolSignal
 {
 public:
   ProtoSendFileSignal(unsigned long eventId, const UserId& userId, const std::string& filename,
-      const std::string& message, const std::list<std::string>& files)
-    : ProtocolSignal(SignalSendFile, userId, eventId),
-      myFilename(filename),
-      myMessage(message),
-      myFiles(files)
-  { /* Empty */ }
+      const std::string& message, const std::list<std::string>& files, unsigned flags = 0);
+  ~ProtoSendFileSignal();
 
   const std::string& filename() const { return myFilename; }
   const std::string& message() const { return myMessage; }
   const std::list<std::string>& files() const { return myFiles; }
+  unsigned flags() const { return myFlags; }
 
 private:
   std::string myFilename;
   std::string myMessage;
   std::list<std::string> myFiles;
+  unsigned myFlags;
 };
 
 class ProtoSendChatSignal : public ProtocolSignal
 {
 public:
-  ProtoSendChatSignal(const UserId& userId, const std::string& message)
-    : ProtocolSignal(SignalSendChat, userId),
-      myMessage(message)
-  { /* Empty */ }
+  ProtoSendChatSignal(const UserId& userId, const std::string& message);
+  ~ProtoSendChatSignal();
 
   const std::string& message() const { return myMessage; }
 
@@ -367,15 +326,8 @@ private:
 class ProtoCancelEventSignal : public ProtocolSignal
 {
 public:
-  ProtoCancelEventSignal(const UserId& userId, unsigned long flag)
-    : ProtocolSignal(SignalCancelEvent, userId),
-      myFlag(flag)
-  { /* Empty */ }
-
-  unsigned long flag() const { return myFlag; }
-
-private:
-  unsigned long myFlag;
+  ProtoCancelEventSignal(const UserId& userId, unsigned long eventId);
+  ~ProtoCancelEventSignal();
 };
 
 class ProtoSendEventReplySignal : public ProtocolSignal
@@ -383,16 +335,9 @@ class ProtoSendEventReplySignal : public ProtocolSignal
 public:
   ProtoSendEventReplySignal(const UserId& userId, const std::string& message,
       bool accepted, unsigned short port, unsigned long sequence = 0,
-      unsigned long flag1 = 0, unsigned long flag2 = 0, bool direct = false)
-    : ProtocolSignal(SignalSendReply, userId),
-      myMessage(message),
-      myAccept(accepted),
-      myPort(port),
-      mySequence(sequence),
-      myFlag1(flag1),
-      myFlag2(flag2),
-      myDirect(direct)
-  { /* Empty */ }
+      unsigned long flag1 = 0, unsigned long flag2 = 0, bool direct = false,
+      const std::string& filename = std::string(), unsigned long filesize = 0);
+  ~ProtoSendEventReplySignal();
 
   const std::string& message() const { return myMessage; }
   bool accept() const { return myAccept; }
@@ -401,6 +346,8 @@ public:
   unsigned long flag1() const { return myFlag1; }
   unsigned long flag2() const { return myFlag2; }
   bool direct() const { return myDirect; }
+  const std::string& filename() const { return myFilename; }
+  unsigned long filesize() const { return myFilesize; }
 
 private:
   std::string myMessage;
@@ -410,52 +357,82 @@ private:
   unsigned long myFlag1;
   unsigned long myFlag2;
   bool myDirect;
-};
-
-class ProtoOpenedWindowSignal : public ProtocolSignal
-{
-public:
-  ProtoOpenedWindowSignal(const UserId& userId)
-    : ProtocolSignal(SignalOpenedWindow, userId)
-  { /* Empty */ }
-};
-
-class ProtoClosedWindowSignal : public ProtocolSignal
-{
-public:
-  ProtoClosedWindowSignal(const UserId& userId)
-    : ProtocolSignal(SignalClosedWindow, userId)
-  { /* Empty */ }
+  std::string myFilename;
+  unsigned long myFilesize;
 };
 
 class ProtoOpenSecureSignal : public ProtocolSignal
 {
 public:
-  ProtoOpenSecureSignal(unsigned long eventId, const UserId& userId)
-    : ProtocolSignal(SignalOpenSecure, userId, eventId)
-  { /* Empty */ }
+  ProtoOpenSecureSignal(unsigned long eventId, const UserId& userId);
+  ~ProtoOpenSecureSignal();
 };
 
 class ProtoCloseSecureSignal : public ProtocolSignal
 {
 public:
-  ProtoCloseSecureSignal(unsigned long eventId, const UserId& userId)
-    : ProtocolSignal(SignalCloseSecure, userId, eventId)
-  { /* Empty */ }
+  ProtoCloseSecureSignal(unsigned long eventId, const UserId& userId);
+  ~ProtoCloseSecureSignal();
 };
 
 class ProtoRequestAuthSignal : public ProtocolSignal
 {
 public:
-  ProtoRequestAuthSignal(const UserId& userId, const std::string& message)
-    : ProtocolSignal(SignalRequestAuth, userId),
-      myMessage(message)
-  { /* Empty */ }
+  ProtoRequestAuthSignal(const UserId& userId, const std::string& message);
+  ~ProtoRequestAuthSignal();
 
   const std::string& message() const { return myMessage; }
 
 private:
   std::string myMessage;
+};
+
+class ProtoRenameGroupSignal : public ProtocolSignal
+{
+public:
+  ProtoRenameGroupSignal(const UserId& ownerId, int groupId);
+  ~ProtoRenameGroupSignal();
+
+  int groupId() const { return myGroupId; }
+
+private:
+  int myGroupId;
+};
+
+class ProtoRemoveGroupSignal : public ProtocolSignal
+{
+public:
+  ProtoRemoveGroupSignal(const UserId& ownerId, int groupId, unsigned long groupServerId,
+      const std::string& groupName);
+  ~ProtoRemoveGroupSignal();
+
+  int groupId() const { return myGroupId; }
+  unsigned long groupServerId() const { return myGroupServerId; }
+  const std::string& groupName() const { return myGroupName; }
+
+private:
+  int myGroupId;
+  unsigned long myGroupServerId;
+  std::string myGroupName;
+};
+
+class ProtoSendUrlSignal : public ProtocolSignal
+{
+public:
+  ProtoSendUrlSignal(unsigned long eventId, const UserId& userId, const std::string& url,
+      const std::string& message, unsigned flags, const Color* color = NULL);
+  ~ProtoSendUrlSignal();
+
+  const std::string& url() const { return myUrl; }
+  const std::string& message() const { return myMessage; }
+  unsigned flags() const { return myFlags; }
+  const Color* color() const { return &myColor; }
+
+private:
+  std::string myUrl;
+  std::string myMessage;
+  unsigned myFlags;
+  Color myColor;
 };
 
 } // namespace Licq

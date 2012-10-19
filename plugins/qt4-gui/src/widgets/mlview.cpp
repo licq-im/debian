@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2011 Licq developers
+ * Copyright (C) 2002-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QTextBlock>
 #include <QTextDocumentFragment>
 #include <QMenu>
 #include <QRegExp>
@@ -51,11 +52,42 @@ MLView::MLView(QWidget* parent)
   connect(Config::General::instance(), SIGNAL(fontChanged()), SLOT(updateFont()));
 }
 
-void MLView::appendNoNewLine(const QString& s)
+void MLView::append(const QString& s, bool richText)
 {
-  QTextCursor tc = textCursor();
+  // Remember where we are before adding anything
+  QScrollBar* scrollBar = verticalScrollBar();
+  bool wasAtEnd = (scrollBar->value() == scrollBar->maximum());
+
+  QTextDocument* doc = document();
+  QTextCursor tc(doc);
   tc.movePosition(QTextCursor::End);
-  tc.insertHtml(s);
+  if (richText)
+  {
+    bool firstBlock = doc->isEmpty();
+
+    tc.beginEditBlock();
+    if (!s.startsWith("<hr>"))
+      tc.insertBlock(tc.blockFormat(), tc.charFormat());
+    tc.insertHtml(s);
+    tc.endEditBlock();
+
+    if (firstBlock)
+    {
+      // We just added the first real block, remove the default dummy block so
+      // we don't get an extra empty line at the top
+      tc.movePosition(QTextCursor::Start);
+      tc.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor, 1);
+      tc.removeSelectedText();
+    }
+  }
+  else
+  {
+    tc.insertText(s);
+  }
+
+  // Scroll window down to tail output but only if user hasn't moved it
+  if (wasAtEnd)
+    scrollBar->setValue(scrollBar->maximum());
 }
 
 QString MLView::toRichText(const QString& s, bool highlightURLs, bool useHTML, QRegExp highlight)
@@ -403,4 +435,16 @@ QSize MLView::sizeHint() const
   if (myLinesHint > 0)
     s.setHeight(heightForLines(myLinesHint));
   return s;
+}
+
+void MLView::resizeEvent(QResizeEvent* event)
+{
+  QScrollBar* scrollBar = verticalScrollBar();
+  bool wasAtEnd = (scrollBar->value() == scrollBar->maximum());
+
+  QTextBrowser::resizeEvent(event);
+
+  // If we were tailing something before resize, make sure scrollbar is still at the end
+  if (wasAtEnd)
+    scrollBar->setValue(scrollBar->maximum());
 }

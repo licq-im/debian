@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,6 @@
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QPushButton>
-#include <QTextCodec>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -43,7 +42,6 @@
 #include "core/licqgui.h"
 
 #include "helpers/support.h"
-#include "helpers/usercodec.h"
 
 #include "settings/settingsdlg.h"
 
@@ -59,14 +57,14 @@ using namespace LicqQtGui;
 
 AwayMsgDlg* AwayMsgDlg::myInstance = NULL;
 
-void AwayMsgDlg::showAwayMsgDlg(unsigned status, bool autoClose, unsigned long ppid)
+void AwayMsgDlg::showAwayMsgDlg(unsigned status, bool autoClose, const Licq::UserId& userId)
 {
   if (myInstance == NULL)
     myInstance = new AwayMsgDlg();
   else
     myInstance->raise();
 
-  myInstance->selectAutoResponse(status, autoClose, ppid);
+  myInstance->selectAutoResponse(status, autoClose, userId);
 }
 
 AwayMsgDlg::AwayMsgDlg(QWidget* parent)
@@ -113,7 +111,7 @@ AwayMsgDlg::~AwayMsgDlg()
   myInstance = NULL;
 }
 
-void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, unsigned long ppid)
+void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, const Licq::UserId& userId)
 {
   // If requested status doesn't support message, set away
   if ((status & User::MessageStatuses) == 0)
@@ -121,7 +119,7 @@ void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, unsigned lo
   status |= User::OnlineStatus;
 
   myStatus = status;
-  myPpid = ppid;
+  myUserId = userId;
   SarManager::List sarList;
 
   // Fill in the select menu
@@ -153,9 +151,9 @@ void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, unsigned lo
     QString statusStr = User::statusToString(myStatus, true, false).c_str();
     QString autoResponse;
 
-    if (myPpid == 0)
+    if (!myUserId.isValid())
     {
-      setWindowTitle(QString(tr("Set %1 Response for all accounts"))
+      setWindowTitle(QString(tr("Set %1 Response for All Accounts"))
           .arg(statusStr));
 
       // Check all owners for existing away messages
@@ -166,15 +164,14 @@ void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, unsigned lo
 
         if (!o->autoResponse().empty())
         {
-          const QTextCodec* codec = UserCodec::defaultEncoding();
-          autoResponse = codec->toUnicode(o->autoResponse().c_str());
+          autoResponse = QString::fromUtf8(o->autoResponse().c_str());
           break;
         }
       }
     }
     else
     {
-      Licq::OwnerReadGuard o(myPpid);
+      Licq::OwnerReadGuard o(myUserId);
       if (!o.isLocked())
         return;
 
@@ -183,10 +180,7 @@ void AwayMsgDlg::selectAutoResponse(unsigned status, bool autoClose, unsigned lo
           .arg(QString::fromUtf8(o->getAlias().c_str())));
 
       if (!o->autoResponse().empty())
-      {
-        const QTextCodec* codec = UserCodec::defaultEncoding();
-        autoResponse = codec->toUnicode(o->autoResponse().c_str());
-      }
+        autoResponse = QString::fromUtf8(o->autoResponse().c_str());
     }
 
     if (!autoResponse.isEmpty())
@@ -259,13 +253,10 @@ void AwayMsgDlg::ok()
   bool invisible = (myStatus & User::InvisibleStatus) != 0;
 
   QString s = myAwayMsg->toPlainText().trimmed();
-  if (myPpid == 0)
+  if (!myUserId.isValid())
     gLicqGui->changeStatus(myStatus, invisible, s);
   else
-  {
-    Licq::UserId userId = Licq::gUserManager.ownerUserId(myPpid);
-    gLicqGui->changeStatus(myStatus, userId, invisible, s);
-  }
+    gLicqGui->changeStatus(myStatus, myUserId, invisible, s);
 
   close();
 }
@@ -307,7 +298,7 @@ void AwayMsgDlg::selectMessage()
   QString text = a->data().toString();
 
   if (text.isNull()) // User chose "Edit Items"
-    SettingsDlg::show(SettingsDlg::RespMsgPage);
+    SettingsDlg::show(SettingsDlg::StatusPage);
   else
     myAwayMsg->setText(text);
 }

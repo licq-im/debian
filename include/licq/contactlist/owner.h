@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,19 +36,8 @@ public:
   // Owner specific functions
   const std::string& password() const           { return myPassword; }
   void setPassword(const std::string& s)        { myPassword = s; save(SaveOwnerInfo); }
-  void SetWebAware(bool b)     {  m_bWebAware = b; save(SaveOwnerInfo); }
-  virtual void SetWebAwareStatus(char c) { SetWebAware(c); }
-  void SetHideIp(bool b)       {  m_bHideIp = b; save(SaveOwnerInfo); }
   void SetSavePassword(bool b) {  m_bSavePassword = b; save(SaveOwnerInfo); }
-  bool WebAware() const                         { return m_bWebAware; }
-  bool HideIp() const                           { return m_bHideIp; }
   bool SavePassword() const                     { return m_bSavePassword; }
-
-  /// Current random chat group (ICQ specific, 0=none)
-  unsigned randomChatGroup() const              { return myRandomChatGroup; }
-
-  /// Set current random chat group, use IcqProtocol::setRandomChatGroup() from plugins
-  void setRandomChatGroup(unsigned n)           { myRandomChatGroup = n; save(SaveOwnerInfo); }
 
   /**
    * Get status to change to at startup
@@ -77,31 +66,27 @@ public:
   void setServer(const std::string& host, int port)
   { myServerHost = host; myServerPort = port; save(SaveOwnerInfo); }
 
-  // Server Side List functions
-  time_t GetSSTime() const                      { return m_nSSTime; }
-  void SetSSTime(time_t t)            { m_nSSTime = t; }
-  unsigned short GetSSCount() const             { return mySsCount; }
-  void SetSSCount(unsigned short n)             { mySsCount = n; }
-  unsigned short GetPDINFO() const              { return myPDINFO; }
-  void SetPDINFO(unsigned short n)              { myPDINFO = n; save(SaveOwnerInfo); }
-
   void SetPicture(const char *f);
 
-  virtual bool isUser() const                   { return false; }
 protected:
-  virtual ~Owner() { /* Empty */ }
+  /// Constructor
+  Owner(const UserId& id);
+
+  /// Destructor
+  virtual ~Owner();
+
+  virtual void saveOwnerInfo();
 
   std::string myPassword;
   unsigned myStartupStatus;
   std::string myServerHost;
   int myServerPort;
-  bool m_bWebAware,
-       m_bHideIp,
-       m_bSavePassword;
-  unsigned myRandomChatGroup;
-  unsigned mySsCount;
-  time_t m_nSSTime;
-  unsigned myPDINFO;
+  bool m_bSavePassword;
+
+private:
+
+  // Allow the user manager to access private members
+  friend class LicqDaemon::UserManager;
 };
 
 /**

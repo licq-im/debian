@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -67,14 +67,6 @@ public:
   virtual bool isOwner(const UserId& userId) = 0;
 
   /**
-   * Convenience function to get icq owner as an unsigned long
-   * Only meant to be used internally for icq protocol functions
-   *
-   * @return Icq owner
-   */
-  virtual unsigned long icqOwnerUin() = 0;
-
-  /**
    * Notify plugins about changes for a user
    *
    * @param userId User that has changed
@@ -84,6 +76,7 @@ public:
 
   /**
    * Add a user to the contact list
+   * If user already exist as "not in list" it will be added if permanent is set
    *
    * @param userId User to add
    * @param permanent True if user should be added permanently to list and saved to disk
@@ -95,22 +88,18 @@ public:
       bool addToServer = true, unsigned short groupId = 0) = 0;
 
   /**
-   * Add a temporary user to the list
-   * Will change the user to permanent and optionally add to server side list
-   *
-   * @param userId User to add
-   * @param addToServer True if server should be notified
-   * @param groupId Initial group to place user in or zero for no group
-   * @return True if user exists and was temporary, otherwise false
-   */
-  virtual bool makeUserPermanent(const UserId& userId, bool addToServer = true, int groupId = 0) = 0;
-
-  /**
    * Remove a user from the list
    *
    * @param userId Id of user to remove
    */
-  virtual void removeUser(const UserId& userId, bool removeFromServer = true) = 0;
+  virtual void removeUser(const UserId& userId) = 0;
+
+  /**
+   * Called by protocol to remove a local user and notify plugins
+   *
+   * @param userId Id of user to remove
+   */
+  virtual void removeLocalUser(const UserId& userId) = 0;
 
   /**
    * Check if a group id is valid
@@ -124,10 +113,9 @@ public:
    * Add a user group
    *
    * @param name Group name, must be unique
-   * @param icqGroupId ICQ server group id
    * @return Id of new group or zero if group could not be created
    */
-  virtual int AddGroup(const std::string& name, unsigned short icqGroupId = 0) = 0;
+  virtual int AddGroup(const std::string& name) = 0;
 
   /**
    * Remove a user group
@@ -141,10 +129,10 @@ public:
    *
    * @param groupId Id of group to rename
    * @param name New group name, must be unique
-   * @param sendUpdate True if server group should be updated
+   * @param skipProtocolId Id of protocol to not notify
    * @return True if group was successfully renamed
    */
-  virtual bool RenameGroup(int groupId, const std::string& name, bool sendUpdate = true) = 0;
+  virtual bool RenameGroup(int groupId, const std::string& name, unsigned long skipProtocolId = 0) = 0;
 
   /**
    * Get number of user groups
@@ -167,17 +155,19 @@ public:
    * Change ICQ server group id for a user group
    *
    * @param groupId Id of group to change
-   * @param icqGroupId ICQ server group id to set
+   * @param protocolId Protocol to change server id for
+   * @param serverId New server id for group
    */
-  virtual void ModifyGroupID(int groupId, unsigned short icqGroupId) = 0;
+  virtual void setGroupServerId(int groupId, unsigned long protocolId, unsigned long serverId) = 0;
 
   /**
-   * Get group id from ICQ server group id
+   * Get local group id from server group id
    *
-   * @param icqGroupId ICQ server group id
+   * @param protocolId Protocol server id is valid for
+   * @param serverId Server group id to find local group for
    * @return Id for group or 0 if not found
    */
-  virtual int GetGroupFromID(unsigned short icqGroupId) = 0;
+  virtual int getGroupFromServerId(unsigned long protocolId, unsigned long serverId) = 0;
 
   /**
    * Find id for group with a given name
@@ -196,12 +186,12 @@ public:
   virtual std::string GetGroupNameFromGroup(int groupId) = 0;
 
   /**
-   * Set user group membership and (optionally) update server
+   * Set user group membership
    *
    * @param userId Id of user
    * @param groupId Id of user group
    * @param inGroup True to add user to group or false to remove
-   * @param updateServer True if server list should be updated
+   * @param updateServer True to also change single server group
    */
   virtual void setUserInGroup(const UserId& userId, int groupId,
       bool inGroup, bool updateServer = true) = 0;

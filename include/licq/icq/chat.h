@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
 #define LICQ_ICQCHAT_H
 
 #include <cstdlib>
-#include <deque>
 #include <list>
 #include <string>
 
@@ -31,10 +30,16 @@
 
 namespace Licq
 {
-class User;
 class UserId;
 }
 
+namespace LicqIcq
+{
+class ChatUser;
+class DcSocket;
+class User;
+class CPChat_ColorFont;
+}
 
 /*----------------------
  * Licq Chat Module
@@ -190,24 +195,14 @@ struct SVoteInfo
 };
 typedef std::list<SVoteInfo *> VoteInfoList;
 
-class CChatUser;
 class CChatManager;
-
-struct SChatReverseConnectInfo
-{
-  int nId;
-  bool bTryDirect;
-  CChatUser *u;
-  CChatManager *m;
-};
-
 
 //-----ChatColorFont------------------------------------------------------------
 class CChatClient
 {
 public:
   CChatClient();
-  CChatClient(const Licq::User* u);
+  CChatClient(const LicqIcq::User* u);
   CChatClient(const CChatClient &);
   CChatClient& operator=(const CChatClient &);
   ~CChatClient();
@@ -233,7 +228,7 @@ protected:
   CChatClient(Licq::Buffer&);
   bool LoadFromBuffer(Licq::Buffer&);
 
-friend class CPChat_ColorFont;
+  friend class LicqIcq::CPChat_ColorFont;
 };
 
 typedef std::list<CChatClient> ChatClientList;
@@ -268,10 +263,9 @@ public:
   bool Focus()                 { return focus; }
   bool Sleep()                 { return sleep; }
 
-  ~CChatUser();
-
 protected:
   CChatUser();
+  virtual ~CChatUser();
 
   Licq::UserId myUserId;
   unsigned long nToKick;
@@ -283,22 +277,10 @@ protected:
   unsigned long fontFace;
   bool focus, sleep;
 
-  CChatClient *m_pClient;
-  Licq::TCPSocket sock;
-  std::deque <unsigned char> chatQueue;
-  unsigned short state;
-  std::string myLinebuf;
-
-  pthread_mutex_t mutex;
-
 friend class CChatManager;
-friend class CChatEvent;
-friend void *ChatManager_tep(void *);
-friend void *ChatWaitForSignal_tep(void *);
-friend void ChatWaitForSignal_cleanup(void *);
 };
 
-typedef std::list<CChatUser *> ChatUserList;
+typedef std::list<LicqIcq::ChatUser*> ChatUserList;
 
 
 //=====ChatEvent=============================================================
@@ -306,16 +288,16 @@ typedef std::list<CChatUser *> ChatUserList;
 class CChatEvent
 {
 public:
-  CChatEvent(unsigned char, CChatUser *, const std::string& data = "");
+  CChatEvent(unsigned char, LicqIcq::ChatUser*, const std::string& data = "");
   ~CChatEvent();
 
   unsigned char Command() { return m_nCommand; }
-  CChatUser *Client() { return m_pUser; }
+  CChatUser* Client();
   const std::string& data() const { return myData; }
 
 protected:
   unsigned char m_nCommand;
-  CChatUser *m_pUser;
+  LicqIcq::ChatUser* m_pUser;
   std::string myData;
   bool m_bLocked;
 
@@ -371,7 +353,7 @@ public:
   void SendLaugh();
   void SendNewline();
   void SendBackspace();
-  void SendCharacter(char);
+  void sendText(const std::string& text);
   void SendKick(const char* id);
   void SendKickNoVote(const char* id);
   void SendVoteYes(unsigned long);
@@ -384,7 +366,7 @@ public:
   int Pipe() { return myEventsPipe.getReadFd(); }
   CChatEvent *PopChatEvent();
 
-  void AcceptReverseConnection(Licq::TCPSocket*);
+  void AcceptReverseConnection(LicqIcq::DcSocket*);
   static CChatManager *FindByPort(unsigned short);
 
 protected:
@@ -420,21 +402,24 @@ protected:
 
   bool StartChatServer();
   bool ConnectToChat(CChatClient *);
-  bool SendChatHandshake(CChatUser *);
-  CChatUser *FindChatUser(int);
-  void CloseClient(CChatUser *);
-  bool ProcessPacket(CChatUser *);
-  bool ProcessRaw(CChatUser *);
-  bool ProcessRaw_v2(CChatUser *);
-  bool ProcessRaw_v6(CChatUser *);
+  bool SendChatHandshake(LicqIcq::ChatUser*);
+  LicqIcq::ChatUser* FindChatUser(int);
+  void CloseClient(LicqIcq::ChatUser*);
+  bool ProcessPacket(LicqIcq::ChatUser*);
+  bool ProcessRaw(LicqIcq::ChatUser*);
+  bool ProcessRaw_v2(LicqIcq::ChatUser*);
+  bool ProcessRaw_v6(LicqIcq::ChatUser*);
   void PushChatEvent(CChatEvent *);
   void FinishKickVote(VoteInfoList::iterator, bool);
 
   void SendBuffer(Licq::Buffer*, unsigned char,
       const char* id = NULL, bool bNotIter = true);
-  bool SendBufferToClient(Licq::Buffer*, unsigned char, CChatUser *);
+  bool SendBufferToClient(Licq::Buffer*, unsigned char, LicqIcq::ChatUser*);
   void SendBuffer_Raw(Licq::Buffer*);
   //void SendPacket(Licq::Packet*);
+
+  std::string getEncoding(int chatEncoding);
+  std::string userEncoding(const LicqIcq::ChatUser* u);
 
 friend void *ChatManager_tep(void *);
 friend void *ChatWaitForSignal_tep(void *);

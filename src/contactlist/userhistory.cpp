@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2011 Licq developers
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "userhistory.h"
 
 #include <boost/foreach.hpp>
+#include <boost/regex.hpp>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -32,6 +33,7 @@
 #include <unistd.h>
 
 #include <licq/logging/log.h>
+#include <licq/translator.h>
 #include <licq/userevents.h>
 #include <licq/userid.h>
 
@@ -42,6 +44,7 @@
 using namespace std;
 using Licq::UserId;
 using Licq::gLog;
+using Licq::gTranslator;
 using LicqDaemon::UserHistory;
 
 UserHistory::UserHistory(unsigned long ppid)
@@ -61,34 +64,19 @@ void UserHistory::setFile(const string& filename, const string& description)
 
 
 /* szResult[0] != ':' doubles to check if strlen(szResult) < 1 */
-#define GET_VALID_LINE_OR_BREAK \
+#define GET_VALID_LINE_OR_BREAK(dest) \
   { \
     if ((szResult = fgets(sz, sizeof(sz), f)) == NULL || szResult[0] != ':') \
       break; \
-    szResult[strlen(szResult) - 1] = '\0'; \
+    dest.assign(sz+1, strlen(sz+1)-1); \
   }
 
-#define GET_VALID_LINES \
+#define GET_VALID_LINES(dest) \
   { \
-    unsigned short nPos = 0; \
     while ((szResult = fgets(sz, sizeof(sz), f)) != NULL && sz[0] == ':') \
-    { \
-      if (nPos < MAX_HISTORY_MSG_SIZE) \
-      { \
-        int len = strlen(sz+1); \
-        if (len+1 > MAX_HISTORY_MSG_SIZE - nPos) \
-          len = MAX_HISTORY_MSG_SIZE - nPos; \
-        strncpy(&szMsg[nPos], sz+1, len); \
-        nPos += len; \
-        szMsg[nPos] = '\0'; \
-        /* snprintf(&szMsg[nPos], MAX_HISTORY_MSG_SIZE - nPos,
-         *                  "%s", &sz[1]);
-         * szMsg[MAX_HISTORY_MSG_SIZE - 1] = '\0';
-         * nPos += strlen(szMsg + nPos); */ \
-      } \
-    } \
-    if (nPos > 0 && szMsg[nPos - 1] == '\n') \
-      szMsg[nPos - 1] = '\0'; \
+      dest.append(sz+1); \
+    /* Don't include the final line break */ \
+    dest.resize(dest.size() - 1); \
   }
 
 #define SKIP_VALID_LINES \
@@ -96,12 +84,7 @@ void UserHistory::setFile(const string& filename, const string& description)
     while ((szResult = fgets(sz, sizeof(sz), f)) != NULL && sz[0] == ':') ; \
   }
 
-#define SKIP_LINE \
-  { \
-    szResult = fgets(sz, sizeof(sz), f); \
-  }
-
-bool UserHistory::load(Licq::HistoryList& lHistory) const
+bool UserHistory::load(Licq::HistoryList& lHistory, const string& userEncoding) const
 {
   if (myFilename.empty())
     return false;
@@ -121,31 +104,32 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
     }
   }
 
+  // Expression to match message headers
+  boost::regex headRegex("\\[ ([SR]) \\| (\\d+) \\| (\\d+) \\| (\\d+) \\| (\\d+) \\].*");
+
   // Now read in a line at a time
-  char sz[4096], *szResult, szMsg[MAX_HISTORY_MSG_SIZE + 1];
-  unsigned long nFlags;
-  unsigned short nCommand, nSubCommand;
-  time_t tTime;
-  char cDir;
-  Licq::UserEvent* e;
+  char sz[4096], *szResult;
   szResult = fgets(sz, sizeof(sz), f);
   while(true)
   {
     while (szResult != NULL && sz[0] != '[')
       szResult = fgets(sz, sizeof(sz), f);
     if (szResult == NULL) break;
-    // Zero unused part of sz to avoid interpreting garbage if sz is too
-    // short
-    memset(sz + strlen(sz) + 1, '\0', sizeof(sz) - strlen(sz) - 1);
-    //"[ C | 0000 | 0000 | 0000 | 000... ]"
-    cDir = sz[2];
-    // Stick some \0's in to terminate strings
-    sz[0] = sz[10] = sz[17] = sz[24] = '\0';
-    // Read out the relevant values
-    nSubCommand = atoi(&sz[6]);
-    nCommand = atoi(&sz[13]);
-    nFlags = atoi(&sz[20]) << 16;
-    tTime = (time_t)atoi(&sz[27]);
+
+    // Validate header line and extract fields
+    boost::cmatch headMatch;
+    if (!boost::regex_match(sz, headMatch, headRegex))
+    {
+      // No match, ignore it and move on
+      szResult = fgets(sz, sizeof(sz), f);
+      continue;
+    }
+
+    char cDir = *headMatch[1].first;
+    int nSubCommand = atoi(headMatch[2].first);
+    int nCommand = atoi(headMatch[3].first);
+    unsigned long nFlags = atol(headMatch[4].first) << 16;
+    time_t tTime = (time_t)atol(headMatch[5].first);
 
     // nCommand == Licq::UserEvent::CommandDirect => FlagDirect (already present in flags)
     // nCommand == Licq::UserEvent::CommandSent => FlagSender (present in cDir)
@@ -156,27 +140,40 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
     if (cDir != 'R')
       nFlags |= Licq::UserEvent::FlagSender;
 
+    bool convertToUtf8 = true;
+    if (nFlags & Licq::UserEvent::FlagUnicode)
+    {
+      // Message is already UTF8 encoded
+      convertToUtf8 = false;
+      nFlags &= ~Licq::UserEvent::FlagUnicode;
+    }
+
     // Now read in the message
-    szMsg[0] = '\0';
-    e = NULL;
+    Licq::UserEvent* e = NULL;
     switch (nSubCommand)
     {
       case Licq::UserEvent::TypeMessage:
       {
-      GET_VALID_LINES;
-        e = new Licq::EventMsg(szMsg, tTime, nFlags);
+        string message;
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+          message = gTranslator.toUtf8(message, userEncoding);
+        e = new Licq::EventMsg(message, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeChat:
       {
         if (nCommand != Licq::UserEvent::CommandCancelled)
         {
-        GET_VALID_LINES;
-          e = new Licq::EventChat(szMsg, 0, tTime, nFlags);
+          string message;
+          GET_VALID_LINES(message);
+          if (convertToUtf8)
+            message = gTranslator.toUtf8(message, userEncoding);
+          e = new Licq::EventChat(message, 0, tTime, nFlags);
         }
-      else
-      {
-        SKIP_VALID_LINES;
+        else
+        {
+          SKIP_VALID_LINES;
           //e = new Licq::EventChatCancel(0, tTime, nFlags);
         }
         break;
@@ -185,146 +182,188 @@ bool UserHistory::load(Licq::HistoryList& lHistory) const
       {
         if (nCommand != Licq::UserEvent::CommandCancelled)
         {
-        GET_VALID_LINE_OR_BREAK;
-          string file  = &szResult[1];
-        GET_VALID_LINE_OR_BREAK;
-        unsigned long nSize = atoi(&szResult[1]);
-        GET_VALID_LINES;
-        list<string> filelist;
-        filelist.push_back(file);
-          e = new Licq::EventFile(file, szMsg, nSize, filelist, 0, tTime, nFlags);
-      }
-      else
-      {
-        SKIP_VALID_LINES;
+          string file, sizeStr, message;
+          GET_VALID_LINE_OR_BREAK(file);
+          GET_VALID_LINE_OR_BREAK(sizeStr);
+          unsigned long nSize = atoi(sizeStr.c_str());
+          GET_VALID_LINES(message);
+          if (convertToUtf8)
+          {
+            file = gTranslator.toUtf8(file);
+            message = gTranslator.toUtf8(message, userEncoding);
+          }
+          list<string> filelist;
+          filelist.push_back(file);
+          e = new Licq::EventFile(file, message, nSize, filelist, 0, tTime, nFlags);
+        }
+        else
+        {
+          SKIP_VALID_LINES;
           //e = new Licq::EventFileCancel(0, tTime, nFlags);
         }
-      break;
+        break;
       }
       case Licq::UserEvent::TypeUrl:
       {
-      GET_VALID_LINE_OR_BREAK;
-        string url = &szResult[1];
-      GET_VALID_LINES;
-        e = new Licq::EventUrl(url, szMsg, tTime, nFlags);
+        string url, message;
+        GET_VALID_LINE_OR_BREAK(url);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+        {
+          url = gTranslator.toUtf8(url);
+          message = gTranslator.toUtf8(message, userEncoding);
+        }
+        e = new Licq::EventUrl(url, message, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeAuthRequest:
       {
-      GET_VALID_LINE_OR_BREAK;
-        UserId userId(&szResult[1], myPpid);
-      GET_VALID_LINE_OR_BREAK;
-        string alias = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string firstName = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string lastName = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string email = &szResult[1];
-      GET_VALID_LINES;
-        e = new Licq::EventAuthRequest(userId, alias, firstName, lastName,
-            email, szMsg, tTime, nFlags);
+        string accountId, alias, firstName, lastName, email, message;
+        GET_VALID_LINE_OR_BREAK(accountId);
+        GET_VALID_LINE_OR_BREAK(alias);
+        GET_VALID_LINE_OR_BREAK(firstName);
+        GET_VALID_LINE_OR_BREAK(lastName);
+        GET_VALID_LINE_OR_BREAK(email);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+        {
+          alias = gTranslator.toUtf8(alias);
+          firstName = gTranslator.toUtf8(firstName);
+          lastName = gTranslator.toUtf8(lastName);
+          email = gTranslator.toUtf8(email);
+          message = gTranslator.toUtf8(message, userEncoding);
+        }
+        e = new Licq::EventAuthRequest(UserId(accountId, myPpid), alias,
+            firstName, lastName, email, message, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeAuthGranted:
       {
-      GET_VALID_LINE_OR_BREAK;
-        UserId userId(&szResult[1], myPpid);
-      GET_VALID_LINES;
-        e = new Licq::EventAuthGranted(userId, szMsg, tTime, nFlags);
+        string accountId, message;
+        GET_VALID_LINE_OR_BREAK(accountId);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+          message = gTranslator.toUtf8(message, userEncoding);
+        e = new Licq::EventAuthGranted(UserId(accountId, myPpid), message,
+            tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeAuthRefused:
       {
-      GET_VALID_LINE_OR_BREAK;
-        UserId userId(&szResult[1], myPpid);
-      GET_VALID_LINES;
-        e = new Licq::EventAuthRefused(userId, szMsg, tTime, nFlags);
+        string accountId, message;
+        GET_VALID_LINE_OR_BREAK(accountId);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+          message = gTranslator.toUtf8(message, userEncoding);
+        e = new Licq::EventAuthRefused(UserId(accountId, myPpid), message,
+            tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeAdded:
       {
-      GET_VALID_LINE_OR_BREAK;
-        UserId userId(&szResult[1], myPpid);
-      GET_VALID_LINE_OR_BREAK;
-        string alias = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string firstName = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string lastName = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string email = &szResult[1];
-        e = new Licq::EventAdded(userId, alias, firstName, lastName, email,
-            tTime, nFlags);
-      break;
+        string accountId, alias, firstName, lastName, email;
+        GET_VALID_LINE_OR_BREAK(accountId);
+        GET_VALID_LINE_OR_BREAK(alias);
+        GET_VALID_LINE_OR_BREAK(firstName);
+        GET_VALID_LINE_OR_BREAK(lastName);
+        GET_VALID_LINE_OR_BREAK(email);
+        if (convertToUtf8)
+        {
+          alias = gTranslator.toUtf8(alias);
+          firstName = gTranslator.toUtf8(firstName);
+          lastName = gTranslator.toUtf8(lastName);
+          email = gTranslator.toUtf8(email);
+        }
+        e = new Licq::EventAdded(UserId(accountId, myPpid), alias, firstName,
+            lastName, email, tTime, nFlags);
+        break;
       }
       case Licq::UserEvent::TypeWebPanel:
       {
-      GET_VALID_LINE_OR_BREAK;
-        string name = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string email = &szResult[1];
-      GET_VALID_LINES;
-        e = new Licq::EventWebPanel(name, email, szMsg, tTime, nFlags);
+        string name, email, message;
+        GET_VALID_LINE_OR_BREAK(name);
+        GET_VALID_LINE_OR_BREAK(email);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+        {
+          name = gTranslator.toUtf8(name);
+          email = gTranslator.toUtf8(email);
+          message = gTranslator.toUtf8(message, userEncoding);
+        }
+        e = new Licq::EventWebPanel(name, email, message, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeEmailPager:
       {
-      GET_VALID_LINE_OR_BREAK;
-        string name = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string email = &szResult[1];
-      GET_VALID_LINES;
-        e = new Licq::EventEmailPager(name, email, szMsg, tTime, nFlags);
+        string name, email, message;
+        GET_VALID_LINE_OR_BREAK(name);
+        GET_VALID_LINE_OR_BREAK(email);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+        {
+          name = gTranslator.toUtf8(name);
+          email = gTranslator.toUtf8(email);
+          message = gTranslator.toUtf8(message, userEncoding);
+        }
+        e = new Licq::EventEmailPager(name, email, message, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeContactList:
       {
-      Licq::EventContactList::ContactList vc;
-      bool b = true;
-      string id;
-      while (true)
-      {
-        GET_VALID_LINE_OR_BREAK;
-        if (b)
-          id = &szResult[1];
-        else if (!id.empty())
+        Licq::EventContactList::ContactList vc;
+        while (true)
           {
-            UserId userId(id, myPpid);
-            vc.push_back(new Licq::EventContactList::Contact(userId, &szResult[1]));
-          }
-        b = !b;
-      }
+          string accountId, alias;
+          GET_VALID_LINE_OR_BREAK(accountId);
+          GET_VALID_LINE_OR_BREAK(alias);
+          if (convertToUtf8)
+            alias = gTranslator.toUtf8(alias);
+          vc.push_back(new Licq::EventContactList::Contact(UserId(accountId, myPpid), alias));
+        }
         e = new Licq::EventContactList(vc, false, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeSms:
       {
-      GET_VALID_LINE_OR_BREAK;
-        string number = &szResult[1];
-      GET_VALID_LINES;
-        e = new Licq::EventSms(number, szMsg, tTime, nFlags);
+        string number, message;
+        GET_VALID_LINE_OR_BREAK(number);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+          message = gTranslator.toUtf8(message, userEncoding);
+        e = new Licq::EventSms(number, message, tTime, nFlags);
         break;
       }
       case Licq::UserEvent::TypeMsgServer:
       {
-      GET_VALID_LINE_OR_BREAK;
-        string name = &szResult[1];
-      SKIP_LINE;
-      GET_VALID_LINES;
-        e = new Licq::EventServerMessage(name, "", szMsg, tTime);
+        string name, email, message;
+        GET_VALID_LINE_OR_BREAK(name);
+        GET_VALID_LINE_OR_BREAK(email);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+        {
+          name = gTranslator.toUtf8(name);
+          email = gTranslator.toUtf8(email);
+          message = gTranslator.toUtf8(message, userEncoding);
+        }
+        e = new Licq::EventServerMessage(name, email, message, tTime);
         break;
       }
       case Licq::UserEvent::TypeEmailAlert:
+      case 0x00EC: // ICQ constant used in versions < 1.7.0
       {
-      GET_VALID_LINE_OR_BREAK;
-        string name = &szResult[1];
-      GET_VALID_LINE_OR_BREAK;
-        string email = &szResult[1];
-      GET_VALID_LINES;
-        e = new Licq::EventEmailAlert(name, 0, email, szMsg, tTime);
-      break;
-    }
+        string name, email, message;
+        GET_VALID_LINE_OR_BREAK(name);
+        GET_VALID_LINE_OR_BREAK(email);
+        GET_VALID_LINES(message);
+        if (convertToUtf8)
+        {
+          name = gTranslator.toUtf8(name);
+          email = gTranslator.toUtf8(email);
+          message = gTranslator.toUtf8(message, userEncoding);
+        }
+        e = new Licq::EventEmailAlert(name, 0, email, message, tTime);
+        break;
+      }
       default:
         gLog.warning(tr("Corrupt history file (%s): Unknown sub-command 0x%04X."),
             myFilename.c_str(), nSubCommand);

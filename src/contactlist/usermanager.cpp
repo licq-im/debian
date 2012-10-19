@@ -22,18 +22,18 @@
 #include <boost/foreach.hpp>
 #include <cstdio> // sprintf
 
-#include <licq/logging/log.h>
-#include <licq/daemon.h>
+#include <licq/contactlist/owner.h>
+#include <licq/contactlist/user.h>
 #include <licq/inifile.h>
-#include <licq/plugin/pluginmanager.h>
+#include <licq/logging/log.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolsignal.h>
 
+#include "../daemon.h"
 #include "../gettext.h"
-#include "../icq/icq.h"
+#include "../plugin/pluginmanager.h"
 #include "../protocolmanager.h"
 #include "group.h"
-#include "owner.h"
 #include "user.h"
 
 using std::list;
@@ -41,18 +41,18 @@ using std::string;
 using Licq::GroupListGuard;
 using Licq::GroupReadGuard;
 using Licq::GroupWriteGuard;
+using Licq::Owner;
 using Licq::OwnerListGuard;
 using Licq::OwnerReadGuard;
 using Licq::OwnerWriteGuard;
 using Licq::PluginSignal;
+using Licq::User;
 using Licq::UserListGuard;
 using Licq::UserId;
 using Licq::UserGroupList;
 using Licq::UserReadGuard;
 using Licq::UserWriteGuard;
-using Licq::gDaemon;
 using Licq::gLog;
-using Licq::gPluginManager;
 using namespace LicqDaemon;
 
 // Declare global UserManager (internal for daemon)
@@ -96,11 +96,28 @@ void UserManager::shutdown()
 
 void UserManager::addOwner(const UserId& userId)
 {
-  Owner* o = new Owner(userId);
-
   myOwnerListMutex.lockWrite();
+
+  // Make sure owner isn't already in configuration
+  if (myConfiguredOwners.count(userId) > 0)
+  {
+    myOwnerListMutex.unlockWrite();
+    return;
+  }
+
+  Owner* o = createOwner(userId);
+
+  myConfiguredOwners.insert(userId);
   myOwners[userId.protocolId()] = o;
+
   myOwnerListMutex.unlockWrite();
+
+  saveOwnerList();
+
+  // Create section for this owner in users.conf
+  myUserListMutex.lockRead();
+  saveUserList(userId);
+  myUserListMutex.unlockRead();
 
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
       PluginSignal::ListOwnerAdded, userId));
@@ -114,17 +131,12 @@ bool UserManager::Load()
   gLog.info(tr("Loading user configuration"));
 
   // Load the group info from licq.conf
-  Licq::IniFile licqConf("licq.conf");
-  licqConf.loadFile();
+  Licq::IniFile& licqConf(gDaemon.getLicqConf());
 
   unsigned nOwners;
   licqConf.setSection("owners");
   licqConf.get("NumOfOwners", nOwners, 0);
 
-  m_bAllowSave = false;
-
-  //TODO Check for loaded plugins before the owner, so we can see
-  //which owner(s) to load
   myOwnerListMutex.lockWrite();
   for (unsigned short i = 1; i <= nOwners; i++)
   {
@@ -134,12 +146,8 @@ bool UserManager::Load()
     licqConf.get(sOwnerIDKey, accountId);
     sprintf(sOwnerPPIDKey, "Owner%d.PPID", i);
     licqConf.get(sOwnerPPIDKey, ppidStr);
-    unsigned long protocolId = (ppidStr[0] << 24) | (ppidStr[1] << 16) | (ppidStr[2] << 8) | (ppidStr[3]);
-
-    UserId ownerId(accountId, protocolId);
-    Owner* o = new Owner(ownerId);
-
-    myOwners[protocolId] = o;
+    unsigned long protocolId = Licq::protocolId_fromString(ppidStr);
+    myConfiguredOwners.insert(UserId(accountId, protocolId));
   }
   myOwnerListMutex.unlockWrite();
 
@@ -184,10 +192,7 @@ bool UserManager::Load()
     licqConf.getKeyList(serverIdKeys, key);
     BOOST_FOREACH(const string& serverIdKey, serverIdKeys)
     {
-      size_t keylen = serverIdKey.size();
-      unsigned long protocolId = serverIdKey[keylen-4] << 24 |
-          serverIdKey[keylen-3] << 16 | serverIdKey[keylen-2] << 8 |
-          serverIdKey[keylen-1];
+      unsigned long protocolId = Licq::protocolId_fromString(serverIdKey.substr(serverIdKey.size()-4));
       unsigned long serverId;
       licqConf.get(serverIdKey, serverId, 0);
       newGroup->setServerId(protocolId, serverId);
@@ -206,53 +211,190 @@ bool UserManager::Load()
   licqConf.setSection("network");
   licqConf.get("DefaultUserEncoding", myDefaultEncoding, "");
 
-  // Load users from users.conf
-  Licq::IniFile usersConf("users.conf");
-  usersConf.loadFile();
-
-  unsigned nUsers;
-  usersConf.setSection("users");
-  usersConf.get("NumOfUsers", nUsers);
-  gLog.info(tr("Loading %d users"), nUsers);
-
-  // TODO: We need to only load users of protocol plugins that are loaded!
-  myUserListMutex.lockWrite();
-  for (unsigned short i = 1; i<= nUsers; i++)
-  {
-    string userFile;
-    char sUserKey[20];
-    sprintf(sUserKey, "User%d", i);
-    if (!usersConf.get(sUserKey, userFile, ""))
-    {
-      gLog.warning(tr("Skipping user %i, empty key"), i);
-      continue;
-    }
-    size_t sz = userFile.rfind('.');
-    if (sz == string::npos)
-    {
-      gLog.error(tr("Fatal error reading protocol information for User%d with ID '%s'\n"
-          "Please check \"%s/users.conf\""), i,
-          userFile.c_str(), gDaemon.baseDir().c_str());
-      exit(1);
-    }
-    string accountId = userFile.substr(0, sz);
-    unsigned long protocolId = (userFile[sz+1] << 24) | (userFile[sz+2] << 16) | (userFile[sz+3] << 8) | userFile[sz+4];
-
-    UserId userId(accountId, protocolId);
-    User* u = new User(userId);
-    u->AddToContactList();
-    myUsers[userId] = u;
-  }
-  myUserListMutex.unlockWrite();
+  gDaemon.releaseLicqConf();
 
   return true;
 }
 
-void UserManager::saveUserList() const
+void UserManager::loadUserList(const UserId& ownerId)
+{
+  // Load users from users.conf
+  Licq::IniFile usersConf("users.conf");
+  usersConf.loadFile();
+
+  string ppidStr = Licq::protocolId_toString(ownerId.protocolId());
+
+  myUserListMutex.lockWrite();
+
+  if (usersConf.setSection(ownerId.accountId() + "." + ppidStr, false))
+  {
+    int numUsers;
+    usersConf.get("NumUsers", numUsers);
+    gLog.info(tr("Loading %i users for %s"), numUsers, ownerId.toString().c_str());
+
+    for (int i = 1; i <= numUsers; ++i)
+    {
+      char key[20];
+      sprintf(key, "User%i", i);
+      string accountId;
+      usersConf.get(key, accountId);
+      if (accountId.empty())
+      {
+        gLog.warning(tr("Skipping user %i, invalid key"), i);
+        continue;
+      }
+      UserId userId(accountId, ownerId.protocolId());
+      User* u = createUser(userId);
+      u->myPrivate->addToContactList();
+      myUsers[userId] = u;
+    }
+  }
+  else
+  {
+    // Owner specific section is missing, migrate users from old section (pre Licq 1.7.0)
+    usersConf.setSection("users");
+    int numUsers;
+    usersConf.get("NumOfUsers", numUsers);
+
+    for (int i = 1; i <= numUsers; ++i)
+    {
+      char key[20];
+      sprintf(key, "User%i", i);
+      string userFile;
+      usersConf.get(key, userFile);
+
+      size_t sz = userFile.rfind('.');
+      if (sz == string::npos)
+      {
+        gLog.error(tr("Skipping user %i, invalid key"), i);
+        continue;
+      }
+
+      if (userFile.substr(sz+1) != ppidStr)
+        // Not a user for this protocol
+        continue;
+
+      string accountId = userFile.substr(0, sz);
+      UserId userId(accountId, ownerId.protocolId());
+      User* u = createUser(userId);
+      u->myPrivate->addToContactList();
+      myUsers[userId] = u;
+    }
+
+    // Write new section so we don't have to migrate more than once
+    saveUserList(ownerId);
+  }
+  myUserListMutex.unlockWrite();
+}
+
+void UserManager::loadProtocol(unsigned long protocolId)
+{
+  myOwnerListMutex.lockWrite();
+  BOOST_FOREACH(const UserId& ownerId, myConfiguredOwners)
+  {
+    if (ownerId.protocolId() != protocolId)
+      continue;
+
+    // Load owner
+    Owner* o = createOwner(ownerId);
+    myOwners[ownerId.protocolId()] = o;
+
+    // Notify plugins that the owner has been added
+    gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
+        PluginSignal::ListOwnerAdded, ownerId));
+
+    // Load all users for owner
+    loadUserList(ownerId);
+
+    // We currently only support one owner per protocol
+    break;
+  }
+  myOwnerListMutex.unlockWrite();
+
+  // Notify plugins that the users have been added
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
+      PluginSignal::ListInvalidate));
+}
+
+void UserManager::unloadProtocol(unsigned long protocolId)
+{
+  // Delete all user objects using this protocol
+  myUserListMutex.lockWrite();
+  for (UserMap::iterator i = myUsers.begin(); i != myUsers.end(); )
+  {
+    if (i->first.protocolId() != protocolId)
+    {
+      ++i;
+      continue;
+    }
+
+    User* u = i->second;
+    u->lockWrite();
+    myUsers.erase(i++);
+    u->unlockWrite();
+    delete u;
+  }
+  myUserListMutex.unlockWrite();
+
+  // Delete owner object for this protocol
+  myOwnerListMutex.lockWrite();
+  OwnerMap::iterator i = myOwners.find(protocolId);
+  if (i != myOwners.end())
+  {
+    Owner* o = i->second;
+    UserId ownerId = o->id();
+    o->lockWrite();
+    myOwners.erase(i);
+    o->unlockWrite();
+    delete o;
+
+    // Notify plugins that an owner has been removed
+    gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
+        PluginSignal::ListOwnerRemoved, ownerId));
+  }
+  myOwnerListMutex.unlockWrite();
+
+  // Notify plugins that the users have been removed
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
+      PluginSignal::ListInvalidate));
+}
+
+void UserManager::saveOwnerList()
+{
+  myOwnerListMutex.lockRead();
+
+  Licq::IniFile& licqConf(gDaemon.getLicqConf());
+
+  licqConf.setSection("owners");
+  licqConf.set("NumOfOwners", (unsigned long)myOwners.size());
+
+  int count = 0;
+  {
+    BOOST_FOREACH(const UserId& ownerId, myConfiguredOwners)
+    {
+      ++count;
+
+      char key[14];
+      sprintf(key, "Owner%d.Id", count);
+      licqConf.set(key, ownerId.accountId());
+
+      sprintf(key, "Owner%d.PPID", count);
+      licqConf.set(key, Licq::protocolId_toString(ownerId.protocolId()));
+    }
+  }
+
+  licqConf.writeFile();
+  gDaemon.releaseLicqConf();
+
+  myOwnerListMutex.unlockRead();
+}
+
+void UserManager::saveUserList(const UserId& ownerId)
 {
   Licq::IniFile usersConf("users.conf");
   usersConf.loadFile();
-  usersConf.setSection("users");
+  string ppidStr = Licq::protocolId_toString(ownerId.protocolId());
+  usersConf.setSection(ownerId.accountId() + "." + ppidStr);
 
   int count = 0;
   for (UserMap::const_iterator i = myUsers.begin(); i != myUsers.end(); ++i)
@@ -263,18 +405,33 @@ void UserManager::saveUserList() const
     unsigned long ppid = i->second->protocolId();
     i->second->unlockRead();
 
-    // Only save users that's been permanently added
-    if (temporary)
+    // Only save users for this owner that's been permanently added
+    if (temporary || ppid != ownerId.protocolId())
       continue;
     ++count;
 
     char key[20];
     sprintf(key, "User%i", count);
-
-    usersConf.set(key, accountId + "." + Licq::protocolId_toString(ppid));
+    usersConf.set(key, accountId);
   }
-  usersConf.set("NumOfUsers", count);
+  usersConf.set("NumUsers", count);
   usersConf.writeFile();
+}
+
+bool UserManager::allowUnloadProtocol(unsigned long protocolId)
+{
+  Licq::OwnerReadGuard owner(protocolId);
+  if (owner.isLocked())
+  {
+    // If owner is online, don't allow unloading the protocol
+    if (owner->status() != Owner::OfflineStatus)
+    {
+      gLog.warning(tr("Protocol must be offline to be unloaded"));
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool UserManager::addUser(const UserId& uid,
@@ -288,39 +445,66 @@ bool UserManager::addUser(const UserId& uid,
 
   myUserListMutex.lockWrite();
 
-  // Make sure user isn't already in the list
+  User* user;
+  bool created;
   UserMap::const_iterator iter = myUsers.find(uid);
   if (iter != myUsers.end())
   {
-    myUserListMutex.unlockWrite();
-    return false;
+    user = iter->second;
+    created = false;
+
+    // If user already is in list only continue if it should be made permanent
+    if (!user->NotInList() || !permanent)
+    {
+      myUserListMutex.unlockWrite();
+      return false;
+    }
+  }
+  else
+  {
+    user = createUser(uid, !permanent);
+    created = true;
   }
 
-  User* pUser = new User(uid, !permanent);
-  pUser->lockWrite();
+  user->lockWrite();
 
   if (permanent)
   {
     // Set this user to be on the contact list
-    pUser->AddToContactList();
-    //pUser->SetEnableSave(true);
-    pUser->save(User::SaveAll);
+    if (created)
+    {
+      user->myPrivate->addToContactList();
+      user->save(User::SaveAll);
+    }
+    else
+    {
+      user->myPrivate->setPermanent();
+    }
   }
 
   // Store the user in the lookup map
-  myUsers[uid] = pUser;
+  if (created)
+    myUsers[uid] = user;
 
-  pUser->unlockWrite();
+  user->unlockWrite();
 
   if (permanent)
-    saveUserList();
+  {
+    UserId ownerId = ownerUserId(uid.protocolId());
+    if (ownerId.isValid())
+      saveUserList(ownerId);
+  }
 
   myUserListMutex.unlockWrite();
 
   // Notify plugins that user was added
   // Send this before adding user to server side as protocol code may generate updated signals
-  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
-      PluginSignal::ListUserAdded, uid, groupId));
+  if (created)
+    gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
+        PluginSignal::ListUserAdded, uid, groupId));
+  else if (permanent)
+    gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalUser,
+        PluginSignal::UserSettings, uid, 0));
 
   // Set initial group membership but let add signal below update the server
   if (groupId != 0)
@@ -328,52 +512,28 @@ bool UserManager::addUser(const UserId& uid,
 
   // Add user to server side list
   if (permanent && addToServer)
-    gProtocolManager.addUser(uid, groupId);
+    gProtocolManager.addUser(uid);
 
   return true;
 }
 
-bool UserManager::makeUserPermanent(const UserId& userId, bool addToServer,
-    int groupId)
+void UserManager::removeUser(const UserId& userId)
 {
-  if (!userId.isValid())
-    return false;
-
-  if (isOwner(userId))
-    return false;
-
   {
-    Licq::UserWriteGuard user(userId);
-    if (!user.isLocked())
-      return false;
-
-    // Check if user is already permanent
-    if (!user->NotInList())
-      return false;
-
-    dynamic_cast<User*>(*user)->SetPermanent();
+    // Only allow removing a user if the protocol is available
+    OwnerReadGuard owner(userId.protocolId());
+    if (!owner.isLocked() || !owner->isOnline())
+      return;
   }
 
-  // Save local user list to disk
-  saveUserList();
-
-  // Add user to server side list
-  if (addToServer)
-    gProtocolManager.addUser(userId, groupId);
-
-  // Set initial group membership, also sets server group for user
-  if (groupId != 0)
-    setUserInGroup(userId, groupId, true, addToServer);
-
-  return true;
+  // Remove the user from the server side list first in case protocol needs any
+  // data from the user object. The protocol will call removeLocalUser() when
+  // it is finished.
+  gPluginManager.pushProtocolSignal(new Licq::ProtoRemoveUserSignal(userId));
 }
 
-void UserManager::removeUser(const UserId& userId, bool removeFromServer)
+void UserManager::removeLocalUser(const UserId& userId)
 {
-  // Remove the user from the server side list first
-  if (removeFromServer)
-    gProtocolManager.removeUser(userId);
-
   // List should only be locked when not holding any user lock to avoid
   // deadlock, so we cannot call fetchUser here.
   myUserListMutex.lockWrite();
@@ -389,8 +549,11 @@ void UserManager::removeUser(const UserId& userId, bool removeFromServer)
   myUsers.erase(iter);
   if (!u->NotInList())
   {
-    u->RemoveFiles();
-    saveUserList();
+    u->myPrivate->removeFiles();
+
+    UserId ownerId = ownerUserId(userId.protocolId());
+    if (ownerId.isValid())
+      saveUserList(ownerId);
   }
   myUserListMutex.unlockWrite();
   u->unlockWrite();
@@ -401,7 +564,11 @@ void UserManager::removeUser(const UserId& userId, bool removeFromServer)
       PluginSignal::ListUserRemoved, userId));
 }
 
-// Need to call CICQDaemon::SaveConf() after this
+void UserManager::writeToUserHistory(Licq::User* user, const string& text)
+{
+  user->myPrivate->writeToHistory(text);
+}
+
 void UserManager::RemoveOwner(unsigned long ppid)
 {
   // List should only be locked when not holding any user lock to avoid
@@ -426,11 +593,14 @@ void UserManager::RemoveOwner(unsigned long ppid)
   }
 
   myOwners.erase(iter);
-  o->RemoveFiles();
+  o->myPrivate->removeFiles();
   UserId id = o->id();
+  myConfiguredOwners.erase(id);
   myOwnerListMutex.unlockWrite();
   o->unlockWrite();
   delete o;
+
+  saveOwnerList();
 
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
       PluginSignal::ListOwnerRemoved, id));
@@ -479,7 +649,7 @@ Licq::User* UserManager::fetchUser(const UserId& userId,
     if (user == NULL && addUser)
     {
       // Create a temporary user
-      user = new User(userId, true);
+      user = createUser(userId, true);
 
       // Store the user in the lookup map
       myUsers[userId] = user;
@@ -557,9 +727,26 @@ bool UserManager::isOwner(const UserId& userId)
   return exists;
 }
 
-unsigned long UserManager::icqOwnerUin()
+User* UserManager::createUser(const UserId& userId, bool temporary)
 {
-  return strtoul(ownerUserId(LICQ_PPID).accountId().c_str(), (char**)NULL, 10);
+  User* u = gPluginManager.createProtocolUser(userId, temporary);
+
+  if (u == NULL)
+    // Protocol hasn't subclassed the user class, create from Licq::User instead
+    u = new User(userId, temporary);
+
+  return u;
+}
+
+Owner* UserManager::createOwner(const UserId& ownerId)
+{
+  Owner* o = gPluginManager.createProtocolOwner(ownerId);
+
+  if (o == NULL)
+    // Protocol hasn't subclassed the owner class, create from Licq::Owner instead
+    o = new Owner(ownerId);
+
+  return o;
 }
 
 void UserManager::notifyUserUpdated(const UserId& userId, unsigned long subSignal)
@@ -593,7 +780,7 @@ bool UserManager::groupExists(int groupId)
   return found;
 }
 
-int UserManager::AddGroup(const string& name, unsigned short icqGroupId)
+int UserManager::AddGroup(const string& name)
 {
   if (name.empty())
     return 0;
@@ -613,25 +800,11 @@ int UserManager::AddGroup(const string& name, unsigned short icqGroupId)
     ;
 
   Group* newGroup = new Group(gid, name);
-  newGroup->setServerId(LICQ_PPID, icqGroupId);
   newGroup->setSortIndex(myGroups.size());
   myGroups[gid] = newGroup;
 
   SaveGroups();
   myGroupListMutex.unlockWrite();
-
-  bool icqOnline = false;
-  {
-    Licq::OwnerReadGuard icqOwner(LICQ_PPID);
-    if (icqOwner.isLocked())
-      icqOnline = icqOwner->isOnline();
-  }
-
-  if (icqGroupId == 0 && icqOnline)
-    gIcqProtocol.icqAddGroup(name);
-  else
-    gLog.info(tr("Added group %s (%u) to list from server"),
-        name.c_str(), icqGroupId);
 
   // Send signal to let plugins know of the new group
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
@@ -642,13 +815,6 @@ int UserManager::AddGroup(const string& name, unsigned short icqGroupId)
 
 void UserManager::RemoveGroup(int groupId)
 {
-  // Must be called when there are no locks on group or group list
-  gIcqProtocol.icqRemoveGroup(groupId);
-
-  // TODO: Notify other protocols as well
-  //       For signals, include id, name and serverId for protocol as signal
-  //       may be processed after group is gone.
-
   // List should only be locked when not holding any group lock to avoid
   // deadlock, so we cannot call fetchGroup here.
   myGroupListMutex.lockWrite();
@@ -665,9 +831,6 @@ void UserManager::RemoveGroup(int groupId)
 
   // Erase the group
   myGroups.erase(iter);
-  group->unlockWrite();
-  delete group;
-
 
   // Decrease sorting index for higher groups so we don't leave a gap
   for (iter = myGroups.begin(); iter != myGroups.end(); ++iter)
@@ -688,10 +851,49 @@ void UserManager::RemoveGroup(int groupId)
     BOOST_FOREACH(Licq::User* user, **userList)
     {
       Licq::UserWriteGuard u(user);
+      bool notify = false;
+      bool changeServer = false;
+
       if (u->removeFromGroup(groupId))
+      {
+        if (u->serverGroup() == -1)
+          changeServer = true;
+        notify = true;
+      }
+
+/*
+      if (u->serverGroup() == groupId)
+      {
+        int newServerGroup = TODO find another group
+        u->setServerGroup(newServerGroup);
+        changeServer = true;
+        notify = true;
+      }
+*/
+
+      if (changeServer)
+        gPluginManager.pushProtocolSignal(new Licq::ProtoChangeUserGroupsSignal(u->id()));
+
+      if (notify)
         notifyUserUpdated(u->id(), PluginSignal::UserGroups);
     }
   }
+
+  // Remove group from protocols
+  myOwnerListMutex.lockRead();
+  for (OwnerMap::const_iterator i = myOwners.begin(); i != myOwners.end(); ++i)
+  {
+    i->second->lockRead();
+    bool isOnline = i->second->isOnline();
+    i->second->unlockRead();
+    if (!isOnline)
+      continue;
+
+    // Group object is no long reachable so include protocol specific server id and name in signal
+    gPluginManager.pushProtocolSignal(new Licq::ProtoRemoveGroupSignal(
+        i->second->id(), groupId, group->serverId(i->first), group->name()));
+  }
+  myOwnerListMutex.unlockRead();
 
   // Send signal to let plugins know of the removed group
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
@@ -700,6 +902,10 @@ void UserManager::RemoveGroup(int groupId)
   // Send signal to let plugins know that sorting indexes may have changed
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
       PluginSignal::ListGroupsReordered));
+
+  // Delete the group
+  group->unlockWrite();
+  delete group;
 }
 
 void UserManager::ModifyGroupSorting(int groupId, int newIndex)
@@ -742,7 +948,7 @@ void UserManager::ModifyGroupSorting(int groupId, int newIndex)
       PluginSignal::ListGroupsReordered));
 }
 
-bool UserManager::RenameGroup(int groupId, const string& name, bool sendUpdate)
+bool UserManager::RenameGroup(int groupId, const string& name, unsigned long skipProtocolId)
 {
   int foundGroupId = GetGroupFromName(name);
 
@@ -765,16 +971,28 @@ bool UserManager::RenameGroup(int groupId, const string& name, bool sendUpdate)
   }
 
   group->setName(name);
-  unsigned short icqGroupId = group->serverId(LICQ_PPID);
   group->unlockWrite();
 
   myGroupListMutex.lockRead();
   SaveGroups();
   myGroupListMutex.unlockRead();
 
-  // If we rename a group on logon, don't send the rename packet
-  if (sendUpdate)
-    gIcqProtocol.icqRenameGroup(name, icqGroupId);
+  myOwnerListMutex.lockRead();
+  for (OwnerMap::const_iterator i = myOwners.begin(); i != myOwners.end(); ++i)
+  {
+    // Don't notify the protocol that called us
+    if (i->first == skipProtocolId)
+      continue;
+
+    i->second->lockRead();
+    bool isOnline = i->second->isOnline();
+    i->second->unlockRead();
+    if (!isOnline)
+      continue;
+
+    gPluginManager.pushProtocolSignal(new Licq::ProtoRenameGroupSignal(i->second->id(), groupId));
+  }
+  myOwnerListMutex.unlockRead();
 
   // Send signal to let plugins know the group has changed
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
@@ -788,7 +1006,7 @@ void UserManager::SaveGroups()
   if (!m_bAllowSave) return;
 
   // Load the group info from licq.conf
-  Licq::IniFile licqConf("licq.conf");
+  Licq::IniFile& licqConf(gDaemon.getLicqConf());
   licqConf.loadFile();
 
   licqConf.setSection("groups");
@@ -805,9 +1023,10 @@ void UserManager::SaveGroups()
   }
 
   licqConf.writeFile();
+  gDaemon.releaseLicqConf();
 }
 
-int UserManager::GetGroupFromID(unsigned short icqGroupId)
+int UserManager::getGroupFromServerId(unsigned long protocolId, unsigned long serverId)
 {
   myGroupListMutex.lockRead();
   GroupMap::const_iterator iter;
@@ -815,7 +1034,7 @@ int UserManager::GetGroupFromID(unsigned short icqGroupId)
   for (iter = myGroups.begin(); iter != myGroups.end(); ++iter)
   {
     iter->second->lockRead();
-    if (iter->second->serverId(LICQ_PPID) == icqGroupId)
+    if (iter->second->serverId(protocolId) == serverId)
       groupId = iter->first;
     iter->second->unlockRead();
   }
@@ -858,90 +1077,19 @@ std::string UserManager::GetGroupNameFromGroup(int groupId)
   return name;
 }
 
-void UserManager::ModifyGroupID(int groupId, unsigned short icqGroupId)
+void UserManager::setGroupServerId(int groupId, unsigned long protocolId,
+    unsigned long serverId)
 {
   Group* group = fetchGroup(groupId, true);
   if (group == NULL)
     return;
 
-  group->setServerId(LICQ_PPID, icqGroupId);
+  group->setServerId(protocolId, serverId);
   group->unlockWrite();
 
   myGroupListMutex.lockRead();
   SaveGroups();
   myGroupListMutex.unlockRead();
-}
-
-unsigned short UserManager::GenerateSID()
-{
-  bool bCheckGroup, bDone;
-  int nSID;
-  unsigned short nOwnerPDINFO;
-
-  {
-    Licq::OwnerReadGuard o(LICQ_PPID);
-    nOwnerPDINFO = o->GetPDINFO();
-  }
-
-  // Generate a SID
-  srand(time(NULL));
-  nSID = 1+(int)(65535.0*rand()/(RAND_MAX+1.0));
-
-  nSID &= 0x7FFF; // server limit it looks like
-
-  // Make sure we have a unique number - a map would be better
-  do
-  {
-    bDone = true;
-    bCheckGroup = true;
-
-    if (nSID == 0) nSID++;
-    if (nSID == nOwnerPDINFO) nSID++;
-
-    {
-      Licq::UserListGuard userList(LICQ_PPID);
-      BOOST_FOREACH(const Licq::User* user, **userList)
-      {
-        Licq::UserReadGuard u(user);
-
-        if (u->GetSID() == nSID  || u->GetInvisibleSID() == nSID ||
-          u->GetVisibleSID() == nSID)
-        {
-          if (nSID == 0x7FFF)
-            nSID = 1;
-          else
-            nSID++;
-          bDone = false;	// Restart
-          bCheckGroup = false;	// Don't waste time now
-          break;
-        }
-      }
-    }
-
-    if (bCheckGroup)
-    {
-      // Check our groups too!
-      Licq::GroupListGuard groupList;
-      BOOST_FOREACH(const Licq::Group* group, **groupList)
-      {
-        Licq::GroupReadGuard g(group);
-
-        unsigned short icqGroupId = g->serverId(LICQ_PPID);
-        if (icqGroupId == nSID)
-        {
-          if (nSID == 0x7FFF)
-            nSID = 1;
-          else
-            nSID++;
-          bDone = false;
-          break;
-        }
-      }
-    }
-
-  } while (!bDone);
-
-  return nSID;
 }
 
 Licq::Owner* UserManager::fetchOwner(unsigned long protocolId, bool writeLock)
@@ -972,30 +1120,6 @@ void UserManager::SaveAllUsers()
     if (!u->NotInList())
       u->save(Licq::User::SaveAll);
   }
-}
-
-bool UserManager::UpdateUsersInGroups()
-{
-  bool bDid = false;
-
-  Licq::UserListGuard userList(LICQ_PPID);
-  BOOST_FOREACH(Licq::User* user, **userList)
-  {
-    Licq::UserWriteGuard u(user);
-
-    unsigned short nGSID = u->GetGSID();
-    if (nGSID)
-    {
-      int nInGroup = gUserManager.GetGroupFromID(nGSID);
-      if (nInGroup != 0)
-      {
-        u->addToGroup(nInGroup);
-        bDid = true;
-      }
-    }
-  }
-
-  return bDid;
 }
 
 unsigned short UserManager::NumUsers()
@@ -1057,28 +1181,30 @@ void UserManager::setUserInGroup(const UserId& userId, int groupId,
       bool inGroup, bool updateServer)
 {
   // User group 0 is invalid
-  if (groupId == 0)
+  if (groupId <= 0)
     return;
 
-  int gsid;
+  int serverGroup;
 
   {
     Licq::UserWriteGuard u(userId);
     if (!u.isLocked())
       return;
 
-    gsid = u->GetGSID();
+    serverGroup = u->serverGroup();
 
     // Don't remove user from local group if member of the same server group
-    if (!inGroup && u->GetSID() != 0 && GetGroupFromID(gsid) == groupId)
+    if (!inGroup && serverGroup == groupId)
       return;
 
     // Update user object
     u->setInGroup(groupId, inGroup);
+
+    // Server group is set by protocol after performing the actual change
   }
 
   // Notify server
-  if (updateServer)
+  if (serverGroup == -1 || updateServer)
   {
     bool ownerIsOnline = false;
     {
@@ -1087,15 +1213,7 @@ void UserManager::setUserInGroup(const UserId& userId, int groupId,
     }
 
     if (ownerIsOnline)
-    {
-      if (userId.protocolId() == LICQ_PPID)
-      {
-        if (inGroup) // Server group can only be changed, not removed
-          gIcqProtocol.icqChangeGroup(userId, groupId, gsid);
-      }
-      else
-        gPluginManager.pushProtocolSignal(new Licq::ProtoChangeUserGroupsSignal(userId), userId.protocolId());
-    }
+      gPluginManager.pushProtocolSignal(new Licq::ProtoChangeUserGroupsSignal(userId));
   }
 
   // Notify plugins

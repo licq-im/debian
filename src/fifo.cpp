@@ -1,8 +1,20 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 /*
@@ -53,12 +65,14 @@
 #include "licq.h"
 
 using std::string;
+using Licq::PluginSignal;
 using Licq::UserId;
 using Licq::gDaemon;
 using Licq::gLog;
 using Licq::gLogService;
 using Licq::gPluginManager;
 using Licq::gProtocolManager;
+using Licq::gTranslator;
 using Licq::gUserManager;
 using namespace LicqDaemon;
 
@@ -120,6 +134,12 @@ static const char* const HELP_UIVIEWEVENT = tr(
 static const char* const HELP_UIMESSAGE = tr(
         "\tui_message <buddy>\n"
         "\t\tOpen the plugin message composer to <buddy>\n");
+static const char* const HELP_UISHOWUSERLIST = tr(
+    "\tui_showuserlist\n"
+    "\t\tShow and raise the contact list window\n");
+static const char* const HELP_UIHIDEUSERLIST = tr(
+    "\tui_hideuserlist\n"
+    "\t\tHide the contact list window\n");
 static const char* const HELP_PLUGINLIST = tr(
 		"\tlist_plugins\n"
 		"\t\tLists the loaded UI plugins\n");
@@ -333,7 +353,7 @@ static int fifo_status(int argc, const char* const* argv)
   if( argc > 2 )
   {
     Licq::OwnerWriteGuard o(LICQ_PPID);
-    o->setAutoResponse(argv[2]);
+    o->setAutoResponse(gTranslator.toUtf8(argv[2]));
     o->save(Licq::Owner::SaveOwnerInfo);
   }
 
@@ -351,7 +371,7 @@ static int fifo_auto_response(int argc, const char* const* argv)
   }
 
   Licq::OwnerWriteGuard o(LICQ_PPID);
-  o->setAutoResponse(argv[1]);
+  o->setAutoResponse(gTranslator.toUtf8(argv[1]));
   o->save(Licq::Owner::SaveOwnerInfo);
 
   return 0;
@@ -370,7 +390,7 @@ static int fifo_message(int argc, const char* const* argv)
   }
 
   if (atoid(argv[1], false, &szId, &nPPID))
-    gProtocolManager.sendMessage(UserId(szId, nPPID), argv[2]);
+    gProtocolManager.sendMessage(UserId(szId, nPPID), gTranslator.toUtf8(argv[2]));
 
   else
     ReportBadBuddy(argv[0], argv[1]);
@@ -396,7 +416,8 @@ static int fifo_url(int argc, const char* const* argv)
   if (atoid(argv[1], false, &szId, &nPPID))
   {
     szDescr = (argc > 3) ? argv[3] : "" ;
-    gProtocolManager.sendUrl(UserId(szId, nPPID), argv[2], szDescr);
+    gProtocolManager.sendUrl(UserId(szId, nPPID), gTranslator.toUtf8(argv[2]),
+        gTranslator.toUtf8(szDescr));
   }
   else
     ReportBadBuddy(argv[0],argv[1]);
@@ -432,7 +453,7 @@ static int fifo_sms(int argc, const char *const *argv)
         }
       }
       if (!number.empty())
-        gLicqDaemon->icqSendSms(userId, number, argv[2]);
+        gLicqDaemon->icqSendSms(userId, number, gTranslator.toUtf8(argv[2]));
       else
         gLog.error("Unable to send SMS to %s, no SMS number found", szId);
     }
@@ -456,7 +477,7 @@ static int fifo_sms_number(int argc, const char *const *argv)
     return -1;
   }
 
-  gLicqDaemon->icqSendSms(gUserManager.ownerUserId(LICQ_PPID), argv[1], argv[2]);
+  gLicqDaemon->icqSendSms(gUserManager.ownerUserId(LICQ_PPID), argv[1], gTranslator.toUtf8(argv[2]));
   return 0;
 }
 
@@ -647,7 +668,8 @@ static int fifo_ui_viewevent(int argc, const char* const* argv)
     return 0;
   }
 
-  gDaemon.pluginUIViewEvent(UserId(szId, nPPID));
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
+      PluginSignal::PluginViewEvent, UserId(szId, nPPID)));
 
   if (szId != NULL)
     free(szId);
@@ -668,7 +690,10 @@ static int fifo_ui_message(int argc, const char* const* argv)
     nRet = -1;
   }
   else if (atoid(argv[1], true, &szId, &nPPID))
-    gDaemon.pluginUIMessage(UserId(szId, nPPID));
+  {
+    gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
+        PluginSignal::PluginStartMessage, UserId(szId, nPPID)));
+  }
   else
   {
     ReportBadBuddy(argv[0],argv[1]);
@@ -677,6 +702,20 @@ static int fifo_ui_message(int argc, const char* const* argv)
   free(szId);
 
   return nRet;
+}
+
+static int fifo_ui_showuserlist(int /* argc */, const char* const* /* argv */)
+{
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
+      PluginSignal::PluginShowUserList));
+  return 0;
+}
+
+static int fifo_ui_hideuserlist(int /* argc */, const char* const* /* argv */)
+{
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
+      PluginSignal::PluginHideUserList));
+  return 0;
 }
 
 static int fifo_plugin_list(int /* argc */, const char* const* /* argv */)
@@ -721,7 +760,7 @@ static int fifo_plugin_unload(int argc, const char* const* argv)
   {
     if (plugin->name() == argv[1])
     {
-      plugin->shutdown();
+      gPluginManager.unloadGeneralPlugin(plugin);
       return 0;
     }
   }
@@ -771,7 +810,7 @@ static int fifo_proto_plugin_unload(int argc, const char* const* argv)
   {
     if (plugin->name() == argv[1])
     {
-      plugin->shutdown();
+      gPluginManager.unloadProtocolPlugin(plugin);
       return 0;
     }
   }
@@ -797,6 +836,8 @@ static struct command_t fifocmd_table[]=
   {"exit",                fifo_exit,                HELP_EXIT},
   {"ui_viewevent",        fifo_ui_viewevent,        HELP_UIVIEWEVENT},
   {"ui_message",          fifo_ui_message,          HELP_UIMESSAGE},
+  {"ui_showuserlist",     fifo_ui_showuserlist,     HELP_UISHOWUSERLIST},
+  {"ui_hideuserlist",     fifo_ui_hideuserlist,     HELP_UIHIDEUSERLIST},
   {"list_plugins",        fifo_plugin_list,         HELP_PLUGINLIST},
   {"load_plugin",         fifo_plugin_load,         HELP_PLUGINLOAD},
   {"unload_plugin",       fifo_plugin_unload,       HELP_PLUGINUNLOAD},
@@ -944,7 +985,6 @@ Fifo::~Fifo()
 
 void Fifo::initialize()
 {
-#ifdef USE_FIFO
   string filename = gDaemon.baseDir() + "licq_fifo";
 
   // Open the fifo
@@ -976,10 +1016,6 @@ void Fifo::initialize()
     else
       fifo_fs = fdopen(fifo_fd, "r");
   }
-#else
-  fifo_fs = NULL;
-  fifo_fd = -1;
-#endif
 }
 
 void Fifo::shutdown()
@@ -991,15 +1027,13 @@ void Fifo::shutdown()
   }
 }
 
-void Fifo::process(const string& buf)
+void Fifo::process()
 {
-#ifdef USE_FIFO
+  char szBuf[1024];
+  fgets(szBuf, 1024, fifo_fs);
+
   int argc, index;
   const char* argv[MAX_ARGV];
-  char *szBuf = strdup(buf.c_str());
-
-  if( szBuf == NULL )
-    return ;
 
   gLog.info(tr("%sReceived string: %s"), L_FIFOxSTR, szBuf);
   line2argv(szBuf, argv, &argc, sizeof(argv) / sizeof(argv[0]) );
@@ -1019,8 +1053,4 @@ void Fifo::process(const string& buf)
         fifocmd_table[index].fnc(argc, argv);
       break;
   }
-  
-  free( szBuf );
-
-#endif //USE_FIFO
 }
