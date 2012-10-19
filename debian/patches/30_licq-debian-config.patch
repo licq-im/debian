@@ -2,10 +2,10 @@ Subject: Adjusts some configuration defaults to be more reasonable for Debian
 Origin: vendor, Debian package
 Index: licq/src/daemon.cpp
 ===================================================================
---- licq.orig/src/daemon.cpp	2012-06-16 23:19:51.458053479 +0200
-+++ licq/src/daemon.cpp	2012-06-16 23:20:02.838054028 +0200
-@@ -152,7 +152,7 @@
-     Licq::gTranslator.setTranslationMap(shareDir() + TranslationDir + "/" + temp);
+--- licq.orig/src/daemon.cpp	2012-10-19 20:07:40.713377617 +0200
++++ licq/src/daemon.cpp	2012-10-19 20:10:32.849385949 +0200
+@@ -145,7 +145,7 @@
+   }
  
    // Misc
 -  licqConf.get("Terminal", myTerminal, "xterm -T Licq -e ");
