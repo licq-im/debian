@@ -26,11 +26,10 @@
 // Qt
 #include <QDateTime>
 #include <QImage>
-#include <QTextCodec>
 
 // Licq
 #include <licq/contactlist/user.h>
-#include <licq/icq/icq.h>
+#include <licq/icq/user.h>
 #include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/socket.h>
@@ -40,8 +39,6 @@
 #include "config/contactlist.h"
 
 #include "core/gui-defines.h"
-
-#include "helpers/usercodec.h"
 
 #include "contactgroup.h"
 #include "contactuser.h"
@@ -147,12 +144,6 @@ void ContactUserData::update(const Licq::User* u, unsigned long subSignal)
   if (subSignal == 0 || subSignal == Licq::PluginSignal::UserTyping)
     myStatusTyping = u->isTyping();
 
-  if (subSignal == 0 || subSignal == Licq::PluginSignal::UserPluginStatus)
-  {
-    myPhoneFollowMeStatus = u->phoneFollowMeStatus();
-    myIcqPhoneStatus = u->icqPhoneStatus();
-    mySharedFilesStatus = u->sharedFilesStatus();
-  }
 
   if (subSignal == 0 || subSignal == Licq::PluginSignal::UserInfo)
   {
@@ -178,6 +169,18 @@ void ContactUserData::update(const Licq::User* u, unsigned long subSignal)
     myInOnlineNotify = u->OnlineNotify();
     myInInvisibleList = u->InvisibleList();
     myInVisibleList = u->VisibleList();
+  }
+
+  if (myUserId.protocolId() == LICQ_PPID)
+  {
+    const Licq::IcqUser* icquser = dynamic_cast<const Licq::IcqUser*>(u);
+
+    if (subSignal == 0 || subSignal == Licq::PluginSignal::UserPluginStatus)
+    {
+      myPhoneFollowMeStatus = icquser->phoneFollowMeStatus();
+      myIcqPhoneStatus = icquser->icqPhoneStatus();
+      mySharedFilesStatus = icquser->sharedFilesStatus();
+    }
   }
 
   updateExtendedStatus();
@@ -321,17 +324,17 @@ void ContactUserData::updateExtendedStatus()
   if (myStatusTyping && myUserId.protocolId() == LICQ_PPID)
     myExtendedStatus |= ContactListModel::TypingStatus;
 
-  if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginActive)
+  if (myPhoneFollowMeStatus == Licq::IcqPluginActive)
     myExtendedStatus |= ContactListModel::PhoneFollowMeActiveStatus;
-  else if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginBusy)
+  else if (myPhoneFollowMeStatus == Licq::IcqPluginBusy)
     myExtendedStatus |= ContactListModel::PhoneFollowMeBusyStatus;
 
-  if (myIcqPhoneStatus == CICQDaemon::IcqPluginActive)
+  if (myIcqPhoneStatus == Licq::IcqPluginActive)
     myExtendedStatus |= ContactListModel::IcqPhoneActiveStatus;
-  else if (myIcqPhoneStatus == CICQDaemon::IcqPluginBusy)
+  else if (myIcqPhoneStatus == Licq::IcqPluginBusy)
     myExtendedStatus |= ContactListModel::IcqPhoneBusyStatus;
 
-  if (mySharedFilesStatus == CICQDaemon::IcqPluginActive)
+  if (mySharedFilesStatus == Licq::IcqPluginActive)
     myExtendedStatus |= ContactListModel::SharedFilesStatus;
 
   if (myCustomAR)
@@ -423,10 +426,7 @@ bool ContactUserData::updateText(const Licq::User* licqUser)
   {
     QString format = Config::ContactList::instance()->columnFormat(i);
     format.replace("%a", "@_USER_ALIAS_@");
-
-    const QTextCodec* codec = UserCodec::codecForUser(licqUser);
-    QString newStr = codec->toUnicode(licqUser->usprintf(codec->fromUnicode(format).data()).c_str());
-
+    QString newStr = QString::fromLocal8Bit(licqUser->usprintf(format.toLocal8Bit().constData()).c_str());
     newStr.replace("@_USER_ALIAS_@", myAlias);
 
     if (newStr != myText[i])
@@ -688,7 +688,6 @@ QString ContactUserData::tooltip() const
 
   Config::ContactList* config = Config::ContactList::instance();
 
-  const QTextCodec* codec = UserCodec::codecForUser(*u);
   QString s = "<nobr>";
   if (config->popupPicture() && u->GetPicturePresent())
   {
@@ -707,7 +706,7 @@ QString ContactUserData::tooltip() const
   {
     string fullName = u->getFullName();
     if (!fullName.empty())
-      s += "<br>" + codec->toUnicode(fullName.c_str());
+      s += "<br>" + QString::fromUtf8(fullName.c_str());
   }
 
   if (myBirthday)
@@ -717,17 +716,17 @@ QString ContactUserData::tooltip() const
   {
     if (myStatusTyping)
       s += "<br>" + tr("Typing a message");
-    if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginActive)
+    if (myPhoneFollowMeStatus == Licq::IcqPluginActive)
       s += "<br>" + tr("Phone &quot;Follow Me&quot;: Available");
-    else if (myPhoneFollowMeStatus == CICQDaemon::IcqPluginBusy)
+    else if (myPhoneFollowMeStatus == Licq::IcqPluginBusy)
       s += "<br>" + tr("Phone &quot;Follow Me&quot;: Busy");
 
-    if (myIcqPhoneStatus == CICQDaemon::IcqPluginActive)
+    if (myIcqPhoneStatus == Licq::IcqPluginActive)
       s += "<br>" + tr("ICQphone: Available");
-    else if (myIcqPhoneStatus == CICQDaemon::IcqPluginBusy)
+    else if (myIcqPhoneStatus == Licq::IcqPluginBusy)
       s += "<br>" + tr("ICQphone: Busy");
 
-    if (mySharedFilesStatus == CICQDaemon::IcqPluginActive)
+    if (mySharedFilesStatus == Licq::IcqPluginActive)
       s += "<br>" + tr("File Server: Enabled");
   }
 
@@ -741,31 +740,31 @@ QString ContactUserData::tooltip() const
     s += "<br>" + tr("Awaiting authorization");
 
   if (u->isOnline() && !u->clientInfo().empty())
-    s += "<br>" + codec->toUnicode(u->clientInfo().c_str());
+    s += "<br>" + QString::fromUtf8(u->clientInfo().c_str());
 
   if (!u->autoResponse().empty() && myStatus & User::MessageStatuses)
     s += "<br><u>" + tr("Auto Response:") + "</u><br>&nbsp;&nbsp;&nbsp;" +
-      codec->toUnicode(u->autoResponse().c_str()).trimmed()
+      QString::fromUtf8(u->autoResponse().c_str()).trimmed()
       .replace("\n", "<br>&nbsp;&nbsp;&nbsp;");
 
   if (config->popupEmail())
   {
     string email = u->getEmail();
     if (!email.empty())
-      s += "<br>" + tr("E: ") + codec->toUnicode(email.c_str());
+      s += "<br>" + tr("E: ") + QString::fromUtf8(email.c_str());
   }
 
   if (config->popupPhone() && myPhone)
-    s += "<br>" + tr("P: ") + codec->toUnicode(u->getUserInfoString("PhoneNumber").c_str());
+    s += "<br>" + tr("P: ") + QString::fromUtf8(u->getUserInfoString("PhoneNumber").c_str());
 
   if (config->popupCellular() && myCellular)
-    s += "<br>" + tr("C: ") + codec->toUnicode(u->getCellularNumber().c_str());
+    s += "<br>" + tr("C: ") + QString::fromUtf8(u->getCellularNumber().c_str());
 
   if (config->popupFax())
   {
     string faxNumber = u->getUserInfoString("FaxNumber");
     if (!faxNumber.empty())
-      s += "<br>" + tr("F: ") + codec->toUnicode(faxNumber.c_str());
+      s += "<br>" + tr("F: ") + QString::fromUtf8(faxNumber.c_str());
   }
 
   if (config->popupIP() && (u->Ip() || u->IntIp()))

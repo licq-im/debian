@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,12 @@ class ProtocolManager : private boost::noncopyable
 {
 public:
   static const char* const KeepAutoResponse;
+
+  /**
+   * Get next available id to use for an event
+   * For use by protocols only
+   */
+  virtual unsigned long getNextEventId() = 0;
 
   /**
    * Update user alias on server contact list
@@ -94,14 +100,6 @@ public:
       const std::string& message, unsigned flags = 0, const Color* color = NULL) = 0;
 
   /**
-   * Request user auto response from server
-   *
-   * @param userId User to fetch auto response for
-   * @return Event id
-   */
-  virtual unsigned long requestUserAutoResponse(const UserId& userId) = 0;
-
-  /**
    * Initiate a file transfer to a user
    *
    * @param userId User to send file to
@@ -128,14 +126,6 @@ public:
   virtual void fileTransferRefuse(const UserId& userId, const std::string& message,
       unsigned long eventId, unsigned long flag1, unsigned long flag2,
       bool viaServer = true) = 0;
-
-  /**
-   * Cancel a file transfer
-   *
-   * @param userId User to cancel transfer for
-   * @param eventId Event id of transfer to cancel
-   */
-  virtual void fileTransferCancel(const UserId& userId, unsigned long eventId) = 0;
 
   /**
    * Accept a proposed file transfer
@@ -214,12 +204,12 @@ public:
   virtual unsigned long secureChannelClose(const UserId& userId) = 0;
 
   /**
-   * Cancel encrypted communication about to be enabled
+   * Cancel a request to file transfer / chat / secure channel
    *
    * @param userId User to cancel encryption for
-   * @param eventId Event of open request to cancel
+   * @param eventId Event of request to cancel
    */
-  virtual void secureChannelCancelOpen(const UserId& userId, unsigned long eventId) = 0;
+  virtual void cancelEvent(const UserId& userId, unsigned long eventId) = 0;
 
   /**
    * Add/remove a user to/from visible list

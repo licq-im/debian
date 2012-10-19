@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011 Licq developers
+ * Copyright (C) 2011-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 #include <licq/logging/log.h>
 #include <licq/logging/logservice.h>
 #include <licq/logging/logutils.h>
+#include <licq/color.h>
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/inifile.h>
@@ -41,7 +42,6 @@
 #include <licq/proxy.h>
 #include <licq/socket.h>
 #include <licq/statistics.h>
-#include <licq/thread/mutexlocker.h>
 #include <licq/translator.h>
 #include <licq/userevents.h>
 
@@ -49,7 +49,6 @@
 #include "gettext.h"
 #include "gpghelper.h"
 #include "filter.h"
-#include "icq/icq.h"
 #include "licq.h"
 #include "logging/filelogsink.h"
 #include "plugin/pluginmanager.h"
@@ -57,7 +56,6 @@
 using namespace std;
 using namespace LicqDaemon;
 using Licq::gLog;
-using Licq::PluginSignal;
 using Licq::User;
 using Licq::UserId;
 
@@ -72,7 +70,8 @@ const char* const Daemon::TranslationDir = "translations";
 const char* const Daemon::UtilityDir = "utilities";
 
 Daemon::Daemon() :
-  licq(NULL)
+    myLicqConf("licq.conf"),
+    licq(NULL)
 {
   // Set static variables based on compile time constants
   myLibDir = INSTALL_LIBDIR;
@@ -103,8 +102,7 @@ void Daemon::initialize()
   myShuttingDown = false;
 
   // Begin parsing the config file
-  Licq::IniFile licqConf("licq.conf");
-  licqConf.loadFile();
+  Licq::IniFile& licqConf(getLicqConf());
 
   licqConf.setSection("network");
 
@@ -146,24 +144,24 @@ void Daemon::initialize()
                  errorFile.c_str(), strerror(errno));
   }
 
-  // Loading translation table from file
-  licqConf.get("Translation", temp, "none");
-  if (!temp.empty() && temp != "none")
-    Licq::gTranslator.setTranslationMap(shareDir() + TranslationDir + "/" + temp);
-
   // Misc
   licqConf.get("Terminal", myTerminal, "xterm -T Licq -e ");
   licqConf.get("SendTypingNotification", mySendTypingNotification, true);
   licqConf.get("IgnoreTypes", myIgnoreTypes, 0);
+
+  unsigned long color;
+  licqConf.get("ForegroundColor", color, 0x00000000);
+  Licq::Color::setDefaultForeground(color);
+  licqConf.get("BackgroundColor", color, 0x00FFFFFF);
+  Licq::Color::setDefaultBackground(color);
+
+  releaseLicqConf();
 
   // Initialize the random number generator
   srand(time(NULL));
 
   // start GPG helper
   LicqDaemon::gGpgHelper.Start();
-
-  // Init event id counter
-  myNextEventId = 1;
 }
 
 const char* Daemon::Version() const
@@ -171,19 +169,23 @@ const char* Daemon::Version() const
   return licq->Version();
 }
 
-pthread_t* Daemon::Shutdown()
+void Daemon::Shutdown()
 {
   if (myShuttingDown)
-    return(&thread_shutdown);
+    return;
   myShuttingDown = true;
   // Small race condition here if multiple plugins call shutdown at the same time
-  pthread_create (&thread_shutdown, NULL, &Shutdown_tep, this);
-  return (&thread_shutdown);
+
+  // Shutdown
+  gLog.info(tr("Shutting down daemon"));
+
+  // Send shutdown signal to all the plugins
+  licq->shutdown();
 }
 
 void Daemon::SaveConf()
 {
-  Licq::IniFile licqConf("licq.conf");
+  Licq::IniFile& licqConf(getLicqConf());
   if (!licqConf.loadFile())
     return;
 
@@ -208,48 +210,17 @@ void Daemon::SaveConf()
   licqConf.set("Errors", myErrorFile);
   licqConf.set("ErrorTypes", myErrorTypes);
 
-  string translation = Licq::gTranslator.getMapName();
-  if (translation.empty())
-    translation = "none";
-  else
-  {
-    size_t pos = translation.rfind('/');
-    if (pos != string::npos)
-      translation.erase(0, pos+1);
-  }
-  licqConf.set("Translation", translation);
   licqConf.set("Terminal", myTerminal);
   licqConf.set("SendTypingNotification", mySendTypingNotification);
   licqConf.set("IgnoreTypes", myIgnoreTypes);
 
+  licqConf.set("ForegroundColor", Licq::Color::defaultForeground());
+  licqConf.set("BackgroundColor", Licq::Color::defaultBackground());
+
   licqConf.set("DefaultUserEncoding", gUserManager.defaultUserEncoding());
 
-  licqConf.setSection("owners");
-  licqConf.set("NumOfOwners", (unsigned long)gUserManager.NumOwners());
-
-  int n = 1;
-  {
-    Licq::OwnerListGuard ownerList;
-    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
-    {
-      Licq::OwnerWriteGuard o(owner);
-
-      char szOwnerId[12], szOwnerPPID[14];
-      sprintf(szOwnerId, "Owner%d.Id", n);
-      sprintf(szOwnerPPID, "Owner%d.PPID", n++);
-
-      o->save(Licq::User::SaveOwnerInfo);
-      if (o->accountId() != "0")
-      {
-        licqConf.set(szOwnerId, o->accountId());
-        licqConf.set(szOwnerPPID, Licq::protocolId_toString(o->protocolId()));
-      }
-    }
-  }
-
-  gIcqProtocol.save(licqConf);
-
   licqConf.writeFile();
+  releaseLicqConf();
 }
 
 bool Licq::Daemon::haveGpgSupport() const
@@ -300,18 +271,6 @@ int Licq::Daemon::StartTCPServer(TCPSocket *s)
   return s->Descriptor();
 }
 
-void Licq::Daemon::setTcpEnabled(bool b)
-{
-  myTcpEnabled = b;
-  gLicqDaemon->setDirectMode();
-}
-
-void Licq::Daemon::setBehindFirewall(bool b)
-{
-  myBehindFirewall = b;
-  gLicqDaemon->setDirectMode();
-}
-
 void Licq::Daemon::setTcpPorts(unsigned lowPort, unsigned highPort)
 {
   myTcpPortsLow = lowPort;
@@ -356,15 +315,6 @@ Licq::Proxy* Licq::Daemon::createProxy()
   return Proxy;
 }
 
-unsigned long Daemon::getNextEventId()
-{
-  Licq::MutexLocker eventIdGuard(myNextEventIdMutex);
-  unsigned long eventId = myNextEventId;
-  if (++myNextEventId == 0)
-    ++myNextEventId;
-  return eventId;
-}
-
 bool Daemon::addUserEvent(Licq::User* u, Licq::UserEvent* e)
 {
   int filteraction = gFilterManager.filterEvent(u, e);
@@ -387,8 +337,7 @@ bool Daemon::addUserEvent(Licq::User* u, Licq::UserEvent* e)
   }
 
   // Don't log a user event if this user is on the ignore list
-  if (u->IgnoreList() ||
-      (e->IsMultiRec() && ignoreType(IgnoreMassMsg)) ||
+  if ((e->IsMultiRec() && ignoreType(IgnoreMassMsg)) ||
       (e->eventType() == Licq::UserEvent::TypeEmailPager && ignoreType(IgnoreEmailPager)) ||
       (e->eventType() == Licq::UserEvent::TypeWebPanel && ignoreType(IgnoreWebPanel)) )
   {
@@ -417,37 +366,12 @@ void Daemon::rejectEvent(const UserId& userId, Licq::UserEvent* e)
   else
   {
     fprintf(f, "Event from new user (%s) rejected: \n%s\n--------------------\n\n",
-        userId.accountId().c_str(), e->text().c_str());
+        userId.accountId().c_str(), e->textLoc().c_str());
     chmod(rejectFile.c_str(), 00600);
     fclose(f);
   }
   delete e;
   Licq::gStatistics.increase(Licq::Statistics::EventsRejectedCounter);
-}
-
-void Licq::Daemon::cancelEvent(unsigned long eventId)
-{
-  gIcqProtocol.CancelEvent(eventId);
-}
-
-void Licq::Daemon::cancelEvent(Licq::Event* event)
-{
-  gIcqProtocol.CancelEvent(event);
-}
-
-void Licq::Daemon::pluginUIViewEvent(const Licq::UserId& userId)
-{
-  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalUiViewEvent, 0, userId));
-}
-
-void Licq::Daemon::pluginUIMessage(const Licq::UserId& userId)
-{
-  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalUiMessage, 0, userId));
-}
-
-void Daemon::shutdownPlugins()
-{
-  licq->ShutdownPlugins();
 }
 
 void Daemon::autoLogon()
@@ -467,4 +391,9 @@ void Daemon::autoLogon()
   map<UserId, unsigned>::const_iterator iter;
   for (iter = logonStatuses.begin(); iter != logonStatuses.end(); ++iter)
     Licq::gProtocolManager.setStatus(iter->first, iter->second);
+}
+
+void Daemon::notifyPluginExited()
+{
+  licq->notify(CLicq::NotifyReapPlugin);
 }

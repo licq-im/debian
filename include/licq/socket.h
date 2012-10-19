@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 #include <string>
 #include <sys/socket.h> // AF_UNSPEC, struct sockaddr
 
-#include "buffer.h"
 #include "thread/mutex.h"
 #include "userid.h"
 
@@ -36,6 +35,7 @@
 
 namespace Licq
 {
+class Buffer;
 class Proxy;
 
 
@@ -52,6 +52,8 @@ char *ip_ntoa(unsigned long in, char *buf);
 class INetSocket
 {
 public:
+  static const size_t MAX_RECV_SIZE = 4096;
+
   INetSocket(int sockType, const std::string& logId, const UserId& userId);
   virtual ~INetSocket();
 
@@ -60,8 +62,6 @@ public:
   bool DestinationSet()     { return myRemoteAddr.sa_family != AF_UNSPEC; }
   const UserId& userId() const { return myUserId; }
   void setUserId(const UserId& userId) { myUserId = userId; }
-  unsigned long Version() const { return (myVersion); }
-  void SetVersion(unsigned long version) { myVersion = version; }
 
   int Error();
   std::string errorStr() const;
@@ -111,9 +111,6 @@ public:
   uint16_t getRemotePort() const        { return getAddrPort(&myRemoteAddr); };
 
   void ResetSocket();
-  void ClearRecvBuffer()  { myRecvBuffer.Clear(); };
-  bool RecvBufferFull() const { return myRecvBuffer.Full(); };
-  Buffer& RecvBuffer()   { return myRecvBuffer; };
 
   /**
    * Connect to a remote host
@@ -140,11 +137,26 @@ public:
 
   void CloseConnection();
   bool StartServer(unsigned int _nPort);
-  bool SendRaw(Buffer *b);
-  bool RecvRaw();
 
-  virtual bool Send(Buffer* b) = 0;
-  virtual bool Recv() = 0;
+  /**
+   * Send one "packet"
+   * Writes the contents of a buffer to the socket
+   *
+   * @param b Buffer with packet to send
+   * @return False on any failure
+   */
+  virtual bool send(Buffer& b);
+
+  /**
+   * Receive one "packet"
+   * Makes a single read from the socket
+   *
+   * @param b Buffer to store data in (will be created if empty)
+   * @param maxlength Maximum packet length to read
+   * @param dump True to dump packet for debugging if buffer was filled
+   * @return False on any failure otherwise true regardless of data length
+   */
+  virtual bool receive(Buffer& b, size_t maxlength = MAX_RECV_SIZE, bool dump = true);
 
   void Lock();
   void Unlock();
@@ -220,10 +232,8 @@ protected:
 
   int myDescriptor;
   std::string myRemoteName;
-  Buffer myRecvBuffer;
   std::string myLogId;
   int mySockType;
-  unsigned short myVersion;
   ErrorType myErrorType;
   Proxy* myProxy;
   UserId myUserId;
@@ -238,20 +248,14 @@ public:
   TCPSocket();
   virtual ~TCPSocket();
 
-  // Abstract base class overloads
-  virtual bool Send(Buffer* b)
-    { return SendPacket(b); }
-  virtual bool Recv()
-    { return RecvPacket(); }
-
-  // Functions specific to TCP
-  bool SendPacket(Buffer* b);
-  bool RecvPacket();
   bool RecvConnection(TCPSocket &newSocket);
-  void TransferConnectionFrom(TCPSocket &from);
+  virtual void TransferConnectionFrom(TCPSocket &from);
 
-  bool SSLSend(Buffer* b);
-  bool SSLRecv();
+  /// Overloaded to add SSL support
+  bool send(Buffer& b);
+
+  /// Overloaded to add SSL support
+  bool receive(Buffer& b, size_t maxlength = MAX_RECV_SIZE, bool dump = true);
 
   bool Secure() { return m_p_SSL != NULL; }
   bool SSL_Pending();
@@ -260,39 +264,9 @@ public:
   bool SecureListen();
   void SecureStop();
 
-  enum ChannelType
-  {
-    ChannelUnknown      = 0,
-    ChannelNormal       = 1,
-    ChannelInfo         = 2,
-    ChannelStatus       = 3,
-  };
-
-  void setChannel(int channel) { myChannel = channel; }
-  int channel() const { return myChannel; }
-
 protected:
   void* m_p_SSL;
   pthread_mutex_t mutex_ssl;
-  int myChannel;
-};
-
-
-class SrvSocket : public INetSocket
-{
-public:
-  SrvSocket(const UserId& userId);
-  virtual ~SrvSocket();
-
-  // Abstract base class overloads
-  virtual bool Send(Buffer* b)
-    { return SendPacket(b); }
-  virtual bool Recv()
-    { return RecvPacket(); }
-
-  // Functions specific to Server TCP communication
-  bool SendPacket(Buffer* b);
-  bool RecvPacket();
 };
 
 
@@ -302,12 +276,6 @@ class UDPSocket : public INetSocket
 public:
   UDPSocket(const UserId& userId);
   virtual ~UDPSocket();
-
-  // Abstract base class overloads
-  virtual bool Send(Buffer *b)
-    { return SendRaw(b); }
-  virtual bool Recv()
-    { return RecvRaw(); }
 };
 
 } // namespace Licq

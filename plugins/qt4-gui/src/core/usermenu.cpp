@@ -39,15 +39,15 @@
 
 #include "contactlist/contactlist.h"
 
-#include "dialogs/authuserdlg.h"
+#include "dialogs/authdlg.h"
 #include "dialogs/awaymsgdlg.h"
 #include "dialogs/customautorespdlg.h"
 #include "dialogs/gpgkeyselect.h"
 #include "dialogs/historydlg.h"
 #include "dialogs/keyrequestdlg.h"
-#include "dialogs/reqauthdlg.h"
 #include "dialogs/showawaymsgdlg.h"
 #include "dialogs/utilitydlg.h"
+#include "userdlg/userdlg.h"
 
 #include "gui-defines.h"
 #include "licqgui.h"
@@ -173,7 +173,7 @@ UserMenu::UserMenu(QWidget* parent)
   addMenu(myGroupsMenu);
   myRemoveUserAction = addAction(tr("Remove From List"), this, SLOT(removeContact()));
   addSeparator();
-  mySetKeyAction = addAction(tr("Set GPG key..."), this, SLOT(selectKey()));
+  mySetKeyAction = addAction(tr("Set GPG Key..."), this, SLOT(selectKey()));
   if (!Licq::gDaemon.haveGpgSupport())
     mySetKeyAction->setVisible(false);
   myCopyIdAction = addAction(tr("&Copy User ID"), this, SLOT(copyIdToClipboard()));
@@ -295,12 +295,8 @@ void UserMenu::aboutToShowMenu()
     mySendActions[SendKey]->setIcon(IconManager::instance()->getIcon(IconManager::SecureOffIcon));
   }
 
-  unsigned long sendFuncs = 0;
+  unsigned long sendFuncs = u->protocolCapabilities();
   bool isIcq = myPpid == LICQ_PPID;
-
-  Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(myPpid);
-  if (protocol.get() != NULL)
-    sendFuncs = protocol->capabilities();
 
   mySendActions[SendMessage]->setVisible(sendFuncs & Licq::ProtocolPlugin::CanSendMsg);
   mySendActions[SendUrl]->setVisible(sendFuncs & Licq::ProtocolPlugin::CanSendUrl);
@@ -363,7 +359,7 @@ void UserMenu::aboutToShowMenu()
     myViewEventAction->setShortcut(QKeySequence());
   }
 
-  int serverGroup = (u->GetSID() ? Licq::gUserManager.GetGroupFromID(u->GetGSID()) : 0);
+  int serverGroup = u->serverGroup();
 
   // Update group memberships
   foreach (QAction* a, myUserGroupActions->actions())
@@ -375,6 +371,7 @@ void UserMenu::aboutToShowMenu()
     // Don't allow leaving group if contact is member of the same group at the server side
     a->setEnabled(!inGroup || gid != serverGroup);
   }
+  myServerGroupsMenu->menuAction()->setVisible(serverGroup > -1);
   foreach (QAction* a, myServerGroupActions->actions())
     a->setChecked(a->data().toInt() == serverGroup);
 }
@@ -416,7 +413,7 @@ void UserMenu::customAutoResponse()
 
 void UserMenu::makePermanent()
 {
-  Licq::gUserManager.makeUserPermanent(myUserId);
+  Licq::gUserManager.addUser(myUserId, true, true);
 }
 
 void UserMenu::toggleFloaty()
@@ -452,7 +449,7 @@ void UserMenu::viewHistory()
 
 void UserMenu::viewInfoGeneral()
 {
-  gLicqGui->showInfoDialog(mnuUserGeneral, myUserId);
+  UserDlg::showDialog(myUserId);
 }
 
 void UserMenu::send(QAction* action)
@@ -462,11 +459,11 @@ void UserMenu::send(QAction* action)
   switch (index)
   {
     case SendAuthorize:
-      new AuthUserDlg(myUserId, true);
+      new AuthDlg(AuthDlg::GrantAuth, myUserId);
       break;
 
     case SendReqAuthorize:
-      new ReqAuthDlg(myUserId);
+      new AuthDlg(AuthDlg::RequestAuth, myUserId);
       break;
 
     case SendKey:
@@ -617,7 +614,7 @@ void UserMenu::toggleSystemGroup(QAction* action)
       Licq::UserReadGuard u(myUserId);
       if (!u.isLocked())
         return;
-      alias = u->getAlias().c_str();
+      alias = QString::fromUtf8(u->getAlias().c_str());
     }
 
     if(!QueryYesNo(this, tr("Do you really want to add\n%1 (%2)\nto your ignore list?")

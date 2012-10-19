@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,40 +17,26 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <licq/plugin/protocolbase.h>
+#include "icqprotocolplugin.h"
 
+#include <licq/logging/log.h>
+#include <licq/protocolsignal.h>
 #include <licq/version.h>
 #include "icq.h"
+#include "owner.h"
+#include "user.h"
 
 #define LicqProtocolPluginData IcqProtocolPluginData
 
-class IcqProtocolPlugin : public Licq::ProtocolPlugin
-{
-public:
-  IcqProtocolPlugin(Params& p);
+using namespace LicqIcq;
+using Licq::gLog;
 
-  // From Licq::ProtocolPlugin
-  std::string name() const;
-  std::string version() const;
-  unsigned long protocolId() const;
-  unsigned long capabilities() const;
-  std::string defaultServerHost() const;
-  int defaultServerPort() const;
-
-protected:
-  // From Licq::ProtocolPlugin
-  bool init(int, char**);
-  int run();
-  void destructor();
-
-private:
-
-};
+IcqProtocolPlugin* LicqIcq::gIcqProtocolPlugin(NULL);
 
 IcqProtocolPlugin::IcqProtocolPlugin(Params& p)
   : ProtocolPlugin(p)
 {
-  // Empty
+  gIcqProtocolPlugin = this;
 }
 
 std::string IcqProtocolPlugin::name() const
@@ -75,7 +61,8 @@ unsigned long IcqProtocolPlugin::capabilities() const
       ProtocolPlugin::CanSendContact | ProtocolPlugin::CanSendAuth |
       ProtocolPlugin::CanSendAuthReq | ProtocolPlugin::CanSendSms |
       ProtocolPlugin::CanSendSecure | ProtocolPlugin::CanSendDirect |
-      ProtocolPlugin::CanHoldStatusMsg;
+      ProtocolPlugin::CanHoldStatusMsg | ProtocolPlugin::CanVaryEncoding |
+      ProtocolPlugin::CanSingleGroup;
 }
 
 std::string IcqProtocolPlugin::defaultServerHost() const
@@ -106,9 +93,40 @@ void IcqProtocolPlugin::destructor()
   delete this;
 }
 
+Licq::User* IcqProtocolPlugin::createUser(const Licq::UserId& id, bool temporary)
+{
+  return new User(id, temporary);
+}
+
+Licq::Owner* IcqProtocolPlugin::createOwner(const Licq::UserId& id)
+{
+  return new Owner(id);
+}
+
+void IcqProtocolPlugin::processPipe()
+{
+  char c;
+  read(getReadPipe(), &c, 1);
+  switch (c)
+  {
+    case Licq::ProtocolPlugin::PipeSignal:
+    {
+      Licq::ProtocolSignal* s = popSignal();
+      gIcqProtocol.processSignal(s);
+      delete s;
+      break;
+    }
+    case Licq::ProtocolPlugin::PipeShutdown:
+      gIcqProtocol.shutdown();
+      break;
+    default:
+      gLog.error("Unknown command via plugin pipe: %c", c);
+  }
+}
+
 Licq::ProtocolPlugin* IcqPluginFactory(Licq::ProtocolPlugin::Params& p)
 {
-  return new IcqProtocolPlugin(p);
+  return new LicqIcq::IcqProtocolPlugin(p);
 }
 
 struct Licq::ProtocolPluginData IcqProtocolPluginData = {

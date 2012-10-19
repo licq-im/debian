@@ -1,8 +1,20 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 1998-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include "icq.h"
@@ -13,28 +25,40 @@
 #include <unistd.h>
 
 #include <licq/contactlist/owner.h>
-#include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/event.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
-#include <licq/socket.h>
+#include <licq/protocolmanager.h>
 #include <licq/logging/log.h>
 
-#include "../daemon.h"
-#include "../fifo.h"
 #include "../gettext.h"
-#include "../licq.h"
-#include "../statistics.h"
-#include "../plugin/pluginmanager.h"
+#include "buffer.h"
 #include "defines.h"
+#include "icqprotocolplugin.h"
 #include "oscarservice.h"
-#include "packet.h"
+#include "owner.h"
+#include "packet-srv.h"
+#include "packet-tcp.h"
+#include "socket.h"
+#include "user.h"
 
 #define MAX_CONNECTS  256
 #define DEBUG_THREADS(x)
 //#define DEBUG_THREADS(x) gLog.info(x)
 
+namespace LicqIcq
+{
+void* ProcessRunningEvent_Server_tep(void* p);
+void* ProcessRunningEvent_Client_tep(void* p);
+void* ReverseConnectToUser_tep(void* v);
+void* Ping_tep(void* p);
+void* MonitorSockets_func();
+void* UpdateUsers_tep(void* p);
+}
+
 using namespace std;
+using namespace LicqIcq;
 using Licq::gLog;
 
 void cleanup_mutex(void *m)
@@ -82,7 +106,7 @@ void *ConnectToServer_tep(void *s)
  * now popped off the send queue to prevent packets being sent out of order
  * which is a severe error with OSCAR.
  *----------------------------------------------------------------------------*/
-void *ProcessRunningEvent_Server_tep(void* /* p */)
+void* LicqIcq::ProcessRunningEvent_Server_tep(void* /* p */)
 {
   pthread_detach(pthread_self());
 
@@ -94,10 +118,6 @@ void *ProcessRunningEvent_Server_tep(void* /* p */)
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
   DEBUG_THREADS("[ProcessRunningEvent_Server_tep] Caught event.\n");
-
-  CICQDaemon *d = gLicqDaemon;
-
-  if (!d) pthread_exit(NULL);
 
   // Must send packets in sequential order
   pthread_mutex_lock(&send_mutex);
@@ -292,7 +312,7 @@ void *ProcessRunningEvent_Server_tep(void* /* p */)
     pthread_mutex_unlock(&gIcqProtocol.mutex_cancelthread);
       pthread_cleanup_pop(0); //mutex_cancelthread
 
-      sent = s->Send(buf);
+  sent = s->send(*buf);
       delete buf;
 
       if (!sent)
@@ -365,7 +385,7 @@ exit_server_thread:
 }
 
 
-void *ProcessRunningEvent_Client_tep(void *p)
+void* LicqIcq::ProcessRunningEvent_Client_tep(void *p)
 {
   pthread_detach(pthread_self());
 
@@ -387,7 +407,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
     Licq::UserId userId = e->userId();
     string id = userId.accountId();
     CPacketTcp* packetTcp = dynamic_cast<CPacketTcp*>(e->m_pPacket);
-    int channel = (packetTcp != NULL ? packetTcp->channel() : Licq::TCPSocket::ChannelNormal);
+    int channel = (packetTcp != NULL ? packetTcp->channel() : DcSocket::ChannelNormal);
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
     unsigned long nVersion;
@@ -395,7 +415,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
     unsigned short nRemotePort;
     bool bSendIntIp;
     {
-      Licq::UserReadGuard u(userId);
+      UserReadGuard u(userId);
       if (!u.isLocked())
       {
         if (gIcqProtocol.DoneEvent(e, Licq::Event::ResultError) != NULL)
@@ -430,7 +450,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
       if (nId != -1)
       {
         gIcqProtocol.waitForReverseConnection(nId, userId);
-        Licq::UserReadGuard u(userId);
+        UserReadGuard u(userId);
         if (!u.isLocked())
         {
           if (gIcqProtocol.DoneEvent(e, Licq::Event::ResultError) != NULL)
@@ -472,7 +492,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
         if (nId != -1)
         {
           gIcqProtocol.waitForReverseConnection(nId, userId);
-          Licq::UserReadGuard u(userId);
+          UserReadGuard u(userId);
           if (!u.isLocked())
           {
             if (gIcqProtocol.DoneEvent(e, Licq::Event::ResultError) != NULL)
@@ -553,7 +573,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
   pthread_mutex_unlock(&gIcqProtocol.mutex_cancelthread);
     pthread_cleanup_pop(0);
 
-    sent = s->Send(buf);
+  sent = s->send(*buf);
 
     if (!sent)
       errorStr = s->errorStr();
@@ -570,7 +590,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
     unsigned short nSequence = e->m_nSequence;
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 
-    gLog.warning(tr("Error sending event (#%hu): %s."), -nSequence, errorStr.c_str());
+    gLog.warning(tr("Error sending event (#%d): %s."), -nSequence, errorStr.c_str());
     gIcqProtocol.myNewSocketPipe.putChar('S');
     // Kill the event, do after the above as ProcessDoneEvent erase the event
     if (gIcqProtocol.DoneEvent(e, Licq::Event::ResultError) != NULL)
@@ -602,7 +622,7 @@ void *ProcessRunningEvent_Client_tep(void *p)
  * Creates a new TCPSocket and connects it to a given user.  Adds the socket
  * to the global socket manager and to the user.
  *----------------------------------------------------------------------------*/
-void *ReverseConnectToUser_tep(void *v)
+void* LicqIcq::ReverseConnectToUser_tep(void* v)
 {
   pthread_detach(pthread_self());
 
@@ -627,7 +647,7 @@ void *ReverseConnectToUser_tep(void *v)
  *
  * Thread entry point to ping the server every n minutes.
  *----------------------------------------------------------------------------*/
-void *Ping_tep(void * /*p*/)
+void* LicqIcq::Ping_tep(void * /*p*/)
 {
   pthread_detach(pthread_self());
 
@@ -636,7 +656,6 @@ void *Ping_tep(void * /*p*/)
   while (true)
   {
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-    LicqDaemon::gStatistics.flush();
     switch (gIcqProtocol.Status())
     {
     case STATUS_ONLINE:
@@ -669,7 +688,7 @@ void *Ping_tep(void * /*p*/)
  * The server thread lives here.  The main guy who waits on socket activity
  * and processes incoming packets.
  *----------------------------------------------------------------------------*/
-void *MonitorSockets_func()
+void* LicqIcq::MonitorSockets_func()
 {
   fd_set f;
   int nSocketsAvailable, nServiceSocket, l;
@@ -684,13 +703,10 @@ void *MonitorSockets_func()
     if (gIcqProtocol.myNewSocketPipe.getReadFd() >= l)
       l = gIcqProtocol.myNewSocketPipe.getReadFd() + 1;
 
-    // Add the fifo descriptor
-    if (LicqDaemon::gFifo.fifo_fd != -1)
-    {
-      FD_SET(LicqDaemon::gFifo.fifo_fd, &f);
-      if (LicqDaemon::gFifo.fifo_fd >= l)
-        l = LicqDaemon::gFifo.fifo_fd + 1;
-    }
+    // Add plugin notification pipe
+    FD_SET(gIcqProtocolPlugin->getReadPipe(), &f);
+    if (gIcqProtocolPlugin->getReadPipe() >= l)
+      l = gIcqProtocolPlugin->getReadPipe() + 1;
 
     nSocketsAvailable = select(l, &f, NULL, NULL, NULL);
 
@@ -725,13 +741,9 @@ void *MonitorSockets_func()
         }
       }
 
-      // Fifo event ----------------------------------------------------------
-      if (nCurrentSocket == LicqDaemon::gFifo.fifo_fd)
+      if (nCurrentSocket == gIcqProtocolPlugin->getReadPipe())
       {
-        DEBUG_THREADS("[MonitorSockets_tep] Data on FIFO.\n");
-        char buf[1024];
-        fgets(buf, 1024, LicqDaemon::gFifo.fifo_fs);
-        LicqDaemon::gFifo.process(buf);
+        gIcqProtocolPlugin->processPipe();
         continue;
       }
 
@@ -750,7 +762,7 @@ void *MonitorSockets_func()
       if (nCurrentSocket == gIcqProtocol.m_nTCPSrvSocketDesc)
       {
         DEBUG_THREADS("[MonitorSockets_tep] Data on TCP server socket.\n");
-        Licq::SrvSocket* srvTCP = dynamic_cast<Licq::SrvSocket*>(s);
+        SrvSocket* srvTCP = dynamic_cast<SrvSocket*>(s);
         if (srvTCP == NULL)
         {
           gLog.warning(tr("Invalid server socket in set."));
@@ -759,10 +771,9 @@ void *MonitorSockets_func()
         }
 
         // DAW FIXME error handling when socket is closed..
-        if (srvTCP->Recv())
+        Buffer packet;
+        if (srvTCP->receiveFlap(packet))
         {
-          Licq::Buffer packet(srvTCP->RecvBuffer());
-          srvTCP->ClearRecvBuffer();
           gSocketManager.DropSocket(srvTCP);
           if (!gIcqProtocol.ProcessSrvPacket(packet))
           {} // gIcqProtocol.icqRelogon();
@@ -788,17 +799,16 @@ void *MonitorSockets_func()
       {
         DEBUG_THREADS("[MonitorSockets_tep] Data on BART service socket.\n");
         COscarService *svc = gIcqProtocol.m_xBARTService;
-        Licq::SrvSocket* sock_svc = dynamic_cast<Licq::SrvSocket*>(s);
+        SrvSocket* sock_svc = dynamic_cast<SrvSocket*>(s);
         if (sock_svc == NULL)
         {
           gLog.warning(tr("Invalid BART service socket in set."));
           close(nCurrentSocket);
           continue;
         }
-        if (sock_svc->Recv())
+        Buffer packet;
+        if (sock_svc->receiveFlap(packet))
         {
-          Licq::Buffer packet(sock_svc->RecvBuffer());
-          sock_svc->ClearRecvBuffer();
           gSocketManager.DropSocket(sock_svc);
           if (!svc->ProcessPacket(packet))
           {
@@ -831,7 +841,7 @@ void *MonitorSockets_func()
           continue;
         }
 
-        Licq::TCPSocket* newSocket = new Licq::TCPSocket();
+        DcSocket* newSocket = new DcSocket();
         bool ok = tcp->RecvConnection(*newSocket);
         gSocketManager.DropSocket(tcp);
 
@@ -857,7 +867,7 @@ void *MonitorSockets_func()
 
       ssl_recv:
 
-        Licq::TCPSocket* tcp = dynamic_cast<Licq::TCPSocket*>(s);
+        DcSocket* tcp = dynamic_cast<DcSocket*>(s);
 
         // If tcp is NULL then the socket is no longer in the set, hence it
         // must have been closed by us and we can ignore it.
@@ -877,7 +887,7 @@ void *MonitorSockets_func()
             Licq::UserWriteGuard u(tcp->userId());
             if (u.isLocked() && u->Secure())
             {
-              u->clearNormalSocketDesc();
+              u->clearSocketDesc(tcp);
               u->SetSecure(false);
               Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
                   Licq::PluginSignal::SignalUser,
@@ -927,69 +937,35 @@ void *MonitorSockets_func()
   return NULL;
 }
 
-
-
-/*------------------------------------------------------------------------------
- * Shutdown_tep
- *
- * Shutdown the daemon and all the plugins.
- *----------------------------------------------------------------------------*/
-void *Shutdown_tep(void* /* p */)
-{
-  // Shutdown
-  gLog.info(tr("Shutting down daemon"));
-
-  // Send shutdown signal to all the plugins
-  LicqDaemon::gDaemon.shutdownPlugins();
-
-  // Cancel the monitor sockets thread (deferred until ready)
-  gIcqProtocol.myNewSocketPipe.putChar('X');
-
-  // Cancel the ping thread
-  pthread_cancel(gIcqProtocol.thread_ping);
-
-  // Cancel the update users thread
-  pthread_cancel(gIcqProtocol.thread_updateusers);
-
-  // Cancel the BART service thread
-  if (gIcqProtocol.m_xBARTService)
-    pthread_cancel(gIcqProtocol.thread_ssbiservice);
-
-  if (gIcqProtocol.m_nTCPSrvSocketDesc != -1 )
-    gIcqProtocol.icqLogoff();
-  if (gIcqProtocol.m_nTCPSocketDesc != -1)
-    gSocketManager.CloseSocket(gIcqProtocol.m_nTCPSocketDesc);
-
-  // Flush the stats
-  LicqDaemon::gStatistics.flush();
-
-  // Signal that we are shutdown
-  LicqDaemon::gPluginManager.pluginHasExited(
-      LicqDaemon::PluginManager::DAEMON_ID);
-
-  return NULL;
-}
-
-void *UpdateUsers_tep(void *p)
+void* LicqIcq::UpdateUsers_tep(void* /* p */)
 {
   pthread_detach(pthread_self());
 
-  CICQDaemon *d = (CICQDaemon *)p;
   struct timeval tv;
 
   while (true)
   {
     if (gIcqProtocol.Status() == STATUS_ONLINE)
     {
+      bool useBart;
+      bool autoInfo, autoInfoPlugins, autoStatusPlugins;
+      {
+        OwnerReadGuard o;
+        useBart = o->useBart();
+        autoInfo = o->autoUpdateInfo();
+        autoInfoPlugins = o->autoUpdateInfoPlugins();
+        autoStatusPlugins = o->autoUpdateStatusPlugins();
+      }
+
       pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
       Licq::UserListGuard userList(LICQ_PPID);
       BOOST_FOREACH(Licq::User* user, **userList)
       {
-        Licq::UserWriteGuard pUser(user);
+        UserWriteGuard pUser(dynamic_cast<User*>(user));
         bool bSent = false;
         bool bBART = false;
 
-        if (d->AutoUpdateInfo() && !pUser->UserUpdated() &&
+        if (autoInfo && !pUser->UserUpdated() &&
             pUser->ClientTimestamp() != pUser->OurClientTimestamp()
             && pUser->ClientTimestamp() != 0)
         {
@@ -997,11 +973,12 @@ void *UpdateUsers_tep(void *p)
           bSent = true;
         }
 
-        if (d->UseServerSideBuddyIcons() && d->AutoUpdateInfo() &&
-            pUser->buddyIconHash().size() > 0 &&
+        if (useBart && autoInfo && pUser->buddyIconHash().size() > 0 &&
             pUser->buddyIconHash() != pUser->ourBuddyIconHash())
         {
-          gIcqProtocol.m_xBARTService->SendEvent(pUser->id(), ICQ_SNACxBART_DOWNLOADxREQUEST, true);
+          unsigned long eventId = Licq::gProtocolManager.getNextEventId();
+          gIcqProtocol.m_xBARTService->SendEvent(pthread_self(), eventId, pUser->id(),
+              ICQ_SNACxBART_DOWNLOADxREQUEST, true);
           bSent = true;
           bBART = true;
         }
@@ -1027,9 +1004,8 @@ void *UpdateUsers_tep(void *p)
             pUser->ClientTimestamp() != 0x3BFF8C98 //IGA
            )
         {
-          if (d->AutoUpdateInfoPlugins() &&
-              pUser->ClientInfoTimestamp() != pUser->OurClientInfoTimestamp() &&
-              pUser->ClientInfoTimestamp() != 0)
+          if (autoInfoPlugins && pUser->ClientInfoTimestamp() != 0 &&
+              pUser->ClientInfoTimestamp() != pUser->OurClientInfoTimestamp())
           {
             gLog.info(tr("Updating %s's info plugins."), pUser->getAlias().c_str());
             gIcqProtocol.icqRequestInfoPlugin(*pUser, true, PLUGIN_QUERYxINFO);
@@ -1039,9 +1015,8 @@ void *UpdateUsers_tep(void *p)
             bSent = true;
           }
 
-          if (d->AutoUpdateStatusPlugins() &&
-             pUser->ClientStatusTimestamp() != pUser->OurClientStatusTimestamp()
-              && pUser->ClientStatusTimestamp() != 0)
+          if (autoStatusPlugins && pUser->ClientStatusTimestamp() != 0 &&
+             pUser->ClientStatusTimestamp() != pUser->OurClientStatusTimestamp())
           {
             gLog.info(tr("Updating %s's status plugins."), pUser->getAlias().c_str());
             gIcqProtocol.icqRequestStatusPlugin(*pUser, true, PLUGIN_QUERYxSTATUS);

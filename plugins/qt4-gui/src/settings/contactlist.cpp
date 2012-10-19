@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,8 +37,6 @@
 # include <QStyleFactory>
 #endif
 
-#include <licq/icq/icq.h>
-
 #include "config/chat.h"
 #include "config/contactlist.h"
 #include "config/general.h"
@@ -58,8 +56,6 @@ Settings::ContactList::ContactList(SettingsDlg* parent)
 {
   parent->addPage(SettingsDlg::ContactListPage, createPageContactList(parent),
       tr("Contact List"));
-  parent->addPage(SettingsDlg::ColumnsPage, createPageColumns(parent),
-      tr("Columns"), SettingsDlg::ContactListPage);
   parent->addPage(SettingsDlg::ContactInfoPage, createPageContactInfo(parent),
       tr("Contact Info"), SettingsDlg::ContactListPage);
 
@@ -166,10 +162,6 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   myBehaviourBox = new QGroupBox(tr("Contact List Behaviour"));
   myBehaviourLayout = new QGridLayout(myBehaviourBox);
 
-  mySSListCheck = new QCheckBox(tr("Use server side contact list"));
-  mySSListCheck->setToolTip(tr("Store your contacts on the server so they are accessible from different locations and/or programs"));
-  myBehaviourLayout->addWidget(mySSListCheck, 0, 0);
-
   myManualNewUserCheck = new QCheckBox(tr("Manual \"New User\" group handling"));
   myManualNewUserCheck->setToolTip(tr("If not checked, a user will be automatically removed from "
                                   "\"New User\" group when you first send an event to them."));
@@ -177,7 +169,7 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
 
   myEnableMainwinMouseMovementCheck = new QCheckBox(tr("Allow dragging main window"));
   myEnableMainwinMouseMovementCheck->setToolTip(tr("Lets you drag around the main window with your mouse"));
-  myBehaviourLayout->addWidget(myEnableMainwinMouseMovementCheck, 2, 0);
+  myBehaviourLayout->addWidget(myEnableMainwinMouseMovementCheck, 1, 1);
 
 #ifdef Q_WS_X11
   QHBoxLayout* hotKeyLayout = new QHBoxLayout();
@@ -189,7 +181,7 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   myHotKeyEdit->setToolTip(myHotKeyLabel->toolTip());
   myHotKeyLabel->setBuddy(myHotKeyEdit);
   hotKeyLayout->addWidget(myHotKeyEdit);
-  myBehaviourLayout->addLayout(hotKeyLayout, 3, 0);
+  myBehaviourLayout->addLayout(hotKeyLayout, 2, 1);
 #endif
 
   myMainWinStickyCheck = new QCheckBox(tr("Sticky main window"));
@@ -199,7 +191,7 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   myDragMovesUserCheck = new QCheckBox(tr("Move users when dragging to groups"));
   myDragMovesUserCheck->setToolTip(tr("If checked a user will be moved when dragged to another group.\n"
       "If not checked user will only be added to the new group."));
-  myBehaviourLayout->addWidget(myDragMovesUserCheck, 1, 1);
+  myBehaviourLayout->addWidget(myDragMovesUserCheck, 0, 0);
 
   QHBoxLayout* mySortByLayout = new QHBoxLayout();
   mySortByLabel = new QLabel(tr("Additional sorting:"));
@@ -216,7 +208,7 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   mySortByCombo->setToolTip(mySortByLabel->toolTip());
   mySortByLabel->setBuddy(mySortByCombo);
   mySortByLayout->addWidget(mySortByCombo);
-  myBehaviourLayout->addLayout(mySortByLayout, 2, 1);
+  myBehaviourLayout->addLayout(mySortByLayout, 2, 0);
 
   // Make the columns evenly wide
   myBehaviourLayout->setColumnStretch(0, 1);
@@ -229,12 +221,8 @@ QWidget* Settings::ContactList::createPageContactList(QWidget* parent)
   return w;
 }
 
-QWidget* Settings::ContactList::createPageColumns(QWidget* parent)
+QWidget* Settings::ContactList::createPageContactInfo(QWidget* parent)
 {
-  QWidget* w = new QWidget(parent);
-  myPageColumnsLayout = new QVBoxLayout(w);
-  myPageColumnsLayout->setContentsMargins(0, 0, 0, 0);
-
   myColumnsBox = new QGroupBox (tr("Column Configuration"));
   myColumnsLayout = new QGridLayout(myColumnsBox);
 
@@ -282,19 +270,8 @@ QWidget* Settings::ContactList::createPageColumns(QWidget* parent)
     myColumnsLayout->addWidget(myColAlignCombo[i], i+1, 4);
   }
 
-  myPageColumnsLayout->addWidget(myColumnsBox);
-  myPageColumnsLayout->addStretch(1);
 
-  return w;
-}
-
-QWidget* Settings::ContactList::createPageContactInfo(QWidget* parent)
-{
-  QWidget* w = new QWidget(parent);
-  myPageContactInfoLayout = new QVBoxLayout(w);
-  myPageContactInfoLayout->setContentsMargins(0, 0, 0, 0);
-
-  myPopupBox = new QGroupBox(tr("Popup info"));
+  myPopupBox = new QGroupBox(tr("Popup Info"));
   myPopupLayout = new QGridLayout(myPopupBox);
 
   myPopupPictureCheck = new QCheckBox(tr("Picture"));
@@ -328,25 +305,13 @@ QWidget* Settings::ContactList::createPageContactInfo(QWidget* parent)
   myPopupAuthCheck = new QCheckBox(tr("Authorization status"));
   myPopupLayout->addWidget(myPopupAuthCheck, 7, 1);
 
-  myAutoUpdateBox = new QGroupBox(tr("Automatic Update"));
-  myAutoUpdateLayout = new QVBoxLayout(myAutoUpdateBox);
 
-  myAutoUpdateInfoCheck = new QCheckBox(tr("Contact information"));
-  myAutoUpdateInfoCheck->setToolTip(tr("Automatically update users' server stored information."));
-  myAutoUpdateLayout->addWidget(myAutoUpdateInfoCheck);
-
-  myAutoUpdateInfoPluginsCheck = new QCheckBox(tr("Info plugins"));
-  myAutoUpdateInfoPluginsCheck->setToolTip(tr("Automatically update users' Phone Book and Picture."));
-  myAutoUpdateLayout->addWidget(myAutoUpdateInfoPluginsCheck);
-
-  myAutoUpdateStatusPluginsCheck = new QCheckBox(tr("Status plugins"));
-  myAutoUpdateStatusPluginsCheck->setToolTip(tr("Automatically update users' Phone \"Follow Me\", File Server and ICQphone status."));
-  myAutoUpdateLayout->addWidget(myAutoUpdateStatusPluginsCheck);
-
-  myPageContactInfoLayout->addWidget(myPopupBox);
-  myPageContactInfoLayout->addWidget(myAutoUpdateBox);
-  myPageContactInfoLayout->addStretch(1);
-
+  QWidget* w = new QWidget(parent);
+  QVBoxLayout* mainLayout = new QVBoxLayout(w);
+  mainLayout->setContentsMargins(0, 0, 0, 0);
+  mainLayout->addWidget(myColumnsBox);
+  mainLayout->addWidget(myPopupBox);
+  mainLayout->addStretch(1);
   return w;
 }
 
@@ -437,7 +402,6 @@ void Settings::ContactList::load()
   myPopupLocalTimeCheck->setChecked(contactListConfig->popupLocalTime());
   myPopupIdCheck->setChecked(contactListConfig->popupID());
 
-  mySSListCheck->setChecked(gLicqDaemon->UseServerContactList());
   myTransparentCheck->setChecked(Config::Skin::active()->frame.transparent);
   myFrameStyleEdit->setText(QString::number(static_cast<int>(Config::Skin::active()->frame.frameStyle)));
 
@@ -447,10 +411,6 @@ void Settings::ContactList::load()
     if (myGuiStyleCombo->itemText(i).compare(currentStyle, Qt::CaseInsensitive) == 0)
       myGuiStyleCombo->setCurrentIndex(i);
 #endif
-
-  myAutoUpdateInfoCheck->setChecked(gLicqDaemon->AutoUpdateInfo());
-  myAutoUpdateInfoPluginsCheck->setChecked(gLicqDaemon->AutoUpdateInfoPlugins());
-  myAutoUpdateStatusPluginsCheck->setChecked(gLicqDaemon->AutoUpdateStatusPlugins());
 }
 
 void Settings::ContactList::apply()
@@ -515,17 +475,12 @@ void Settings::ContactList::apply()
   contactListConfig->setPopupLocalTime(myPopupLocalTimeCheck->isChecked());
   contactListConfig->setPopupID(myPopupIdCheck->isChecked());
 
-  gLicqDaemon->SetUseServerContactList(mySSListCheck->isChecked());
   Config::Skin::active()->setFrameTransparent(myTransparentCheck->isChecked());
   Config::Skin::active()->setFrameStyle(myFrameStyleEdit->text().toUShort());
 
 #ifndef USE_KDE
   generalConfig->setGuiStyle(myGuiStyleCombo->currentText());
 #endif
-
-  gLicqDaemon->SetAutoUpdateInfo(myAutoUpdateInfoCheck->isChecked());
-  gLicqDaemon->SetAutoUpdateInfoPlugins(myAutoUpdateInfoPluginsCheck->isChecked());
-  gLicqDaemon->SetAutoUpdateStatusPlugins(myAutoUpdateStatusPluginsCheck->isChecked());
 
   chatConfig->blockUpdates(false);
   contactListConfig->blockUpdates(false);

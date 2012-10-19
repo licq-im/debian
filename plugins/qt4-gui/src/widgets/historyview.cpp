@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
 
 #include <QDateTime>
 #include <QRegExp>
-#include <QTextCodec>
 
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
@@ -29,8 +28,6 @@
 #include <licq/userevents.h>
 
 #include "config/chat.h"
-
-#include "helpers/usercodec.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::HistoryView */
@@ -73,7 +70,7 @@ HistoryView::HistoryView(bool historyMode, const Licq::UserId& userId, QWidget* 
   {
     setChatConfig(chatConfig->chatMsgStyle(), chatConfig->chatDateFormat(),
         chatConfig->chatVertSpacing(), chatConfig->chatAppendLineBreak(),
-        chatConfig->showNotices());
+        chatConfig->showNotices(), chatConfig->chatDateHeader());
   }
 
   setColors();
@@ -102,10 +99,11 @@ void HistoryView::setHistoryConfig(int msgStyle,
   myReverse = reverse;
   myAppendLineBreak = false;
   myShowNotices = false;
+  myAddDateHeader = false;
 }
 
 void HistoryView::setChatConfig(int msgStyle, const QString& dateFormat,
-    bool extraSpacing, bool appendLineBreak, bool showNotices)
+    bool extraSpacing, bool appendLineBreak, bool showNotices, bool dateHeader)
 {
   myUseBuffer = false;
   myMsgStyle = msgStyle;
@@ -114,6 +112,7 @@ void HistoryView::setChatConfig(int msgStyle, const QString& dateFormat,
   myReverse = false;
   myAppendLineBreak = appendLineBreak;
   myShowNotices = showNotices;
+  myAddDateHeader = dateHeader;
 }
 
 void HistoryView::setColors(const QString& back, const QString& rcv, const QString& snt,
@@ -158,6 +157,7 @@ void HistoryView::setOwner(const Licq::UserId& userId)
 void HistoryView::clear()
 {
   MLView::clear();
+  myLastDate = QDate();
 
   myBuffer = "";
 
@@ -193,7 +193,7 @@ void HistoryView::updateContent()
   setText(myBuffer);
 }
 
-void HistoryView::internalAddMsg(QString s)
+void HistoryView::internalAddMsg(QString s, const QDate& date)
 {
   if (myExtraSpacing)
   {
@@ -215,13 +215,25 @@ void HistoryView::internalAddMsg(QString s)
     }
   }
 
+  if (myAddDateHeader && date != myLastDate)
+  {
+    s.prepend(QString("<hr><center><b>%1</b></center>")
+#if (QT_VERSION >= QT_VERSION_CHECK(4, 4, 0))
+        .arg(date.toString(Qt::DefaultLocaleLongDate)));
+#else
+        .arg(date.toString(Qt::LocaleDate)));
+#endif
+  }
+  else if (myAppendLineBreak)
+  {
+    s.prepend("<hr>");
+  }
+  myLastDate = date;
+
   if (myUseBuffer)
   {
     if (!myExtraSpacing && myMsgStyle != 5)
       s.append("<br>");
-
-    if (myAppendLineBreak)
-      s.append("<hr>");
 
     if (myReverse)
       myBuffer.prepend(s);
@@ -230,9 +242,6 @@ void HistoryView::internalAddMsg(QString s)
   }
   else
   {
-    if (myAppendLineBreak)
-      s.append("<hr>");
-
     append(s);
   }
 }
@@ -299,11 +308,11 @@ void HistoryView::addMsg(bool isReceiver, bool fromHistory,
   switch (myMsgStyle)
   {
     case 0:
-      s = QString("%1<font color=\"%2\"><b>%3%4 [%5] %6:</b></font><br>")
+      s = QString("%1<font color=\"%2\"><b>%3[%4] %5:</b></font><br>")
           .arg(anchor)
           .arg(color)
-          .arg(eventDescription)
-          .arg(dateString)
+          .arg(dateString.isEmpty() && eventDescription.isEmpty() ? "" :
+              QString("%1%2").arg(eventDescription).arg(dateString))
           .arg(flags)
           .arg(contactName);
       s.append(QString("<font color=\"%1\">%2</font>")
@@ -311,11 +320,11 @@ void HistoryView::addMsg(bool isReceiver, bool fromHistory,
           .arg(messageText));
       break;
     case 1:
-      s = QString("%1<font color=\"%2\"><b>(%3%4) [%5] %6: </b></font>")
+      s = QString("%1<font color=\"%2\"><b>%3[%4] %5: </b></font>")
           .arg(anchor)
           .arg(color)
-          .arg(eventDescription)
-          .arg(dateString)
+          .arg(dateString.isEmpty() && eventDescription.isEmpty() ? "" :
+              QString("(%1%2) ").arg(eventDescription).arg(dateString))
           .arg(flags)
           .arg(contactName);
       s.append(QString("<font color=\"%1\">%2</font>")
@@ -323,23 +332,23 @@ void HistoryView::addMsg(bool isReceiver, bool fromHistory,
           .arg(messageText));
       break;
     case 2:
-      s = QString("%1<font color=\"%2\"><b>%3%4 - %5: </b></font>")
+      s = QString("%1<font color=\"%2\"><b>%3%4: </b></font>")
           .arg(anchor)
           .arg(color)
-          .arg(eventDescription)
-          .arg(dateString)
+          .arg(dateString.isEmpty() && eventDescription.isEmpty() ? "" :
+              QString("%1%2 - ").arg(eventDescription).arg(dateString))
           .arg(contactName);
       s.append(QString("<font color=\"%1\">%2</font>")
           .arg(color)
           .arg(messageText));
       break;
     case 3:
-      s = QString("%1<table border=\"1\"><tr><td><b><font color=\"%2\">%3%4</font><b><td><b><font color=\"%5\">%6</font></b></font></td>")
+      s = QString("%1<table border=\"1\"><tr>%3<td><b><font color=\"%2\">%4</font></b></font></td>")
           .arg(anchor)
           .arg(color)
-          .arg(eventDescription)
-          .arg(dateString)
-          .arg(color)
+          .arg(dateString.isEmpty() && eventDescription.isEmpty() ? "" :
+              QString("<td><b><font color=\"%2\">%3%4</font></b></td>")
+              .arg(color).arg(eventDescription).arg(dateString))
           .arg(contactName);
       s.append(QString("<td><font color=\"%1\">%2</font></td></tr></table>")
           .arg(color)
@@ -377,7 +386,7 @@ void HistoryView::addMsg(bool isReceiver, bool fromHistory,
       break;
   }
 
-  internalAddMsg(s);
+  internalAddMsg(s, date.date());
 }
 
 void HistoryView::addMsg(const Licq::UserEvent* event, const Licq::UserId& uid)
@@ -388,7 +397,6 @@ void HistoryView::addMsg(const Licq::UserEvent* event, const Licq::UserId& uid)
   bool bUseHTML = false;
 
   QString contactName;
-  const QTextCodec* codec = NULL;
 
   Licq::UserId userId = uid.isValid() ? uid : myUserId;
 
@@ -401,7 +409,6 @@ void HistoryView::addMsg(const Licq::UserEvent* event, const Licq::UserId& uid)
       myId = u->accountId().c_str();
       myPpid = u->protocolId();
 
-      codec = UserCodec::codecForUser(*u);
       if (event->isReceiver())
       {
         contactName = QString::fromUtf8(u->getAlias().c_str());
@@ -423,15 +430,7 @@ void HistoryView::addMsg(const Licq::UserEvent* event, const Licq::UserId& uid)
       contactName = QString::fromUtf8(o->getAlias().c_str());
   }
 
-  // Fallback, in case we couldn't fetch User.
-  if (codec == NULL)
-    codec = QTextCodec::codecForName("UTF-8");
-
-  QString messageText;
-  if (event->eventType() == Licq::UserEvent::TypeSms)
-    messageText = QString::fromUtf8(event->text().c_str());
-  else
-    messageText = codec->toUnicode(event->text().c_str());
+  QString messageText = QString::fromUtf8(event->text().c_str());
 
   addMsg(event->isReceiver(), false,
       (event->eventType() == Licq::UserEvent::TypeMessage ? "" : (event->description() + " ").c_str()),
@@ -442,7 +441,6 @@ void HistoryView::addMsg(const Licq::UserEvent* event, const Licq::UserId& uid)
          event->IsEncrypted(),
          contactName,
          MLView::toRichText(messageText, true, bUseHTML));
-  GotoEnd();
 
   if (event->isReceiver() &&
       (event->eventType() == Licq::UserEvent::TypeMessage ||
@@ -508,6 +506,5 @@ void HistoryView::addNotice(const QDateTime& dt, QString messageText)
       break;
   }
 
-  internalAddMsg(s);
-  GotoEnd();
+  internalAddMsg(s, dt.date());
 }

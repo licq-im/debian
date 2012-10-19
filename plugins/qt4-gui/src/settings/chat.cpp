@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -175,14 +175,8 @@ QWidget* Settings::Chat::createPageChat(QWidget* parent)
   myDefaultEncodingCombo = new QComboBox();
   myDefaultEncodingCombo->addItem(tr("System default (%1)").arg(
       QString(QTextCodec::codecForLocale()->name())));
-  {
-    UserCodec::encoding_t* it = &UserCodec::m_encodings[0];
-    while (it->encoding != NULL)
-    {
-      myDefaultEncodingCombo->addItem(UserCodec::nameForEncoding(it->encoding));
-      ++it;
-    }
-  }
+  for (int i = 0; UserCodec::m_encodings[i].encoding != NULL; ++i)
+    myDefaultEncodingCombo->addItem(UserCodec::nameForEncoding(i));
   myDefaultEncodingCombo->setToolTip(myDefaultEncodingLabel->toolTip());
   myDefaultEncodingLabel->setBuddy(myDefaultEncodingCombo);
   defaultEncodingLayout->addWidget(myDefaultEncodingCombo);
@@ -290,6 +284,11 @@ QWidget* Settings::Chat::createPageChatDisp(QWidget* parent)
   connect(myChatDateFormatCombo, SIGNAL(editTextChanged(const QString&)), SLOT(updatePreviews()));
   myChatLayoutDateFormat->addWidget(myChatDateFormatCombo);
   myChatDispLayout->addLayout(myChatLayoutDateFormat);
+
+  myChatDateHeaderCheck = new QCheckBox(tr("Use header to separate days"));
+  connect(myChatDateHeaderCheck, SIGNAL(toggled(bool)), SLOT(updatePreviews()));
+  myChatDateHeaderCheck->setToolTip(tr("Add a separating header before first message each day"));
+  myChatDispLayout->addWidget(myChatDateHeaderCheck);
 
   myChatVertSpacingCheck = new QCheckBox(tr("Insert vertical spacing"));
   connect(myChatVertSpacingCheck, SIGNAL(toggled(bool)), SLOT(updatePreviews()));
@@ -487,7 +486,8 @@ void Settings::Chat::updatePreviews()
   };
 
   myChatView->setChatConfig(myChatStyleCombo->currentIndex(), myChatDateFormatCombo->currentText(),
-      myChatVertSpacingCheck->isChecked(), myChatLineBreakCheck->isChecked(), myShowNoticesCheck->isChecked());
+      myChatVertSpacingCheck->isChecked(), myChatLineBreakCheck->isChecked(),
+      myShowNoticesCheck->isChecked(), myChatDateHeaderCheck->isChecked());
 
   myChatView->setColors(myColorChatBkgButton->colorName(), myColorRcvButton->colorName(),
       myColorSntButton->colorName(), myColorRcvHistoryButton->colorName(),
@@ -502,8 +502,12 @@ void Settings::Chat::updatePreviews()
   myHistoryView->clear();
 
   QDateTime msgDate = date;
+  msgDate = msgDate.addDays(-1);
   for (unsigned int i = 0; i<7; i++)
   {
+    if (i == 2)
+      msgDate = msgDate.addDays(1);
+
     if (i < 2 && static_cast<unsigned int>(myHistoryCountSpin->value()) < 2-i)
       continue;
 
@@ -540,6 +544,7 @@ void Settings::Chat::load()
   mySendFromClipboardCheck->setChecked(chatConfig->sendFromClipboard());
   myMsgChatViewCheck->setChecked(chatConfig->msgChatView());
   myChatDateFormatCombo->lineEdit()->setText(chatConfig->chatDateFormat());
+  myChatDateHeaderCheck->setChecked(chatConfig->chatDateHeader());
   myChatVertSpacingCheck->setChecked(chatConfig->chatVertSpacing());
   myChatLineBreakCheck->setChecked(chatConfig->chatAppendLineBreak());
   myChatStyleCombo->setCurrentIndex(chatConfig->chatMsgStyle());
@@ -577,20 +582,11 @@ void Settings::Chat::load()
 
   mySendTNCheck->setChecked(Licq::gDaemon.sendTypingNotification());
 
-  QByteArray defaultEncoding = Licq::gUserManager.defaultUserEncoding().c_str();
+  QString defaultEncoding = Licq::gUserManager.defaultUserEncoding().c_str();
   if (defaultEncoding.isEmpty())
     myDefaultEncodingCombo->setCurrentIndex(0);
   else
-  {
-    for (int i = 1; i < myDefaultEncodingCombo->count(); i++)
-    {
-      if (UserCodec::encodingForName(myDefaultEncodingCombo->itemText(i)) == defaultEncoding)
-      {
-        myDefaultEncodingCombo->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
+    myDefaultEncodingCombo->setCurrentIndex(1 + UserCodec::encodingForName(defaultEncoding));
   myShowAllEncodingsCheck->setChecked(chatConfig->showAllEncodings());
 
   myTerminalEdit->setText(Licq::gDaemon.terminal().empty() ?
@@ -611,6 +607,7 @@ void Settings::Chat::apply()
   chatConfig->setAutoClose(myAutoCloseCheck->isChecked());
   chatConfig->setSendFromClipboard(mySendFromClipboardCheck->isChecked());
   chatConfig->setMsgChatView(myMsgChatViewCheck->isChecked());
+  chatConfig->setChatDateHeader(myChatDateHeaderCheck->isChecked());
   chatConfig->setChatVertSpacing(myChatVertSpacingCheck->isChecked());
   chatConfig->setChatAppendLineBreak(myChatLineBreakCheck->isChecked());
   chatConfig->setChatMsgStyle(myChatStyleCombo->currentIndex());
@@ -649,8 +646,9 @@ void Settings::Chat::apply()
 
   Licq::gDaemon.setTerminal(myTerminalEdit->text().toLocal8Bit().constData());
 
-  if (myDefaultEncodingCombo->currentIndex() > 0)
-    Licq::gUserManager.setDefaultUserEncoding(UserCodec::encodingForName(myDefaultEncodingCombo->currentText()).data());
+  int encIndex = myDefaultEncodingCombo->currentIndex();
+  if (encIndex > 0)
+    Licq::gUserManager.setDefaultUserEncoding(UserCodec::m_encodings[encIndex-1].encoding);
   else
     Licq::gUserManager.setDefaultUserEncoding("");
   chatConfig->setShowAllEncodings(myShowAllEncodingsCheck->isChecked());

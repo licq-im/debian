@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -123,6 +123,9 @@ bool IniFile::loadFile()
 
   loadRawConfiguration(buffer);
   delete [] buffer;
+
+  // We currently have no changes to write
+  myIsModified = false;
   myLastTimestamp = st.st_mtime;
   return true;
 }
@@ -178,8 +181,8 @@ void IniFile::loadRawConfiguration(const string& rawConfig)
 
   // TODO: Validate the config data so we can reject broken config files
 
-  // We currently have no changes to write
-  myIsModified = false;
+  // The raw configuration is most likely not in sync with the file
+  myIsModified = true;
   myLastTimestamp = 0;
 }
 
@@ -272,7 +275,7 @@ bool IniFile::setSection(const string& rawSection, bool allowAdd)
 
   // Restrict characters allowed in section name
   string::size_type p = 0;
-  while ((p = section.find_first_not_of("-.1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz", p)) != string::npos)
+  while ((p = section.find_first_not_of("+-.1234567890@ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz", p)) != string::npos)
     section.erase(p, 1);
   if (section.empty())
   {

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,125 +23,49 @@
 #include <boost/noncopyable.hpp>
 #include <ctime>
 #include <list>
-#include <map>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "../buffer.h"
+#include "../macro.h"
 #include "../thread/lockable.h"
 #include "../userid.h"
 
-class CMSN;
-class CSocketManager;
+namespace LicqIcq
+{
 class IcqProtocol;
-namespace Jabber { class Plugin; }
 void* MonitorSockets_func();
+}
 
+namespace LicqMsn
+{
+class CMSN;
+}
+
+namespace LicqJabber
+{
+class Plugin;
+}
 
 namespace LicqDaemon
 {
-class User;
 class UserManager;
 }
 
 namespace Licq
 {
+class INetSocket;
 class IniFile;
-class TCPSocket;
 class UserEvent;
-
-const unsigned short NORMAL_SID         = 0;
-const unsigned short INV_SID            = 1;
-const unsigned short VIS_SID            = 2;
 
 const unsigned short LAST_ONLINE        = 0;
 const unsigned short LAST_RECV_EVENT    = 1;
 const unsigned short LAST_SENT_EVENT    = 2;
 const unsigned short LAST_CHECKED_AR    = 3;
 
-const unsigned short MAX_CATEGORY_SIZE  = 60;
-const unsigned int MAX_CATEGORIES = 4;
-
-typedef enum
-{
-  CAT_INTERESTS         = 0,
-  CAT_ORGANIZATION      = 1,
-  CAT_BACKGROUND        = 2,
-  CAT_MAX               = 3,
-} UserCat;
-
 typedef std::vector <class UserEvent*> UserEventList;
-typedef std::map<unsigned int, std::string> UserCategoryMap;
 typedef std::set<int> UserGroupList;
 typedef std::list<UserEvent*> HistoryList;
-
-struct PhoneBookEntry
-{
-  std::string description;
-  std::string areaCode;
-  std::string phoneNumber;
-  std::string extension;
-  std::string country;
-  unsigned long nActive;
-  unsigned long nType;
-  std::string gateway;
-  unsigned long nGatewayType;
-  unsigned long nSmsAvailable;
-  unsigned long nRemoveLeading0s;
-  unsigned long nPublish;
-};
-
-const unsigned short MAX_DESCRIPTION_SIZE  = 16;
-const unsigned short MAX_AREAxCODE_SIZE    =  5;
-const unsigned short MAX_PHONExNUMBER_SIZE = 16;
-const unsigned short MAX_EXTENSION_SIZE    = 20;
-const unsigned short MAX_GATEWAY_SIZE      = 64;
-const unsigned short MAX_PICTURE_SIZE      = 8081;
-
-enum EPhoneType
-{
-  TYPE_PHONE            = 0,
-  TYPE_CELLULAR         = 1,
-  TYPE_CELLULARxSMS     = 2,
-  TYPE_FAX              = 3,
-  TYPE_PAGER            = 4,
-  TYPE_MAX              = 5
-};
-
-enum EGatewayType
-{
-  GATEWAY_BUILTIN = 1,
-  GATEWAY_CUSTOM = 2,
-};
-
-enum EPublish
-{
-  PUBLISH_ENABLE = 1,
-  PUBLISH_DISABLE = 2,
-};
-
-class ICQUserPhoneBook
-{
-public:
-  ICQUserPhoneBook();
-  ~ICQUserPhoneBook();
-  void AddEntry(const struct PhoneBookEntry* entry);
-  void SetEntry(const struct PhoneBookEntry* entry, unsigned long nEntry);
-  void ClearEntry(unsigned long nEntry);
-  void Clean();
-  void SetActive(long nEntry);
-
-  bool Get(unsigned long nEntry, const struct PhoneBookEntry** entry) const;
-
-private:
-  bool SaveToDisk(IniFile& conf);
-  bool LoadFromDisk(IniFile& conf);
-
-  std::vector<struct PhoneBookEntry> PhoneBookVector;
-
-  friend class LicqDaemon::User;
-};
 
 
 /**
@@ -167,7 +91,7 @@ public:
   };
 
   static const unsigned short AgeUnspecified = 0xFFFF;
-  static const char TimezoneUnknown = (char)-100;
+  static const int TimezoneUnknown = 48*3600;
 
   enum SaveGroups
   {
@@ -177,7 +101,6 @@ public:
     SaveOwnerInfo       = 0x0004, // Save owner data (awaymsg, server,...)
     SaveNewMessagesInfo = 0x0008, // Save status of unread messages
     SavePictureInfo     = 0x0010, // Save picture information
-    SavePhoneBook       = 0x0020, // Save ICQ Phone Book
   };
 
   /**
@@ -185,7 +108,7 @@ public:
    *
    * @param group Sub part of data to update (from SaveGroups above)
    */
-  virtual void save(unsigned group = SaveAll) = 0;
+  void save(unsigned group = SaveAll);
 
   /**
    * Get id for user. This is an id used locally by Licq and is persistant for
@@ -211,6 +134,9 @@ public:
   unsigned long protocolId() const
   { return myId.protocolId(); }
 
+  /// Capabilities for protocol (cached here for convenience)
+  unsigned long protocolCapabilities() const { return myProtocolCapabilities; }
+
   // General Info
   //!Retrieves the user's alias.
   const std::string& getAlias() const           { return myAlias; }
@@ -233,36 +159,14 @@ public:
    */
   std::string getEmail() const;
 
-  //!Retrieves the user's time code.
-  char GetTimezone() const                      { return m_nTimezone; }
   //!Returns true if the user requires you to be authorized to add
   //!them to anyone's ICQ list.
   bool GetAuthorization() const                 { return m_bAuthorization; }
   //!Retrieves the user's cellular phone number.
   std::string getCellularNumber() const         { return getUserInfoString("CellularNumber"); }
 
-  // More2 Info
-  //!Retrieves the user's interests
-  UserCategoryMap& getInterests()               { return myInterests; }
-  const UserCategoryMap& getInterests() const   { return myInterests; }
-  //!Retrieves the user's backgrounds
-  UserCategoryMap& getBackgrounds()             { return myBackgrounds; }
-  const UserCategoryMap& getBackgrounds() const { return myBackgrounds; }
-  //!Retrieves the user's organizations
-  UserCategoryMap& getOrganizations()           { return myOrganizations; }
-  const UserCategoryMap& getOrganizations() const { return myOrganizations; }
-
-  // Phone Book Info
-  //!Retrives the user's phone book
-  ICQUserPhoneBook *GetPhoneBook()      { return m_PhoneBook; }
-  const ICQUserPhoneBook* GetPhoneBook() const  { return m_PhoneBook; }
-
   // Picture Info
   bool GetPicturePresent() const                { return m_bPicturePresent; }
-  unsigned buddyIconType() const                { return myBuddyIconType; }
-  char buddyIconHashType() const                { return myBuddyIconHashType; }
-  const std::string& buddyIconHash() const      { return myBuddyIconHash; }
-  const std::string& ourBuddyIconHash() const   { return myOurBuddyIconHash; }
 
   /**
    * Get path for file with user picture
@@ -272,38 +176,18 @@ public:
    */
   const std::string& pictureFileName() const    { return myPictureFileName; }
 
-  // Dynamic info fields for protocol plugins
-  std::string GetPPField(const std::string &);
-
   // Licq Info
   bool GetAwaitingAuth() const                  { return m_bAwaitingAuth; }
-  unsigned short GetSID() const                 { return m_nSID[NORMAL_SID]; }
-  unsigned short GetInvisibleSID() const        { return m_nSID[INV_SID]; }
-  unsigned short GetVisibleSID() const          { return m_nSID[VIS_SID]; }
-  unsigned short GetGSID() const                { return m_nGSID; }
 
   //!Retrieves the user's auto response message that was last seen.
   const std::string& autoResponse() const       { return myAutoResponse; }
   //!Retrieves the encoding Licq uses for this user
   const std::string& userEncoding() const;
-  //!True if they have sent the UTF8 Cap
-  bool SupportsUTF8() const                     { return m_bSupportsUTF8; }
   bool SendServer() const                       { return m_bSendServer; }
-  unsigned short SendLevel() const              { return m_nSendLevel; }
   bool EnableSave() const                       { return m_bEnableSave; }
   bool ShowAwayMsg() const                      { return m_bShowAwayMsg; }
-  unsigned short Sequence(bool = false);
-  bool directMode() const                       { return myDirectMode; }
-  unsigned long Version() const                 { return m_nVersion; }
   const std::string& clientInfo() const         { return myClientInfo; }
-  unsigned long ClientTimestamp() const         { return m_nClientTimestamp; }
-  unsigned long OurClientTimestamp() const      { return m_nOurClientTimestamp; }
-  unsigned long ClientInfoTimestamp() const     { return m_nClientInfoTimestamp; }
-  unsigned long OurClientInfoTimestamp() const  { return m_nOurClientInfoTimestamp; }
-  unsigned long ClientStatusTimestamp() const   { return m_nClientStatusTimestamp; }
-  unsigned long OurClientStatusTimestamp() const { return m_nOurClientStatusTimestamp; }
   bool UserUpdated() const                      { return m_bUserUpdated; }
-  unsigned short ConnectionVersion() const;
   time_t LastOnline() const                     { return m_nLastCounters[LAST_ONLINE]; }
   time_t LastSentEvent() const                  { return m_nLastCounters[LAST_SENT_EVENT]; }
   time_t LastReceivedEvent() const              { return m_nLastCounters[LAST_RECV_EVENT]; }
@@ -355,8 +239,7 @@ public:
   std::string usprintf(const std::string& format, int quotes = usprintf_quotenone, bool toDos = false, bool allowFieldWidth = true) const;
 
   // General Info
-  void setAlias(const std::string& alias);
-  void SetTimezone (const char n)            {  m_nTimezone = n; save(SaveUserInfo);  }
+  virtual void setAlias(const std::string& alias);
   void SetAuthorization (bool n)             {  m_bAuthorization = n; save(SaveUserInfo);  }
 
   /**
@@ -365,7 +248,7 @@ public:
    * @param key Name of property to get
    * @return Property value if string, otherwise empty
    */
-  virtual std::string getUserInfoString(const std::string& key) const = 0;
+  std::string getUserInfoString(const std::string& key) const;
 
   /**
    * Get numeric user info
@@ -373,7 +256,7 @@ public:
    * @param key Name of property to get
    * @return Property value if unsigned int, otherwise 0
    */
-  virtual unsigned int getUserInfoUint(const std::string& key) const = 0;
+  unsigned int getUserInfoUint(const std::string& key) const;
 
   /**
    * Get boolean user info
@@ -381,7 +264,7 @@ public:
    * @param key Name of property to get
    * @return Property value if bool, otherwise false
    */
-  virtual bool getUserInfoBool(const std::string& key) const = 0;
+  bool getUserInfoBool(const std::string& key) const;
 
   /**
    * Set string user info
@@ -389,7 +272,7 @@ public:
    * @param key Name of property to set, must already exist
    * @param value New value for property
    */
-  virtual void setUserInfoString(const std::string& key, const std::string& value) = 0;
+  void setUserInfoString(const std::string& key, const std::string& value);
 
   /**
    * Set numeric user info
@@ -397,7 +280,7 @@ public:
    * @param key Name of property to set, must already exist
    * @param value New value for property
    */
-  virtual void setUserInfoUint(const std::string& key, unsigned int value) = 0;
+  void setUserInfoUint(const std::string& key, unsigned int value);
 
   /**
    * Set bool user info
@@ -405,40 +288,26 @@ public:
    * @param key Name of property to set, must already exist
    * @param value New value for property
    */
-  virtual void setUserInfoBool(const std::string& key, bool value) = 0;
+  void setUserInfoBool(const std::string& key, bool value);
+
+  /// Get timezone (as seconds from GMT)
+  int timezone() const { return myTimezone; }
+
+  /// Set timezone
+  void setTimezone(int tz) { myTimezone = tz; save(SaveUserInfo); }
 
   // Picture info
   void SetPicturePresent(bool b)      { m_bPicturePresent = b; save(SavePictureInfo); }
-  void setBuddyIconType(unsigned s)     { myBuddyIconType = s; }
-  void setBuddyIconHashType(char s)     { myBuddyIconHashType = s; }
-  void setBuddyIconHash(const std::string& s) { myBuddyIconHash = s; }
-  void setOurBuddyIconHash(const std::string& s) { myOurBuddyIconHash = s; }
 
   // Licq Info
   void SetAwaitingAuth(bool b)        { m_bAwaitingAuth = b; }
-  void SetSID(unsigned short s)       { m_nSID[NORMAL_SID] = s; }
-  void SetInvisibleSID(unsigned short s) { m_nSID[INV_SID] = s; }
-  void SetVisibleSID(unsigned short s){ m_nSID[VIS_SID] = s; }
-  void SetGSID(unsigned short s)      { m_nGSID = s; }
   void SetEnableSave(bool s)          { if (m_bOnContactList) m_bEnableSave = s; }
   void SetSendServer(bool s)          { m_bSendServer = s; save(SaveLicqInfo); }
-  void SetSendLevel(unsigned short s) { m_nSendLevel = s; }
-  void SetSequence(unsigned short s)  { m_nSequence = s; }
   void setAutoResponse(const std::string& s) { myAutoResponse = s; }
   void setUserEncoding(const std::string& s) { myEncoding = s; }
-  void SetSupportsUTF8(bool b)        { m_bSupportsUTF8 = b; }
   void SetShowAwayMsg(bool s)         { m_bShowAwayMsg = s; }
-  void setDirectMode(bool direct)       { myDirectMode = direct; }
-  void SetVersion(unsigned long s)    { m_nVersion = s; }
   void setClientInfo(const std::string& s)      { myClientInfo = s; }
-  void SetClientTimestamp(unsigned long s) { m_nClientTimestamp = s; }
-  void SetOurClientTimestamp(unsigned long s) { m_nOurClientTimestamp = s; }
-  void SetClientInfoTimestamp(unsigned long s) { m_nClientInfoTimestamp = s; }
-  void SetOurClientInfoTimestamp(unsigned long s) { m_nOurClientInfoTimestamp = s; }
-  void SetClientStatusTimestamp(unsigned long s) { m_nClientStatusTimestamp = s; }
-  void SetOurClientStatusTimestamp(unsigned long s) { m_nOurClientStatusTimestamp = s; }
   void SetUserUpdated(bool s)         { m_bUserUpdated = s; }
-  void SetConnectionVersion(unsigned short s)    { m_nConnectionVersion = s; }
   void SetAutoChatAccept(bool s)        { myAutoAcceptChat = s; save(SaveLicqInfo); }
   void SetAutoFileAccept(bool s)        { myAutoAcceptFile = s; save(SaveLicqInfo); }
   void SetAutoSecure(bool s)            { myAutoSecure = s; save(SaveLicqInfo); }
@@ -452,9 +321,6 @@ public:
   void SetKeepAliasOnUpdate(bool b)   { m_bKeepAliasOnUpdate = b; }
   void setCustomAutoResponse(const std::string& s) { myCustomAutoResponse = s; save(SaveLicqInfo); }
   void clearCustomAutoResponse()            { setCustomAutoResponse(""); }
-
-  // Dynamic info fields for protocol plugins
-  bool SetPPField(const std::string &, const std::string &);
 
   /**
    * Is user writing a message?
@@ -536,13 +402,6 @@ public:
   bool isInvisible() const
   { return (myStatus & InvisibleStatus) != 0; }
 
-  unsigned phoneFollowMeStatus() const          { return myPhoneFollowMeStatus; }
-  unsigned icqPhoneStatus() const               { return myIcqPhoneStatus; }
-  unsigned sharedFilesStatus() const            { return mySharedFilesStatus; }
-  void setPhoneFollowMeStatus(unsigned n)       { myPhoneFollowMeStatus = n; save(SaveLicqInfo); }
-  void setIcqPhoneStatus(unsigned n)            { myIcqPhoneStatus = n; }
-  void setSharedFilesStatus(unsigned n)         { mySharedFilesStatus = n; }
-
   bool webPresence() const                      { return myWebPresence; }
   bool hideIp() const                           { return myHideIp; }
   bool birthdayFlag() const                     { return myBirthdayFlag; }
@@ -551,16 +410,6 @@ public:
   void setHideIp(bool f)                        { myHideIp = f; }
   void setBirthdayFlag(bool f)                  { myBirthdayFlag = f; }
   void setHomepageFlag(bool f)                  { myHomepageFlag = f; }
-
-  enum DirectFlags
-  {
-    DirectDisabled      = 0,    // Direct contact not possible
-    DirectAnyone        = 1,    // Direct contact with anyone
-    DirectListed        = 2,    // Direct contact only with contacts in list
-    DirectAuth          = 3,    // Direct contact only with authorized contacts
-  };
-  unsigned directFlag() const                   { return myDirectFlag; }
-  void setDirectFlag(unsigned n)                { myDirectFlag = n; }
 
   enum SecureChannelSupport
   {
@@ -621,10 +470,10 @@ public:
   void EventClear(unsigned short);
   void EventClearId(int);
   void EventPush(UserEvent *);
-  virtual int GetHistory(HistoryList& history) const = 0;
+  int GetHistory(HistoryList& history) const;
   static void ClearHistory(HistoryList& h);
-  virtual const std::string& historyName() const = 0;
-  virtual const std::string& historyFile() const = 0;
+  const std::string& historyName() const;
+  const std::string& historyFile() const;
 
   /**
    * Get user groups this user is member of
@@ -671,6 +520,22 @@ public:
    */
   bool removeFromGroup(int groupId);
 
+  /**
+   * Get server group
+   *
+   * @return Current server group or -1 if protocol allows multiple groups
+   */
+  int serverGroup() const
+  { return myServerGroup; }
+
+  /**
+   * Set server group
+   *
+   * @param groupId New server group for user
+   */
+  void setServerGroup(int groupId)
+  { if (myServerGroup > -1) myServerGroup = groupId; }
+
   // Short cuts to above functions
   bool InvisibleList() const    { return myOnInvisibleList; }
   bool VisibleList() const      { return myOnVisibleList; }
@@ -700,22 +565,18 @@ public:
 
   // Time
   time_t LocalTime() const;
-  int LocalTimeGMTOffset() const;
   int LocalTimeOffset() const;
-  static int SystemTimeGMTOffset();
-  static char SystemTimezone();
+  static int systemTimezone();
 
   // Ip/Port functions
   unsigned long Ip() const                      { return m_nIp; }
   unsigned long IntIp() const                   { return m_nIntIp; }
   unsigned short Port() const                   { return m_nPort; }
   unsigned short LocalPort() const              { return m_nLocalPort; }
-  unsigned long Cookie() const                  { return m_nCookie; }
-  void SetIpPort(unsigned long nIp, unsigned short nPort);
+  virtual void SetIpPort(unsigned long nIp, unsigned short nPort);
   void SetIp(unsigned long nIp)                 { SetIpPort(nIp, Port()); }
   void SetPort(unsigned short nPort)            { SetIpPort(Ip(), nPort); }
   void SetIntIp(unsigned long s)                { m_nIntIp = s; }
-  void SetCookie(unsigned long nCookie) { m_nCookie = nCookie; }
 
   bool SendIntIp() const                        { return m_bSendIntIp; }
   void SetSendIntIp(bool s)                     { m_bSendIntIp = s; }
@@ -727,25 +588,24 @@ public:
   void SetSendRealIp(bool s)      { SetSendIntIp(s); }
 
   std::string ipToString() const;
-  std::string internalIpToString() const;
+  virtual std::string internalIpToString() const;
   std::string portToString() const;
 
-  // User TLV List handling
-  void AddTLV(TlvPtr);
-  void RemoveTLV(unsigned long);
-  void SetTLVList(TlvList& tlvs);
-  TlvList GetTLVList()                          { return myTLVs; }
-  const TlvList GetTLVList() const              { return myTLVs; }
+  /**
+   * Check if a direct connection might be possible
+   *
+   * @return False if direct connection can't or shouldn't be done
+   */
+  virtual bool canSendDirect() const;
 
-  int socketDesc(int channel) const;
-  void clearSocketDesc(int channel);
-  void clearAllSocketDesc();
-  void setSocketDesc(TCPSocket* s);
-
-  // Convenience functions so plugins don't need to know TCPSocket::ChannelTypes
-  int normalSocketDesc() const                  { return myNormalSocketDesc; }
-  int infoSocketDesc() const                    { return myInfoSocketDesc; }
-  void clearNormalSocketDesc();
+  /**
+   * Clear a user specific socket descriptor
+   * Called by socket manager when a socket is closed
+   * Base implementation does nothing, reimplement in subclass if needed
+   *
+   * @param s Socket that was closed and is about to be deleted
+   */
+  virtual void clearSocketDesc(INetSocket* s);
 
   // Events functions
   static unsigned short getNumUserEvents();
@@ -762,10 +622,24 @@ public:
   void SetOfflineOnDisconnect(bool b) { m_bOfflineOnDisconnect = b; }
   bool OfflineOnDisconnect() { return m_bOfflineOnDisconnect; }
 
-  virtual bool isUser() const                   { return true; }
+  bool isUser() const
+  { return !myIsOwner; }
 
 protected:
-  virtual ~User() { /* Empty */ }
+  /// Constructor
+  User(const UserId& id, bool temporary = false, bool isOwner = false);
+
+  /// Destructor
+  virtual ~User();
+
+  /// Get the config file for this user
+  IniFile& userConf();
+
+  virtual void saveLicqInfo();
+  virtual void saveUserInfo();
+  virtual void saveOwnerInfo();
+  virtual void saveNewMessagesInfo();
+  virtual void savePictureInfo();
 
   void SetSecure(bool s) { m_bSecure = s; }
   bool ConnectionInProgress() const { return m_bConnectionInProgress; }
@@ -778,11 +652,10 @@ protected:
   void SetIdleSince(time_t t)       { m_nIdleSince = t; }
   void SetRegisteredTime(time_t t)  { m_nRegisteredTime = t; }
 
-  UserId myId;
+  const UserId myId;
+  const bool myIsOwner;
+  unsigned long myProtocolCapabilities;
 
-  int myNormalSocketDesc;
-  int myInfoSocketDesc;
-  int myStatusSocketDesc;
   time_t m_nTouched;
   time_t m_nLastCounters[4];
   time_t m_nOnlineSince;
@@ -790,28 +663,21 @@ protected:
   time_t myAwaySince;
   time_t m_nRegisteredTime;
   bool m_bOnContactList;
-  unsigned long m_nIp, m_nIntIp, m_nVersion, m_nClientTimestamp, m_nCookie;
-  unsigned long m_nClientInfoTimestamp, m_nClientStatusTimestamp;
-  unsigned long m_nOurClientTimestamp, m_nOurClientInfoTimestamp;
-  unsigned long m_nOurClientStatusTimestamp;
+  unsigned long m_nIp, m_nIntIp;
   bool m_bUserUpdated;
-  unsigned m_nPort, m_nLocalPort, m_nConnectionVersion;
+  unsigned m_nPort, m_nLocalPort;
   bool myIsTyping;
   unsigned myStatus;
   UserGroupList myGroups;               /**< List of user groups */
-  unsigned short m_nSequence;
-  unsigned myPhoneFollowMeStatus, myIcqPhoneStatus, mySharedFilesStatus;
+  int myServerGroup;
   bool myWebPresence;
   bool myHideIp;
   bool myBirthdayFlag;
   bool myHomepageFlag;
-  unsigned myDirectFlag;
-  bool myDirectMode;
   unsigned mySecureChannelSupport;
   std::string myClientInfo;
   std::string myAutoResponse;
   std::string myEncoding;
-  bool m_bSupportsUTF8;
   std::string myCustomAutoResponse;
   bool myOnlineNotify;
   bool myOnVisibleList;
@@ -826,7 +692,6 @@ protected:
        m_bConnectionInProgress,
        m_bSecure,
        m_bNotInList;
-  unsigned short m_nSendLevel;
   unsigned myStatusToUser;
   bool m_bKeepAliasOnUpdate;
   bool myOnEventsBlocked;
@@ -845,38 +710,15 @@ protected:
 
   // General Info
   std::string myAlias;
-  char m_nTimezone;
+  int myTimezone;
   bool m_bAuthorization;
-
-  // More2 Info
-  UserCategoryMap myInterests;
-  UserCategoryMap myBackgrounds;
-  UserCategoryMap myOrganizations;
-
-  // Phone Book Info
-  ICQUserPhoneBook *m_PhoneBook;
 
   // Picture Info
   std::string myPictureFileName;
   bool m_bPicturePresent;
-  unsigned myBuddyIconType;
-  unsigned myBuddyIconHashType;
-  std::string myBuddyIconHash;
-  std::string myOurBuddyIconHash;
-
-  // Dynamic info fields for protocol plugins
-  std::map<std::string, std::string> m_mPPFields;
 
   // Server Side ID, Group SID
   bool m_bAwaitingAuth;
-  unsigned m_nSID[3];
-  unsigned m_nGSID;
-
-  // Extra TLVs attached to this user's SSI info
-  // We use a map to allow fast access to the TLV by type, even though the
-  // actual type is in SOscarTLV as well. Which should make it obvious
-  // that the TLV handling should be fixed in licq_buffer.h/buffer.cpp
-  TlvList myTLVs;
 
   UserEventList m_vcMessages;
 
@@ -884,10 +726,16 @@ protected:
 
   static pthread_mutex_t mutex_nNumUserEvents;
 
-  friend class ::CMSN;
-  friend class ::IcqProtocol;
-  friend class Jabber::Plugin;
-  friend void* ::MonitorSockets_func();
+  friend class LicqIcq::IcqProtocol;
+  friend void* LicqIcq::MonitorSockets_func();
+  friend class LicqMsn::CMSN;
+  friend class LicqJabber::Plugin;
+
+private:
+  LICQ_DECLARE_PRIVATE();
+
+  // Allow the user manager to access private members
+  friend class LicqDaemon::UserManager;
 };
 
 

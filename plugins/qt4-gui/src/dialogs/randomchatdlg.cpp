@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,16 +22,15 @@
 #include "config.h"
 
 #include <QDialogButtonBox>
-#include <QHBoxLayout>
 #include <QListWidget>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <licq/contactlist/owner.h>
 #include <licq/contactlist/usermanager.h>
-#include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/icq/icq.h>
+#include <licq/icq/user.h>
+#include <licq/protocolmanager.h>
 
 #include "core/gui-defines.h"
 #include "core/licqgui.h"
@@ -56,18 +55,18 @@ void RandomChatDlg::fillGroupsList(QListWidget* list, bool addNone, unsigned def
 
   if (addNone)
   {
-    ADD_RCG(CICQDaemon::RandomChatGroupNone,    tr("(none)"))
+    ADD_RCG(Licq::IcqRandomChatGroupNone,       tr("(none)"))
   }
-  ADD_RCG(CICQDaemon::RandomChatGroupGeneral,   tr("General"));
-  ADD_RCG(CICQDaemon::RandomChatGroupRomance,   tr("Romance"));
-  ADD_RCG(CICQDaemon::RandomChatGroupGames,     tr("Games"));
-  ADD_RCG(CICQDaemon::RandomChatGroupStudents,  tr("Students"));
-  ADD_RCG(CICQDaemon::RandomChatGroup20Some,    tr("20 Something"));
-  ADD_RCG(CICQDaemon::RandomChatGroup30Some,    tr("30 Something"));
-  ADD_RCG(CICQDaemon::RandomChatGroup40Some,    tr("40 Something"));
-  ADD_RCG(CICQDaemon::RandomChatGroup50Plus,    tr("50 Plus"));
-  ADD_RCG(CICQDaemon::RandomChatGroupSeekF,     tr("Seeking Women"));
-  ADD_RCG(CICQDaemon::RandomChatGroupSeekM,     tr("Seeking Men"));
+  ADD_RCG(Licq::IcqRandomChatGroupGeneral,      tr("General"));
+  ADD_RCG(Licq::IcqRandomChatGroupRomance,      tr("Romance"));
+  ADD_RCG(Licq::IcqRandomChatGroupGames,        tr("Games"));
+  ADD_RCG(Licq::IcqRandomChatGroupStudents,     tr("Students"));
+  ADD_RCG(Licq::IcqRandomChatGroup20Some,       tr("20 Something"));
+  ADD_RCG(Licq::IcqRandomChatGroup30Some,       tr("30 Something"));
+  ADD_RCG(Licq::IcqRandomChatGroup40Some,       tr("40 Something"));
+  ADD_RCG(Licq::IcqRandomChatGroup50Plus,       tr("50 Plus"));
+  ADD_RCG(Licq::IcqRandomChatGroupSeekF,        tr("Seeking Women"));
+  ADD_RCG(Licq::IcqRandomChatGroupSeekM,        tr("Seeking Men"));
 
 #undef ADD_RCG
 }
@@ -102,7 +101,7 @@ RandomChatDlg::RandomChatDlg(QWidget* parent)
 RandomChatDlg::~RandomChatDlg()
 {
   if (myTag != 0)
-    Licq::gDaemon.cancelEvent(myTag);
+    Licq::gProtocolManager.cancelEvent(Licq::UserId("0000", LICQ_PPID), myTag);
 }
 
 void RandomChatDlg::okPressed()
@@ -132,6 +131,7 @@ void RandomChatDlg::userEventDone(const Licq::Event* event)
       WarnUser(this, tr("Random chat search timed out."));
       break;
     case Licq::Event::ResultError:
+    case Licq::Event::ResultUnsupported:
       WarnUser(this, tr("Random chat search had an error."));
       break;
     default:
@@ -143,89 +143,4 @@ void RandomChatDlg::userEventDone(const Licq::Event* event)
       return;
   }
 
-}
-
-//=====SetRandomChatGroupDlg================================================
-
-SetRandomChatGroupDlg::SetRandomChatGroupDlg(QWidget* parent)
-  : QDialog(parent),
-    myTag(0)
-{
-  Support::setWidgetProps(this, "SetRandomChatGroupDlg");
-  setWindowTitle(tr("Set Random Chat Group"));
-
-  QVBoxLayout* topLayout = new QVBoxLayout(this);
-  myGroupsList = new QListWidget(this);
-  topLayout->addWidget(myGroupsList);
-
-  QHBoxLayout* lay = new QHBoxLayout();
-
-  lay->addStretch(2);
-  myOkButton = new QPushButton(tr("&Set"), this);
-  lay->addWidget(myOkButton);
-
-  lay->addSpacing(10);
-  myCancelButton = new QPushButton(tr("&Close"), this);
-  lay->addWidget(myCancelButton);
-  lay->addStretch(2);
-
-  topLayout->addLayout(lay);
-
-  connect(myOkButton, SIGNAL(clicked()), SLOT(okPressed()));
-  connect(myCancelButton, SIGNAL(clicked()), SLOT(close()));
-
-  Licq::OwnerReadGuard o(LICQ_PPID);
-  if (!o.isLocked())
-  {
-    close();
-    return;
-  }
-
-  // Fill in the combo box
-  RandomChatDlg::fillGroupsList(myGroupsList, true, o->randomChatGroup());
-
-  show();
-}
-
-SetRandomChatGroupDlg::~SetRandomChatGroupDlg()
-{
-  if (myTag != 0)
-    Licq::gDaemon.cancelEvent(myTag);
-}
-
-void SetRandomChatGroupDlg::okPressed()
-{
-  myOkButton->setEnabled(false);
-  myCancelButton = new QPushButton(tr("&Cancel"), this);
-  connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
-      SLOT(userEventDone(const Licq::Event*)));
-  unsigned chatGroup = myGroupsList->currentItem()->data(Qt::UserRole).toInt();
-  myTag = gLicqDaemon->setRandomChatGroup(chatGroup);
-  setWindowTitle(tr("Setting Random Chat Group..."));
-}
-
-void SetRandomChatGroupDlg::userEventDone(const Licq::Event* event)
-{
-  if (!event->Equals(myTag))
-    return;
-
-  myOkButton->setEnabled(true);
-  myCancelButton = new QPushButton(tr("&Close"), this);
-  myTag = 0;
-
-  switch (event->Result())
-  {
-    case Licq::Event::ResultFailed:
-      setWindowTitle(windowTitle() + tr("failed"));
-      break;
-    case Licq::Event::ResultTimedout:
-      setWindowTitle(windowTitle() + tr("timed out"));
-      break;
-    case Licq::Event::ResultError:
-      setWindowTitle(windowTitle() + tr("error"));
-      break;
-    default:
-      setWindowTitle(windowTitle() + tr("done"));
-      break;
-  }
 }

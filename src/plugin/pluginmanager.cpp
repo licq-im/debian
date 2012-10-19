@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
 #include "gettext.h"
 
 #include <licq/logging/log.h>
-#include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/exceptions/exception.h>
 #include <licq/logging/logservice.h>
@@ -40,6 +39,8 @@
 #include <iterator>
 #include <glob.h>
 
+#include "../contactlist/usermanager.h"
+#include "../daemon.h"
 #include "../utils/dynamiclibrary.h"
 #include "generalplugin.h"
 #include "plugin.h"
@@ -48,10 +49,12 @@
 
 using Licq::GeneralPlugin;
 using Licq::MutexLocker;
+using Licq::Owner;
 using Licq::Plugin;
 using Licq::ProtocolPlugin;
 using Licq::StringList;
-using Licq::gDaemon;
+using Licq::User;
+using Licq::UserId;
 using Licq::gLog;
 using Licq::gLogService;
 using namespace LicqDaemon;
@@ -65,7 +68,7 @@ Licq::PluginManager& Licq::gPluginManager(LicqDaemon::gPluginManager);
 
 
 PluginManager::PluginManager() :
-  myNextPluginId(DAEMON_ID + 1)
+  myNextPluginId(1)
 {
   // Empty
 }
@@ -262,8 +265,34 @@ loadProtocolPlugin(const std::string& name, bool keep, bool icq)
   return ProtocolPlugin::Ptr();
 }
 
+void PluginManager::unloadGeneralPlugin(GeneralPlugin::Ptr plugin)
+{
+  plugin->shutdown();
+}
+
+void PluginManager::unloadProtocolPlugin(ProtocolPlugin::Ptr plugin)
+{
+  // Check with user manager first if unloading is allowed
+  if (!gUserManager.allowUnloadProtocol(plugin->protocolId()))
+    return;
+
+  gUserManager.unloadProtocol(plugin->protocolId());
+  plugin->shutdown();
+}
+
 void PluginManager::startAllPlugins()
 {
+  list<unsigned long> ppids;
+  {
+    MutexLocker protocolLocker(myProtocolPluginsMutex);
+    BOOST_FOREACH(ProtocolPlugin::Ptr plugin, myProtocolPlugins)
+      ppids.push_back(plugin->protocolId());
+  }
+
+  // Must call loadProtocol without holding mutex
+  BOOST_FOREACH(unsigned long protocolId, ppids)
+    gUserManager.loadProtocol(protocolId);
+
   MutexLocker generalLocker(myGeneralPluginsMutex);
   MutexLocker protocolLocker(myProtocolPluginsMutex);
 
@@ -301,7 +330,7 @@ void PluginManager::pluginHasExited(unsigned short id)
 {
   MutexLocker locker(myExitListMutex);
   myExitList.push(id);
-  myExitListSignal.signal();
+  gDaemon.notifyPluginExited();
 }
 
 void PluginManager::deleteGeneralPlugin(GeneralPlugin* plugin)
@@ -334,40 +363,13 @@ void PluginManager::deleteProtocolPlugin(ProtocolPlugin* plugin)
   //   pointer go out of scope and delete itself.
 }
 
-unsigned short PluginManager::waitForPluginExit(unsigned int timeout)
+void PluginManager::reapPlugin()
 {
+  unsigned short exitId = myExitList.front();
+  myExitList.pop();
+
   MutexLocker generalLocker(myGeneralPluginsMutex);
   MutexLocker protocolLocker(myProtocolPluginsMutex);
-
-  if (myGeneralPlugins.empty() && myProtocolPlugins.empty())
-    LICQ_THROW(Licq::Exception());
-
-  protocolLocker.unlock();
-  generalLocker.unlock();
-
-  unsigned short exitId;
-  {
-    MutexLocker exitListLocker(myExitListMutex);
-    while (myExitList.empty())
-    {
-      if (timeout)
-      {
-        if (!myExitListSignal.wait(myExitListMutex, timeout * 1000))
-          LICQ_THROW(Licq::Exception());
-      }
-      else
-        myExitListSignal.wait(myExitListMutex);
-    }
-
-    exitId = myExitList.front();
-    myExitList.pop();
-  }
-
-  if (exitId == DAEMON_ID)
-    return DAEMON_ID;
-
-  generalLocker.relock();
-  protocolLocker.relock();
 
   // Check general plugins first
   for (Licq::GeneralPluginsList::iterator plugin = myGeneralPlugins.begin();
@@ -379,9 +381,10 @@ unsigned short PluginManager::waitForPluginExit(unsigned int timeout)
       gLog.info(tr("Plugin %s exited with code %d"),
           (*plugin)->name().c_str(), result);
       myGeneralPlugins.erase(plugin);
-      return exitId;
+      return;
     }
   }
+  generalLocker.unlock();
 
   // Then check protocol plugins
   for (Licq::ProtocolPluginsList::iterator plugin = myProtocolPlugins.begin();
@@ -389,16 +392,26 @@ unsigned short PluginManager::waitForPluginExit(unsigned int timeout)
   {
     if ((*plugin)->id() == exitId)
     {
+      unsigned long protocolId = (*plugin)->protocolId();
       int result = (*plugin)->basePrivate()->joinThread();
       gLog.info(tr("Protocol plugin %s exited with code %d"),
           (*plugin)->name().c_str(), result);
+
+      // Should already been done, but if protocol exited by itself clean it up here
+      gUserManager.unloadProtocol(protocolId);
+
+      // Remove plugin from list, if this was only reference it will unload library
       myProtocolPlugins.erase(plugin);
-      return exitId;
+
+      // Notify plugins about the removed protocol
+      pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalRemoveProtocol, protocolId));
+
+      return;
     }
   }
 
   gLog.error(tr("Invalid plugin id (%d) in exit signal"), exitId);
-  return 0;
 }
 
 void PluginManager::cancelAllPlugins()
@@ -426,6 +439,13 @@ size_t PluginManager::getGeneralPluginsCount() const
 {
   MutexLocker locker(myGeneralPluginsMutex);
   return myGeneralPlugins.size();
+}
+
+size_t PluginManager::pluginCount() const
+{
+  MutexLocker generalLocker(myGeneralPluginsMutex);
+  MutexLocker protocolLocker(myProtocolPluginsMutex);
+  return myGeneralPlugins.size() + myProtocolPlugins.size();
 }
 
 void PluginManager::
@@ -538,6 +558,9 @@ bool PluginManager::startProtocolPlugin(const std::string& name)
   ProtocolPlugin::Ptr plugin = loadProtocolPlugin(name);
   if (plugin)
   {
+    // Load contacts and owners for the new protocol
+    gUserManager.loadProtocol(plugin->protocolId());
+
     MutexLocker locker(myProtocolPluginsMutex);
     startPlugin(plugin);
     return true;
@@ -629,9 +652,10 @@ void PluginManager::pushPluginSignal(Licq::PluginSignal* signal)
   delete signal;
 }
 
-void PluginManager::pushProtocolSignal(Licq::ProtocolSignal* signal,
-    unsigned long protocolId)
+void PluginManager::pushProtocolSignal(Licq::ProtocolSignal* signal)
 {
+  unsigned long protocolId = signal->userId().protocolId();
+
   MutexLocker locker(myProtocolPluginsMutex);
   BOOST_FOREACH(ProtocolPlugin::Ptr plugin, myProtocolPlugins)
   {
@@ -644,4 +668,22 @@ void PluginManager::pushProtocolSignal(Licq::ProtocolSignal* signal,
 
   Licq::gLog.error(tr("Invalid protocol plugin requested (%ld)"), protocolId);
   delete signal;
+}
+
+User* PluginManager::createProtocolUser(const UserId& id, bool temporary)
+{
+  ProtocolPlugin::Ptr plugin = getProtocolPlugin(id.protocolId());
+  if (plugin.get() == NULL)
+    return NULL;
+
+  return plugin->createUser(id, temporary);
+}
+
+Owner* PluginManager::createProtocolOwner(const UserId& id)
+{
+  ProtocolPlugin::Ptr plugin = getProtocolPlugin(id.protocolId());
+  if (plugin.get() == NULL)
+    return NULL;
+
+  return plugin->createOwner(id);
 }

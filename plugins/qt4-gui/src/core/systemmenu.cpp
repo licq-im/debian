@@ -25,12 +25,12 @@
 
 #include <QList>
 
-#include <licq/logging/log.h>
 #include <licq/contactlist/group.h>
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
 #include <licq/icq/icq.h>
+#include <licq/icq/owner.h>
 #include <licq/plugin/pluginmanager.h>
 
 #include "config/contactlist.h"
@@ -42,27 +42,22 @@
 
 #include "dialogs/addgroupdlg.h"
 #include "dialogs/adduserdlg.h"
-#include "dialogs/authuserdlg.h"
+#include "dialogs/authdlg.h"
 #include "dialogs/awaymsgdlg.h"
 #include "dialogs/editgrpdlg.h"
 #include "dialogs/historydlg.h"
 #include "dialogs/logwindow.h"
 #include "dialogs/ownermanagerdlg.h"
-#include "dialogs/plugindlg.h"
 #include "dialogs/randomchatdlg.h"
-#include "dialogs/reqauthdlg.h"
 #include "dialogs/searchuserdlg.h"
-#include "dialogs/securitydlg.h"
 #include "dialogs/gpgkeymanager.h"
 
 #include "settings/settingsdlg.h"
 
+#include "userdlg/userdlg.h"
+
 #include "licqgui.h"
 #include "mainwin.h"
-
-const int LOG_SET_ALL = -1;
-const int LOG_CLEAR_ALL = -2;
-const int LOG_PACKETS = -3;
 
 using Licq::User;
 using namespace LicqQtGui;
@@ -75,33 +70,10 @@ SystemMenu::SystemMenu(QWidget* parent)
 {
   QAction* a;
 
-  // Sub menu Debug
-  myDebugMenu = new QMenu(tr("Debug Level"), this);
-  connect(myDebugMenu, SIGNAL(triggered(QAction*)), SLOT(changeDebug(QAction*)));
-  connect(myDebugMenu, SIGNAL(aboutToShow()), SLOT(aboutToShowDebugMenu()));
-#define ADD_DEBUG(text, data, checkable) \
-    a = myDebugMenu->addAction(text); \
-    a->setCheckable(checkable); \
-    a->setData(data);
-  ADD_DEBUG(tr("Status Info"), Licq::Log::Info, true)
-  ADD_DEBUG(tr("Unknown Packets"), Licq::Log::Unknown, true)
-  ADD_DEBUG(tr("Errors"), Licq::Log::Error, true)
-  ADD_DEBUG(tr("Warnings"), Licq::Log::Warning, true)
-  ADD_DEBUG(tr("Debug"), Licq::Log::Debug, true)
-  ADD_DEBUG(tr("Raw Packets"), LOG_PACKETS, true)
-  myDebugMenu->addSeparator();
-  ADD_DEBUG(tr("Set All"), LOG_SET_ALL, false)
-  ADD_DEBUG(tr("Clear All"), LOG_CLEAR_ALL, false)
-#undef ADD_DEBUG
-
   // Sub menu System Functions
   myOwnerAdmMenu = new QMenu(tr("S&ystem Functions"), this);
   myOwnerAdmMenu->addAction(tr("&View System Messages..."), gLicqGui, SLOT(showAllOwnerEvents()));
   myOwnerAdmMenu->addSeparator();
-  myOwnerAdmSeparator = myOwnerAdmMenu->addSeparator();
-  myAccountManagerAction = myOwnerAdmMenu->addAction(tr("&Account Manager..."), this, SLOT(showOwnerManagerDlg()));
-  myOwnerAdmMenu->addSeparator();
-  myOwnerAdmMenu->addMenu(myDebugMenu);
 
   // Sub menu User Functions
   myUserAdmMenu = new QMenu(tr("User &Functions"), this);
@@ -129,9 +101,9 @@ SystemMenu::SystemMenu(QWidget* parent)
     a->setCheckable(true); \
     a->setData(static_cast<unsigned int>(data)); \
     myFollowMeMenu->addAction(a);
-  ADD_PFM(tr("Don't Show"), CICQDaemon::IcqPluginInactive);
-  ADD_PFM(tr("Available"), CICQDaemon::IcqPluginActive);
-  ADD_PFM(tr("Busy"), CICQDaemon::IcqPluginBusy);
+  ADD_PFM(tr("Don't Show"), Licq::IcqPluginInactive);
+  ADD_PFM(tr("Available"), Licq::IcqPluginActive);
+  ADD_PFM(tr("Busy"), Licq::IcqPluginBusy);
 #undef ADD_PFM
 
   // Sub menu Status
@@ -200,7 +172,7 @@ SystemMenu::SystemMenu(QWidget* parent)
   myShowEmptyGroupsAction = addAction(tr("Sh&ow Empty Groups"), Config::ContactList::instance(), SLOT(setShowEmptyGroups(bool)));
   myShowEmptyGroupsAction->setCheckable(true);
   myOptionsAction = addAction(tr("S&ettings..."), this, SLOT(showSettingsDlg()));
-  myPluginManagerAction = addAction(tr("&Plugin Manager..."), this, SLOT(showPluginDlg()));
+  myAccountManagerAction = addAction(tr("&Accounts..."), this, SLOT(showOwnerManagerDlg()));
   myKeyManagerAction = addAction(tr("GPG &Key Manager..."), this, SLOT(showGPGKeyManager()));
   if (!Licq::gDaemon.haveGpgSupport())
     myKeyManagerAction->setVisible(false);
@@ -341,11 +313,11 @@ void SystemMenu::addOwner(const Licq::UserId& userId)
   if (protocol.get() == NULL)
     return;
 
-  OwnerData* newOwner = new OwnerData(ppid, protocol->name().c_str(),
+  OwnerData* newOwner = new OwnerData(userId, protocol->name().c_str(),
       protocol->capabilities(), this);
   QMenu* ownerAdmin = newOwner->getOwnerAdmMenu();
   QMenu* ownerStatus = newOwner->getStatusMenu();
-  myOwnerAdmMenu->insertMenu(myOwnerAdmSeparator, ownerAdmin);
+  myOwnerAdmMenu->addMenu(ownerAdmin);
   myStatusMenu->insertMenu(myStatusSeparator, ownerStatus);
 
   if (myOwnerData.size() < 1)
@@ -355,7 +327,7 @@ void SystemMenu::addOwner(const Licq::UserId& userId)
     ownerAdmin->menuAction()->setVisible(false);
 
     foreach (QAction* a, ownerAdmin->actions())
-      myOwnerAdmMenu->insertAction(myOwnerAdmSeparator, a);
+      myOwnerAdmMenu->addAction(a);
   }
 
   if (myOwnerData.size() == 1)
@@ -399,7 +371,7 @@ void SystemMenu::removeOwner(const Licq::UserId& userId)
     QMenu* lastOwnerAdm = lastOwner->getOwnerAdmMenu();
     lastOwnerAdm->menuAction()->setVisible(false);
     foreach (QAction* a, lastOwnerAdm->actions())
-      myOwnerAdmMenu->insertAction(myOwnerAdmSeparator, a);
+      myOwnerAdmMenu->addAction(a);
   }
 }
 
@@ -421,7 +393,7 @@ void SystemMenu::aboutToShowMenu()
 
 void SystemMenu::aboutToShowFollowMeMenu()
 {
-  Licq::OwnerReadGuard o(LICQ_PPID);
+  Licq::IcqOwnerReadGuard o;
   if (!o.isLocked())
     return;
 
@@ -439,49 +411,6 @@ void SystemMenu::aboutToShowGroupMenu()
   foreach (QAction* a, myUserGroupActions->actions())
     if (a->data().toInt() == gid)
       a->setChecked(true);
-}
-
-void SystemMenu::aboutToShowDebugMenu()
-{
-  using Licq::Log;
-
-  Licq::PluginLogSink::Ptr sink = gLicqGui->logWindow()->pluginLogSink();
-
-  foreach (QAction* action, myDebugMenu->actions())
-  {
-    if (action->isCheckable())
-    {
-      if (action->data().toInt() == LOG_PACKETS)
-        action->setChecked(sink->isLoggingPackets());
-      else
-      {
-        Log::Level level = static_cast<Log::Level>(action->data().toInt());
-        action->setChecked(sink->isLogging(level));
-      }
-    }
-  }
-}
-
-void SystemMenu::changeDebug(QAction* action)
-{
-  Licq::PluginLogSink::Ptr sink = gLicqGui->logWindow()->pluginLogSink();
-
-  const int data = action->data().toInt();
-  if (data == LOG_SET_ALL || data == LOG_CLEAR_ALL)
-  {
-    const bool enable = data == LOG_SET_ALL;
-    sink->setAllLogLevels(enable);
-    sink->setLogPackets(enable);
-  }
-  else if (data == LOG_PACKETS)
-  {
-    sink->setLogPackets(action->isChecked());
-  }
-  else
-  {
-    Licq::Log::Level level = static_cast<Licq::Log::Level>(data);
-    sink->setLogLevel(level, action->isChecked());
-  }
 }
 
 void SystemMenu::setCurrentGroup(QAction* action)
@@ -515,7 +444,7 @@ void SystemMenu::setMainStatus(QAction* action)
     status |= User::InvisibleStatus;
 
   if (withMsg)
-    AwayMsgDlg::showAwayMsgDlg(status, true, 0);
+    AwayMsgDlg::showAwayMsgDlg(status, true);
   else
     gLicqGui->changeStatus(status, invisible);
 }
@@ -566,12 +495,12 @@ void SystemMenu::showSearchUserDlg()
 
 void SystemMenu::showAuthUserDlg()
 {
-  new AuthUserDlg(Licq::UserId(), true);
+  new AuthDlg(AuthDlg::GrantAuth);
 }
 
 void SystemMenu::showReqAuthDlg()
 {
-  new ReqAuthDlg();
+  new AuthDlg(AuthDlg::RequestAuth);
 }
 
 void SystemMenu::showEditGrpDlg()
@@ -589,34 +518,25 @@ void SystemMenu::showSettingsDlg()
   SettingsDlg::show();
 }
 
-void SystemMenu::showPluginDlg()
-{
-  PluginDlg::showPluginDlg();
-}
-
 void SystemMenu::showGPGKeyManager()
 {
   new GPGKeyManager();
 }
 
 
-OwnerData::OwnerData(unsigned long ppid, const QString& protoName,
+OwnerData::OwnerData(const Licq::UserId& userId, const QString& protoName,
     unsigned long sendFunctions, SystemMenu* parent)
   : QObject(parent),
-    myPpid(ppid)
+    myUserId(userId)
 {
-  myUserId = Licq::gUserManager.ownerUserId(ppid);
+  unsigned long myPpid = userId.protocolId();
   myUseAwayMessage = ((sendFunctions & Licq::ProtocolPlugin::CanHoldStatusMsg) != 0);
 
   // System sub menu
   myOwnerAdmMenu = new QMenu(protoName);
   myOwnerAdmInfoAction = myOwnerAdmMenu->addAction(tr("&Info..."), this, SLOT(viewInfo()));
   myOwnerAdmHistoryAction = myOwnerAdmMenu->addAction(tr("View &History..."), this, SLOT(viewHistory()));
-  if (ppid == LICQ_PPID)
-  {
-    myOwnerAdmMenu->addAction(tr("&Security Options..."), this, SLOT(showSecurityDlg()));
-    myOwnerAdmMenu->addAction(tr("&Random Chat Group..."), this, SLOT(showRandomChatGroupDlg()));
-  }
+  myOwnerAdmSettingsAction = myOwnerAdmMenu->addAction(tr("&Settings..."), this, SLOT(showSettingsDlg()));
 
   // Status sub menu
   myStatusMenu = new QMenu(protoName);
@@ -690,7 +610,7 @@ void OwnerData::updateIcons()
 
 void OwnerData::aboutToShowStatusMenu()
 {
-  Licq::OwnerReadGuard o(myPpid);
+  Licq::OwnerReadGuard o(myUserId);
   if (!o.isLocked())
     return;
 
@@ -710,22 +630,17 @@ void OwnerData::aboutToShowStatusMenu()
 
 void OwnerData::viewInfo()
 {
-  gLicqGui->showInfoDialog(mnuUserGeneral, myUserId);
+  UserDlg::showDialog(myUserId, UserDlg::GeneralPage);
+}
+
+void OwnerData::showSettingsDlg()
+{
+  UserDlg::showDialog(myUserId, UserDlg::OwnerPage);
 }
 
 void OwnerData::viewHistory()
 {
   new HistoryDlg(myUserId);
-}
-
-void OwnerData::showSecurityDlg()
-{
-  new SecurityDlg();
-}
-
-void OwnerData::showRandomChatGroupDlg()
-{
-  new SetRandomChatGroupDlg();
 }
 
 void OwnerData::setStatus(QAction* action)
@@ -738,7 +653,7 @@ void OwnerData::setStatus(QAction* action)
     status |= User::InvisibleStatus;
 
   if (withMsg)
-    AwayMsgDlg::showAwayMsgDlg(status, true, myPpid);
+    AwayMsgDlg::showAwayMsgDlg(status, true, myUserId);
   else
     gLicqGui->changeStatus(status, myUserId, invisible);
 }

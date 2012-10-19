@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,34 +17,43 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef LICQDAEMON_CONTACTLIST_OWNER_H
-#define LICQDAEMON_CONTACTLIST_OWNER_H
+#ifndef LICQICQ_CHAT_H
+#define LICQICQ_CHAT_H
 
-#include <licq/contactlist/owner.h>
+#include <licq/icq/chat.h>
 
-#include "user.h"
+#include <deque>
+#include <pthread.h>
+#include <string>
 
-namespace LicqDaemon
+#include "socket.h"
+
+namespace LicqIcq
 {
 
-class Owner : public User, public Licq::Owner
+class ChatUser : public CChatUser
 {
 public:
-  /**
-   * Constructor
-   *
-   * @param accountId User account id
-   * @param ppid Protocol instance id
-   */
-  Owner(const Licq::UserId& id);
+  ChatUser();
+  ~ChatUser();
 
-  ~Owner();
+  CChatClient* m_pClient;
+  DcSocket sock;
+  std::deque<unsigned char> chatQueue;
+  unsigned short state;
+  std::string myLinebuf;
 
-protected:
-  // From Licq::Owner
-  void saveOwnerInfo();
+  pthread_mutex_t mutex;
 };
 
-} // namespace LicqDaemon
+struct SChatReverseConnectInfo
+{
+  int nId;
+  bool bTryDirect;
+  ChatUser* u;
+  CChatManager* m;
+};
+
+} // namespace LicqIcq
 
 #endif

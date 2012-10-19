@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,13 +51,11 @@ class MainWindow;
 class SignalManager;
 class UserEventCommon;
 class UserEventTabDlg;
-class UserDlg;
 class UserMenu;
 class UserSendEvent;
 class UserViewEvent;
 
 typedef QList<UserViewEvent*> UserViewEventList;
-typedef QList<UserDlg*> UserDlgList;
 typedef QList<UserSendEvent*> UserSendEventList;
 
 #ifdef USE_KDE
@@ -95,16 +93,6 @@ public:
    * @return true if contact was removed
    */
   bool removeUserFromList(const Licq::UserId& userId, QWidget* parent = NULL);
-
-  /**
-   * Show contact info dialog
-   *
-   * @param fcn Tab to show
-   * @param userId Contact id
-   * @param toggle True to close dialog if already open
-   * @param updateNow True to make the dialog contents update
-   */
-  void showInfoDialog(int fcn, const Licq::UserId& userId, bool toggle = false, bool updateNow = false);
 
   /**
    * Show contact view event dialog (used when chat mode is disabled)
@@ -243,7 +231,6 @@ private slots:
   void updateGlobalShortcuts();
 #endif
 
-  void userDlgFinished(UserDlg* dialog);
   void userEventTabDlgDone();
 
   /**
@@ -339,7 +326,6 @@ private:
   // User dialogs
   UserEventTabDlg* myUserEventTabDlg;
   UserViewEventList myUserViewList;
-  UserDlgList myUserDlgList;
   UserSendEventList myUserSendList;
 
 #ifdef Q_WS_X11

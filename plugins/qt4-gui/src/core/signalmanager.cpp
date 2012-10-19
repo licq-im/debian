@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -100,22 +100,39 @@ void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
       emit logoff();
       break;
 
-    case Licq::PluginSignal::SignalUiViewEvent:
-      emit ui_viewevent(userId);
-      break;
+    case Licq::PluginSignal::SignalPluginEvent:
+    {
+      switch (sig->subSignal())
+      {
+        case Licq::PluginSignal::PluginViewEvent:
+          emit ui_viewevent(userId);
+          break;
 
-    case Licq::PluginSignal::SignalUiMessage:
-      //TODO
-      emit ui_message(userId);
-      break;
+        case Licq::PluginSignal::PluginStartMessage:
+          emit ui_message(userId);
+          break;
 
+        case Licq::PluginSignal::PluginShowUserList:
+          emit ui_showuserlist();
+          break;
+
+        case Licq::PluginSignal::PluginHideUserList:
+          emit ui_hideuserlist();
+          break;
+      }
+      break;
+    }
     case Licq::PluginSignal::SignalAddedToServer:
       //TODO
       gProtocolManager.updateUserAlias(userId);
       break;
 
     case Licq::PluginSignal::SignalNewProtocol:
-      emit protocolPlugin(sig->subSignal());
+      emit protocolPluginLoaded(sig->subSignal());
+      break;
+
+    case Licq::PluginSignal::SignalRemoveProtocol:
+      emit protocolPluginUnloaded(sig->subSignal());
       break;
 
     case Licq::PluginSignal::SignalConversation:

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include "forwarder.h"
+
 #include <cctype>
 #include <climits>
 #include <cstdio>
@@ -27,8 +29,6 @@
 #include <unistd.h>
 #include <cerrno>
 
-#include "forwarder.h"
-#include "forwarder.conf.h"
 #include <licq/logging/log.h>
 #include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
@@ -48,6 +48,8 @@ using Licq::gLog;
 using Licq::gProtocolManager;
 using Licq::gUserManager;
 using Licq::UserId;
+
+extern const char* const FORWARDER_CONF;
 
 const unsigned short SUBJ_CHARS = 20;
 
@@ -74,7 +76,7 @@ CLicqForwarder::~CLicqForwarder()
 
 std::string CLicqForwarder::name() const
 {
-  return "ICQ Forwarder";
+  return "Forwarder";
 }
 
 std::string CLicqForwarder::version() const
@@ -84,7 +86,7 @@ std::string CLicqForwarder::version() const
 
 std::string CLicqForwarder::description() const
 {
-  return "ICQ message forwarder to email/icq";
+  return "Message forwarder";
 }
 
 std::string CLicqForwarder::usage() const
@@ -152,13 +154,13 @@ int CLicqForwarder::run()
   Licq::IniFile conf(filename);
   if (!conf.loadFile())
   {
-    if(!CreateDefaultConfig())
+    conf.loadRawConfiguration(FORWARDER_CONF);
+    if (!conf.writeFile())
     {
       gLog.error("Could not create default configuration file: %s", filename.c_str());
       return 1;
     }
     gLog.info("A default configuration file has been created: %s", filename.c_str());
-    conf.loadFile();
   }
   conf.setSection("Forward");
   conf.get("Type", m_nForwardType, FORWARD_EMAIL);
@@ -172,21 +174,54 @@ int CLicqForwarder::run()
       conf.get("From", mySmtpFrom);
       conf.get("Domain", mySmtpDomain);
       break;
-    case FORWARD_ICQ:
+    case FORWARD_LICQ:
     {
-      conf.setSection("ICQ");
+      conf.setSection("Licq");
       string accountId;
-      conf.get("Uin", accountId, "");
+      conf.get("UserId", accountId);
+      string protocol;
+      conf.get("Protocol", protocol);
+
+      if (protocol.empty() && conf.setSection("ICQ", false))
+      {
+        // Migrate old ICQ setting
+        conf.get("Uin", accountId);
+        if (accountId.empty() || accountId == "0")
+        {
+          gLog.error("Invalid ICQ forward UIN: %s", accountId.c_str());
+          return 1;
+        }
+
+        myUserId = UserId(accountId, LICQ_PPID);
+
+        conf.setSection("Licq");
+        conf.set("Protocol", "ICQ");
+        conf.set("UserId", accountId);
+        conf.writeFile();
+        break;
+      }
+
       if (accountId.empty())
       {
-        gLog.error("Invalid ICQ forward UIN: %s", accountId.c_str());
+        gLog.error("Missing user id");
         return 1;
       }
-      myUserId = UserId(accountId, LICQ_PPID);
+
+      if (protocol == "ICQ")
+        myUserId = UserId(accountId, LICQ_PPID);
+      else if (protocol == "MSN")
+        myUserId = UserId(accountId, MSN_PPID);
+      else if (protocol == "Jabber" || protocol == "XMPP")
+        myUserId = UserId(accountId, JABBER_PPID);
+      else
+      {
+        gLog.error("Invalid protocol: %s", protocol.c_str());
+        return 1;
+      }
       break;
     }
     default:
-      gLog.error("Invalid forward type: %d",  m_nForwardType);
+      gLog.error("Invalid forward type: %d", m_nForwardType);
       return 1;
       break;
   }
@@ -227,20 +262,6 @@ int CLicqForwarder::run()
 void CLicqForwarder::destructor()
 {
   delete this;
-}
-
-/*---------------------------------------------------------------------------
- * CLicqForwarder::CreateDefaultConfig
- *-------------------------------------------------------------------------*/
-bool CLicqForwarder::CreateDefaultConfig()
-{
-  // Create licq_forwarder.conf
-  FILE* f = fopen(configFile().c_str(), "w");
-  if (f == NULL)
-    return false;
-  fprintf(f, "%s", FORWARDER_CONF);
-  fclose(f);
-  return true;
 }
 
 /*---------------------------------------------------------------------------
@@ -385,21 +406,22 @@ bool CLicqForwarder::ForwardEvent(const Licq::User* u, const Licq::UserEvent* e)
     case FORWARD_EMAIL:
       s = ForwardEvent_Email(u, e);
       break;
-    case FORWARD_ICQ:
-      s = ForwardEvent_ICQ(u, e);
+    case FORWARD_LICQ:
+      s = ForwardEvent_Licq(u, e);
       break;
   }
   return s;
 }
 
 
-bool CLicqForwarder::ForwardEvent_ICQ(const Licq::User* u, const Licq::UserEvent* e)
+bool CLicqForwarder::ForwardEvent_Licq(const Licq::User* u, const Licq::UserEvent* e)
 {
   char szTime[64];
   time_t t = e->Time();
   strftime(szTime, 64, "%a %b %d, %R", localtime(&t));
-  string text = "[ " + e->description() + " from " + u->getAlias() + " (" +
-      u->accountId() + ") sent " + szTime + " ]\n\n" + e->text() + "\n";
+  string text = "[ " + Licq::gTranslator.toUtf8(e->description()) + " from " +
+      u->getAlias() + " (" + u->accountId() + ") sent " + szTime + " ]\n\n" +
+      e->text() + "\n";
   unsigned long tag = gProtocolManager.sendMessage(myUserId, text);
   if (tag == 0)
   {
@@ -422,8 +444,15 @@ bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEve
   if (!u->isUser())
   {
     headTo = "To: " + u->getAlias() + " <" + mySmtpTo + ">";
-    headFrom = "From: ICQ System Message <support@icq.com>";
-    headReplyTo = "Reply-To: Mirabilis <support@icq.com>";
+    if (u->protocolId() == LICQ_PPID)
+    {
+      headFrom = "From: ICQ System Message <support@icq.com>";
+      headReplyTo = "Reply-To: Mirabilis <support@icq.com>";
+    }
+    else
+    {
+      headFrom = "From: System Message <" + u->getEmail() + ">";
+    }
   }
   else
   {
@@ -443,22 +472,24 @@ bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEve
   // ctime returns a string ending with \n, drop it
   headDate.erase(headDate.size()-1);
 
+  string eventText = e->textLoc();
+
   switch (e->eventType())
   {
     case Licq::UserEvent::TypeMessage:
     case Licq::UserEvent::TypeChat:
     {
-      string s = e->text().substr(0, SUBJ_CHARS);
+      string s = eventText.substr(0, SUBJ_CHARS);
       size_t pos = s.find('\n');
       if (pos != string::npos)
         s.erase(pos);
       subject = "Subject: " + e->description() + " [" + s +
-          (e->text().size() > SUBJ_CHARS ? "..." : "") + "]";
+          (eventText.size() > SUBJ_CHARS ? "..." : "") + "]";
       break;
     }
     case Licq::UserEvent::TypeUrl:
       subject = "Subject: " + e->description() + " [" +
-          dynamic_cast<const Licq::EventUrl*>(e)->url() + "]";
+          Licq::gTranslator.fromUtf8(dynamic_cast<const Licq::EventUrl*>(e)->url()) + "]";
       break;
     case Licq::UserEvent::TypeFile:
       subject = "Subject: " + e->description() + " [" +
@@ -537,7 +568,7 @@ bool CLicqForwarder::ForwardEvent_Email(const Licq::User* u, const Licq::UserEve
     return false;
   }
 
-  string textDos = Licq::gTranslator.returnToDos(e->text());
+  string textDos = Licq::gTranslator.returnToDos(eventText);
   string msg = headDate + "\r\n" + headFrom + "\r\n" + headTo + "\r\n" +
       headReplyTo + "\r\n" + subject + "\r\n\r\n" + textDos + "\r\n.\r\n";
   fprintf(fs, "%s", msg.c_str());

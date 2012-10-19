@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2002-2009,2011 Licq developers
+ * Copyright (C) 2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,43 +17,18 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef REQAUTHDLG_H
-#define REQAUTHDLG_H
+#ifndef LICQICQ_FILETRANSFER_H
+#define LICQICQ_FILETRANSFER_H
 
-#include <QDialog>
+#include <licq/icq/filetransfer.h>
 
-#include <licq/userid.h>
+#include "socket.h"
 
-class QGroupBox;
-class QLabel;
-class QLineEdit;
-class QPushButton;
 
-namespace LicqQtGui
+class CFileTransferManager::Private
 {
-class MLEdit;
-class ProtoComboBox;
-
-class ReqAuthDlg : public QDialog
-{
-   Q_OBJECT
-
 public:
-   ReqAuthDlg(const Licq::UserId& userId = Licq::UserId(), QWidget* parent = 0);
-
-private:
-   Licq::UserId myUserId;
-   QPushButton* btnOk;
-   QPushButton* btnCancel;
-   ProtoComboBox* myProtocolCombo;
-   QLineEdit* myIdEdit;
-   QGroupBox* grpRequest;
-   MLEdit* mleRequest;
-
-private slots:
-   void ok();
+  LicqIcq::DcSocket mySock;
 };
-
-} // namespace LicqQtGui
 
 #endif

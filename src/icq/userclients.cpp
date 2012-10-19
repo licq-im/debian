@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2011-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
  * These functions attempt to identify the user client based on published
  * capabilities and signatures
  *
- * Most of this is taken from Miranda IcqOscar protocol 0.9.25
+ * Most of this is taken from Miranda IcqOscar protocol 0.9.47
  */
 
 #include "icq.h"
@@ -33,10 +33,10 @@
 
 using std::string;
 using std::stringstream;
+using namespace LicqIcq;
 
-const int CAP_LENGTH = 16;
-
-const char* findCapability(const char* caps, int capSize, const char* needle, int needleSize = CAP_LENGTH)
+const char* findCapability(const char* caps, int capSize,
+                           const uint8_t* needle, int needleSize = CAP_LENGTH)
 {
   while (capSize >= CAP_LENGTH)
   {
@@ -46,6 +46,13 @@ const char* findCapability(const char* caps, int capSize, const char* needle, in
     capSize -= CAP_LENGTH;
   }
   return NULL;
+}
+
+const char* findCapability(const char* caps, int capSize,
+                           const char* needle, int needleSize = CAP_LENGTH)
+{
+  return findCapability(
+      caps, capSize, reinterpret_cast<const uint8_t*>(needle), needleSize);
 }
 
 static void appendVersion(stringstream& buf, int min, const char* ver)
@@ -232,6 +239,13 @@ static string detectFromCapSign(const char* caps, int capSize, unsigned ts1, uns
     else if (memcmp(cap, "\x7A\x7B\x7C\x7D\x7E\x7F\x0A\x03\x0B\x04\x01\x53", 12) == 0)
     {
       buf << "QIP 2010";
+      if (ts1 != 0)
+        buf << " (" << ts1 << ')';
+      return buf.str();
+    }
+    else if (memcmp(cap, "\x7F\x7F\x7C\x7D\x7E\x7F\x0A\x03\x0B\x04\x01\x53", 12) == 0)
+    {
+      buf << "QIP 2012";
       if (ts1 != 0)
         buf << " (" << ts1 << ')';
       return buf.str();

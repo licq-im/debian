@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -42,7 +42,7 @@
 
 #include <sys/select.h>
 
-using namespace Jabber;
+using namespace LicqJabber;
 
 using Licq::OnEventData;
 using Licq::gOnEventManager;
@@ -208,95 +208,56 @@ void Plugin::processSignal(Licq::ProtocolSignal* signal)
   switch (signal->signal())
   {
     case Licq::ProtocolSignal::SignalLogon:
-      doLogon(static_cast<Licq::ProtoLogonSignal*>(signal));
+      doLogon(dynamic_cast<Licq::ProtoLogonSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalLogoff:
       doLogoff();
       break;
     case Licq::ProtocolSignal::SignalChangeStatus:
-      doChangeStatus(static_cast<Licq::ProtoChangeStatusSignal*>(signal));
+      doChangeStatus(dynamic_cast<Licq::ProtoChangeStatusSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalAddUser:
-      doAddUser(static_cast<Licq::ProtoAddUserSignal*>(signal));
+      doAddUser(dynamic_cast<Licq::ProtoAddUserSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalRemoveUser:
-      doRemoveUser(static_cast<Licq::ProtoRemoveUserSignal*>(signal));
+      doRemoveUser(dynamic_cast<Licq::ProtoRemoveUserSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalRenameUser:
-      doRenameUser(static_cast<Licq::ProtoRenameUserSignal*>(signal));
+      doRenameUser(dynamic_cast<Licq::ProtoRenameUserSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalChangeUserGroups:
-      doChangeUserGroups(
-          static_cast<Licq::ProtoChangeUserGroupsSignal*>(signal));
+      doChangeUserGroups(dynamic_cast<Licq::ProtoChangeUserGroupsSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalSendMessage:
-      doSendMessage(static_cast<Licq::ProtoSendMessageSignal*>(signal));
+      doSendMessage(dynamic_cast<Licq::ProtoSendMessageSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalNotifyTyping:
-      doNotifyTyping(static_cast<Licq::ProtoTypingNotificationSignal*>(signal));
+      doNotifyTyping(dynamic_cast<Licq::ProtoTypingNotificationSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalGrantAuth:
-      doGrantAuth(static_cast<Licq::ProtoGrantAuthSignal*>(signal));
+      doGrantAuth(dynamic_cast<Licq::ProtoGrantAuthSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalRefuseAuth:
-      doRefuseAuth(static_cast<Licq::ProtoRefuseAuthSignal*>(signal));
+      doRefuseAuth(dynamic_cast<Licq::ProtoRefuseAuthSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalRequestInfo:
-      doGetInfo(static_cast<Licq::ProtoRequestInfo*>(signal));
+      doGetInfo(dynamic_cast<Licq::ProtoRequestInfo*>(signal));
       break;
     case Licq::ProtocolSignal::SignalUpdateInfo:
-      doUpdateInfo(static_cast<Licq::ProtoUpdateInfoSignal*>(signal));
-      break;
-    case Licq::ProtocolSignal::SignalRequestPicture:
-      gLog.info("SignalRequestPicture not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalBlockUser:
-      gLog.info("SignalBlockUser not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalUnblockUser:
-      gLog.info("SignalUnblockUser not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalAcceptUser:
-      gLog.info("SignalAcceptUser not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalUnacceptUser:
-      gLog.info("SignalUnacceptUser not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalIgnoreUser:
-      gLog.info("SignalIgnoreUser not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalUnignoreUser:
-      gLog.info("SignalUnignoreUser not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalSendFile:
-      gLog.info("SignalSendFile not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalSendChat:
-      gLog.info("SignalSendChat not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalCancelEvent:
-      gLog.info("SignalCancelEvent not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalSendReply:
-      gLog.info("SignalSendReply not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalOpenedWindow:
-      gLog.info("SignalOpenedWindow not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalClosedWindow:
-      gLog.info("SignalClosedWindow not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalOpenSecure:
-      gLog.info("SignalOpenSecure not implemented");
-      break;
-    case Licq::ProtocolSignal::SignalCloseSecure:
-      gLog.info("SignalCloseSecure not implemented");
+      doUpdateInfo(dynamic_cast<Licq::ProtoUpdateInfoSignal*>(signal));
       break;
     case Licq::ProtocolSignal::SignalRequestAuth:
-      doRequestAuth(static_cast<Licq::ProtoRequestAuthSignal*>(signal));
+      doRequestAuth(dynamic_cast<Licq::ProtoRequestAuthSignal*>(signal));
+      break;
+    case Licq::ProtocolSignal::SignalRenameGroup:
+      doRenameGroup(dynamic_cast<Licq::ProtoRenameGroupSignal*>(signal));
       break;
     default:
       gLog.error("Unknown signal %u", signal->signal());
+      /* Unsupported action, if it has an eventId, cancel it */
+      if (signal->eventId() != 0)
+        Licq::gPluginManager.pushPluginEvent(
+            new Licq::Event(signal, Licq::Event::ResultUnsupported));
       break;
   }
 }
@@ -368,11 +329,8 @@ void Plugin::doSendMessage(Licq::ProtoSendMessageSignal* signal)
   Licq::EventMsg* message = new Licq::EventMsg(
       signal->message().c_str(), Licq::EventMsg::TimeNow, Licq::EventMsg::FlagSender);
 
-  Licq::Event* event = new Licq::Event(signal->eventId(), 0, NULL,
-      Licq::Event::ConnectServer, signal->userId(), message);
+  Licq::Event* event = new Licq::Event(signal, Licq::Event::ResultAcked, message);
   event->myCommand = Licq::Event::CommandMessage;
-  event->thread_plugin = signal->callerThread();
-  event->m_eResult = Licq::Event::ResultAcked;
 
   if (event->m_pUserEvent)
   {
@@ -401,12 +359,14 @@ void Plugin::doGetInfo(Licq::ProtoRequestInfo* signal)
 {
   assert(myClient != NULL);
   myClient->getVCard(signal->userId().accountId());
+
+  Licq::gPluginManager.pushPluginEvent(new Licq::Event(signal));
 }
 
-void Plugin::doUpdateInfo(Licq::ProtoUpdateInfoSignal* /*signal*/)
+void Plugin::doUpdateInfo(Licq::ProtoUpdateInfoSignal* signal)
 {
   assert(myClient != NULL);
-  Licq::OwnerReadGuard owner(JABBER_PPID);
+  Licq::OwnerReadGuard owner(signal->userId());
   if (!owner.isLocked())
   {
     gLog.error("No owner set");
@@ -415,6 +375,8 @@ void Plugin::doUpdateInfo(Licq::ProtoUpdateInfoSignal* /*signal*/)
 
   UserToVCard vcard(*owner);
   myClient->setOwnerVCard(vcard);
+
+  Licq::gPluginManager.pushPluginEvent(new Licq::Event(signal));
 }
 
 void Plugin::doAddUser(Licq::ProtoAddUserSignal* signal)
@@ -454,6 +416,7 @@ void Plugin::doRemoveUser(Licq::ProtoRemoveUserSignal* signal)
 {
   assert(myClient != NULL);
   myClient->removeUser(signal->userId().accountId());
+  Licq::gUserManager.removeLocalUser(signal->userId());
 }
 
 void Plugin::doRenameUser(Licq::ProtoRenameUserSignal* signal)
@@ -474,12 +437,16 @@ void Plugin::doGrantAuth(Licq::ProtoGrantAuthSignal* signal)
 {
   assert(myClient != NULL);
   myClient->grantAuthorization(signal->userId().accountId());
+
+  Licq::gPluginManager.pushPluginEvent(new Licq::Event(signal));
 }
 
 void Plugin::doRefuseAuth(Licq::ProtoRefuseAuthSignal* signal)
 {
   assert(myClient != NULL);
   myClient->refuseAuthorization(signal->userId().accountId());
+
+  Licq::gPluginManager.pushPluginEvent(new Licq::Event(signal));
 }
 
 void Plugin::doRequestAuth(Licq::ProtoRequestAuthSignal* signal)
@@ -487,4 +454,27 @@ void Plugin::doRequestAuth(Licq::ProtoRequestAuthSignal* signal)
   assert(myClient != NULL);
   myClient->requestAuthorization(
       signal->userId().accountId(), signal->message());
+}
+
+void Plugin::doRenameGroup(Licq::ProtoRenameGroupSignal* s)
+{
+  Licq::UserListGuard userList(JABBER_PPID);
+  BOOST_FOREACH(Licq::User* licqUser, **userList)
+  {
+    Licq::UserReadGuard user(licqUser);
+
+    if (!user->isInGroup(s->groupId()))
+      continue;
+
+    // User is member of renamed group, get complete group list and update server
+    gloox::StringList groupNames;
+    const Licq::UserGroupList groups = user->GetGroups();
+    BOOST_FOREACH(int groupId, groups)
+    {
+      string groupName = Licq::gUserManager.GetGroupNameFromGroup(groupId);
+      if (!groupName.empty())
+        groupNames.push_back(groupName);
+    }
+    myClient->changeUserGroups(user->id().accountId(), groupNames);
+  }
 }

@@ -26,7 +26,6 @@ set(licq_SRCS
   color.cpp
   daemon.cpp
   event.cpp
-  fifo.cpp
   filter.cpp
   gpghelper.cpp
   hebrev.c
@@ -36,6 +35,7 @@ set(licq_SRCS
   oneventmanager.cpp
   packet.cpp
   protocolmanager.cpp
+  protocolsignal.cpp
   proxy.cpp
   sarmanager.cpp
   sighandler.cpp
@@ -52,6 +52,7 @@ set(licq_SRCS
   contactlist/userhistory.cpp
   contactlist/usermanager.cpp
 
+  icq/buffer.cpp
   icq/chat.cpp
   icq/codes.c
   icq/filetransfer.cpp
@@ -60,9 +61,13 @@ set(licq_SRCS
   icq/icq.cpp
   icq/icqprotocolplugin.cpp
   icq/oscarservice.cpp
-  icq/packet.cpp
+  icq/owner.cpp
+  icq/packet-srv.cpp
+  icq/packet-tcp.cpp
   icq/rtf.cc
+  icq/socket.cpp
   icq/threads.cpp
+  icq/user.cpp
   icq/userclients.cpp
 
   logging/logservice.cpp
@@ -104,6 +109,10 @@ set(test_SRCS
 
   ${tested_SRCS}
 )
+
+if (USE_FIFO)
+  list(APPEND licq_SRCS fifo.cpp)
+endif (USE_FIFO)
 
 add_executable(licq ${licq_SRCS})
 

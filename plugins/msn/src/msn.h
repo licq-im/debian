@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2011 Licq developers
+ * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,8 +17,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __MSN_H
-#define __MSN_H
+#ifndef LICQMSN_MSN_H
+#define LICQMSN_MSN_H
 
 #include <licq/plugin/protocolplugin.h>
 
@@ -37,6 +37,9 @@ namespace Licq
 {
 class Event;
 }
+
+namespace LicqMsn
+{
 
 const char CONTACT_LIST[] = "FL";
 const char ALLOW_LIST[] = "AL";
@@ -109,13 +112,10 @@ protected:
   bool init(int, char**);
   int run();
   void destructor();
+  Licq::User* createUser(const Licq::UserId& id, bool temporary = false);
+  Licq::Owner* createOwner(const Licq::UserId& id);
 
 private:
-  /**
-   * Write configuration to file
-   */
-  void saveConfig();
-
   void ProcessSignal(Licq::ProtocolSignal* s);
   void ProcessPipe();
   void ProcessServerPacket(CMSNBuffer *);
@@ -127,9 +127,8 @@ private:
   void SendPacket(CMSNPacket *);
   void Send_SB_Packet(const Licq::UserId& userId, CMSNPacket* p, int nSocket = -1,
       bool bDelete = true);
-  void MSNGetServer();
-  void MSNAuthenticateRedirect(const std::string& host, const std::string& param);
-  void MSNAuthenticate(char *);
+  void MSNAuthenticate(const std::string& host = "loginnet.passport.com",
+      const std::string& path = "/login2.srf");
   bool MSNSBConnectStart(const std::string& server, const std::string& cookie);
   bool MSNSBConnectAnswer(const std::string& server, const std::string& sessionId,
       const std::string& cookie, const std::string& user);
@@ -171,9 +170,6 @@ private:
    */
   void killConversation(int sock);
 
-  // Config
-  unsigned long m_nListVersion;
-
   // Variables
   bool m_bExit;
   int m_nServerSocket;
@@ -201,13 +197,15 @@ private:
                   mutex_MSNEventList,
                   mutex_Bucket;
     
-  char *m_szUserName,
-       *m_szCookie;
+  char *m_szUserName;
+  std::string myCookie;
   std::string myPassword;
 
   friend class CMSNDataEvent;
 };
 
+} // namespace LicqMsn
+
 extern Licq::SocketManager gSocketMan;
 
-#endif // __MSN_H
+#endif

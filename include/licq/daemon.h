@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@ class UserId;
 class Daemon : private boost::noncopyable
 {
 public:
-  virtual pthread_t* Shutdown() = 0;
+  virtual void Shutdown() = 0;
   virtual const char* Version() const = 0;
   virtual void SaveConf() = 0;
 
@@ -64,9 +64,9 @@ public:
 
   // Firewall options
   bool tcpEnabled() const                       { return myTcpEnabled; }
-  void setTcpEnabled(bool b);
+  void setTcpEnabled(bool b)                    { myTcpEnabled = b; }
   bool behindFirewall() const                   { return myBehindFirewall; }
-  void setBehindFirewall(bool b);
+  void setBehindFirewall(bool b)                { myBehindFirewall = b; }
   unsigned tcpPortsLow() const                  { return myTcpPortsLow; }
   unsigned tcpPortsHigh() const                 { return myTcpPortsHigh; }
   void setTcpPorts(unsigned lowPort, unsigned highPort);
@@ -102,9 +102,6 @@ public:
   virtual bool addUserEvent(User* u, UserEvent* e) = 0;
   virtual void rejectEvent(const UserId& userId, UserEvent* e) = 0;
 
-  void cancelEvent(unsigned long eventId);
-  void cancelEvent(Event* event);
-
   enum IgnoreTypes
   {
     IgnoreMassMsg = 1,
@@ -114,10 +111,6 @@ public:
   };
   bool ignoreType(unsigned type) const          { return (myIgnoreTypes & type); }
   void setIgnoreType(unsigned type, bool ignore);
-
-  void pluginUIViewEvent(const UserId& userId);
-
-  void pluginUIMessage(const UserId& userId);
 
   /**
    * Get path for the base dir (e.g. /home/fred/.licq/)

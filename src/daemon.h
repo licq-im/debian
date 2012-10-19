@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 
 #include <licq/daemon.h>
 
+#include <licq/inifile.h>
 #include <licq/thread/mutex.h>
 
 class CLicq;
@@ -46,17 +47,6 @@ public:
   void initialize();
 
   /**
-   * Get next available id to use for an event
-   * TODO: Move to ProtocolManager when no longer used directy by ICQ code
-   */
-  unsigned long getNextEventId();
-
-  /**
-   * Only called by Shutdown_tep
-   */
-  void shutdownPlugins();
-
-  /**
    * Set dir variable
    * Only called once during startup
    */
@@ -68,21 +58,40 @@ public:
    */
   void autoLogon();
 
+  /**
+   * Get access to main config file
+   * Caller must use unlock mutex by calling releaseLicqConf() when done
+   *
+   * @return Reference to licq.conf
+   */
+  Licq::IniFile& getLicqConf()
+  { myLicqConfMutex.lock(); return myLicqConf; }
+
+  /**
+   * Unlock mutex for main config
+   */
+  void releaseLicqConf()
+  { myLicqConfMutex.unlock(); }
+
+  /// Notify main thread that a plugin has exited
+  void notifyPluginExited();
+
   // From Licq::Daemon
-  pthread_t* Shutdown();
+  void Shutdown();
   const char* Version() const;
   void SaveConf();
   bool addUserEvent(Licq::User* u, Licq::UserEvent* e);
   void rejectEvent(const Licq::UserId& userId, Licq::UserEvent* e);
 
 private:
-  unsigned long myNextEventId;
-  Licq::Mutex myNextEventIdMutex;
   std::string myRejectFile;
   unsigned myErrorTypes;
   std::string myErrorFile;
 
   pthread_t thread_shutdown;
+
+  Licq::IniFile myLicqConf;
+  Licq::Mutex myLicqConfMutex;
 
   CLicq* licq;
 };

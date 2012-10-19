@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -37,7 +37,7 @@
 #include <licq/socket.h>
 #include <licq/userevents.h>
 
-using namespace Jabber;
+using namespace LicqJabber;
 
 using Licq::OnEventData;
 using Licq::UserId;
@@ -62,7 +62,7 @@ void Handler::onConnect(const string& ip, int port, unsigned status)
     {
       owner->statusChanged(status);
       owner->SetIpPort(Licq::INetSocket::ipToInt(ip), port);
-      owner->SetTimezone(Licq::User::SystemTimezone());
+      owner->setTimezone(Licq::User::systemTimezone());
     }
   }
 
@@ -164,7 +164,7 @@ void Handler::onUserRemoved(const string& id)
 {
   TRACE();
 
-  gUserManager.removeUser(UserId(id, JABBER_PPID), false);
+  Licq::gUserManager.removeLocalUser(UserId(id, JABBER_PPID));
 }
 
 void Handler::onUserStatusChange(
@@ -225,7 +225,7 @@ void Handler::onRosterReceived(const std::set<string>& ids)
   }
 
   for (it = todel.begin(); it != todel.end(); ++it)
-    gUserManager.removeUser(*it, false);
+    Licq::gUserManager.removeLocalUser(*it);
 }
 
 void Handler::onUserAuthorizationRequest(

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2009,2011 Licq developers
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@ class QWidget;
 namespace LicqQtGui
 {
 class SettingsDlg;
+class SpecialSpinBox;
 
 namespace Settings
 {
@@ -80,8 +81,8 @@ private:
   QCheckBox* myTcpEnabledCheck;
   QLabel* myPortsInLabel;
   QLabel* myPortsIn2Label;
-  QSpinBox* myPortLowSpin;
-  QSpinBox* myPortHighSpin;
+  SpecialSpinBox* myPortLowSpin;
+  SpecialSpinBox* myPortHighSpin;
   QLabel* myProxyTypeLabel;
   QLabel* myProxyHostLabel;
   QLabel* myProxyPortLabel;
@@ -89,14 +90,11 @@ private:
   QLabel* myProxyPasswdLabel;
   QCheckBox* myProxyEnabledCheck;
   QCheckBox* myProxyAuthEnabledCheck;
-  QCheckBox* myReconnectAfterUinClashCheck;
   QComboBox* myProxyTypeCombo;
   QLineEdit* myProxyHostEdit;
   QLineEdit* myProxyLoginEdit;
   QLineEdit* myProxyPasswdEdit;
   QSpinBox* myProxyPortSpin;
-  QGroupBox* myIcqConnectionBox;
-  QVBoxLayout* myIcqConnectionLayout;
 };
 
 } // namespace Settings

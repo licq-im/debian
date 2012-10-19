@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2011 Licq developers
+ * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 
 #include <licq/plugin/generalplugin.h>
 #include <licq/plugin/protocolplugin.h>
+#include <licq/pipe.h>
 
 extern char **global_argv;
 extern int global_argc;
@@ -50,23 +51,35 @@ public:
   int Main();
   const char *Version();
 
-  void ShutdownPlugins();
+  void shutdown();
 
   void PrintUsage();
   bool Install();
   void SaveLoadedPlugins();
 
+  // Notifications that can be sent to main thread
+  static const char NotifyReapPlugin = 'P';
+  static const char NotifyShuttingDown = 'X';
+
+  /**
+   * Send a notification to the main thread
+   *
+   * @param c A character
+   */
+  void notify(char c)
+  { myPipe.putChar(c); }
+
 protected:
   bool upgradeLicq128(Licq::IniFile& licqConf);
 
-  Licq::GeneralPlugin::Ptr
-  LoadPlugin(const char *, int, char **, bool keep = true);
-  Licq::ProtocolPlugin::Ptr
-  LoadProtoPlugin(const char *, bool keep = true);
+  Licq::GeneralPlugin::Ptr LoadPlugin(const std::string& name, int argc,
+      char** argv, bool keep = true);
+  Licq::ProtocolPlugin::Ptr LoadProtoPlugin(const std::string& name, bool keep = true);
 
 private:
   boost::shared_ptr<LicqDaemon::StreamLogSink> myConsoleLog;
   int myConsoleLogLevel;
+  Licq::Pipe myPipe;
 };
 
 #endif

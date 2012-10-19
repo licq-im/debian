@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2011 Licq developers
+ * Copyright (C) 2005-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,7 +64,7 @@ GPGKeySelect::GPGKeySelect(const Licq::UserId& userId, QWidget* parent)
     if (!u.isLocked())
       return;
 
-    setWindowTitle(tr("Select GPG Key for user %1")
+    setWindowTitle(tr("Select GPG Key for %1")
         .arg(QString::fromUtf8(u->getAlias().c_str())));
 
     top_lay->addWidget(new QLabel(tr("Select a GPG key for user %1.")
@@ -75,7 +75,7 @@ GPGKeySelect::GPGKeySelect(const Licq::UserId& userId, QWidget* parent)
       top_lay->addWidget(new QLabel(tr("Current key: %1")
             .arg(QString::fromLocal8Bit(u->gpgKey().c_str()))));
 
-    useGPG = new QCheckBox(tr("Use GPG Encryption"));
+    useGPG = new QCheckBox(tr("Use GPG encryption"));
     useGPG->setChecked(u->UseGPG() || u->gpgKey().empty());
     top_lay->addWidget(useGPG);
 
@@ -223,13 +223,13 @@ void KeyView::testViewItem(QTreeWidgetItem* item, const Licq::User* u)
   int val = 0;
   for (int i = 0; i < 2; ++i)
   {
-    if (item->text(i).contains(u->getFirstName().c_str(), Qt::CaseInsensitive))
+    if (item->text(i).contains(QString::fromUtf8(u->getFirstName().c_str()), Qt::CaseInsensitive))
       val++;
-    if (item->text(i).contains(u->getLastName().c_str(), Qt::CaseInsensitive))
+    if (item->text(i).contains(QString::fromUtf8(u->getLastName().c_str()), Qt::CaseInsensitive))
       val++;
-    if (item->text(i).contains(u->getAlias().c_str(), Qt::CaseInsensitive))
+    if (item->text(i).contains(QString::fromUtf8(u->getAlias().c_str()), Qt::CaseInsensitive))
       val++;
-    if (item->text(i).contains(u->getEmail().c_str(), Qt::CaseInsensitive))
+    if (item->text(i).contains(QString::fromUtf8(u->getEmail().c_str()), Qt::CaseInsensitive))
       val++;
   }
 

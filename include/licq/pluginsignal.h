@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,15 +43,15 @@ public:
     SignalLogon         = 1<<2,         // Owner logged on, userId is owner
     SignalLogoff        = 1<<3,         // Owner logged off, userId is owner
     SignalOnEvent       = 1<<4,         // ?
-    SignalUiViewEvent   = 1<<5,         // UI should popup oldest unread event for userId (if set)
-    SignalUiMessage     = 1<<6,         // UI should open message dialog for userId
     SignalAddedToServer = 1<<7,         // userId has been successfully added to server list
     SignalNewProtocol   = 1<<8,         // A new protocol plugin has been loaded, subtype is protocolId
     SignalConversation  = 1<<9,         // Conversation signal
     SignalVerifyImage   = 1<<17,        // A registration verification image is available as basedir/verify.jpg
     SignalNewOwner      = 1<<18,        // Registration complete, userId is new owner
+    SignalPluginEvent   = 1<<19,        // Event to perform in a plugin, subtype specifies event
+    SignalRemoveProtocol= 1<<20,        // A protocol plugin has been unloaded, subtype is protocolId
 
-    SignalAll           = 0x000603ff,   // Mask for all known signals
+    SignalAll           = 0x001e039f,   // Mask for all known signals
   };
 
   enum ListSubSignal
@@ -93,6 +93,14 @@ public:
     ConvoCreate         = 1,            // Conversation created for userId
     ConvoJoin           = 2,            // userId joinded conversation
     ConvoLeave          = 3,            // userId left conversation
+  };
+
+  enum PluginSubSignal
+  {
+    PluginViewEvent     = 1,            // UI should popup oldest unread event for userId (if set)
+    PluginStartMessage  = 2,            // UI should open message dialog for userId
+    PluginShowUserList  = 3,            // UI should show (if hidden) and raise contact list
+    PluginHideUserList  = 4,            // UI should hide contact list
   };
 
   /**

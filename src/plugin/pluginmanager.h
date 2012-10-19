@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,11 +28,17 @@
 
 #include <licq/plugin/generalplugin.h>
 #include <licq/plugin/protocolplugin.h>
-#include <licq/thread/condition.h>
 #include <licq/thread/mutex.h>
 
 #include "../utils/dynamiclibrary.h"
 #include "pluginthread.h"
+
+namespace Licq
+{
+class Owner;
+class User;
+class UserId;
+}
 
 namespace LicqDaemon
 {
@@ -41,7 +47,6 @@ class PluginManager : public Licq::PluginManager
 {
 public:
   static const unsigned int MAX_WAIT_PLUGIN = 10;
-  static const unsigned short DAEMON_ID = 0;
 
   PluginManager();
   ~PluginManager();
@@ -63,20 +68,38 @@ public:
   void pluginHasExited(unsigned short id);
 
   /**
-   * Wait for a plugin to exit.
-   *
-   * @param timeout If a plugin has not exited in @a timeout seconds, a
-   *        Licq::Exception is thrown.
-   * @throw Licq::Exception if there are no plugins to wait for or if the
-   *        timeout expires before a plugin exits.
-   * @return The id of the plugin that exited, or DaemonId for the daemon.
+   * Remove a plugin that has exited
+   * Called by main thread when notified about a plugin termination
    */
-  unsigned short waitForPluginExit(unsigned int timeout = 0);
+  void reapPlugin();
 
   /// Cancel all plugins' threads.
   void cancelAllPlugins();
 
   size_t getGeneralPluginsCount() const;
+
+  /// Get number of plugins (general and protocol)
+  size_t pluginCount() const;
+
+  /**
+   * Create a protocol specific user object
+   * Wrapper so ProtocolPlugin doesn't have to friend UserManager
+   * Called by UserManager
+   *
+   * @param id User id
+   * @param temporary True if user isn't added permanently to contact list
+   * @return A newly created user object
+   */
+  Licq::User* createProtocolUser(const Licq::UserId& id, bool temporary = false);
+
+  /**
+   * Create a protocol specific owner object
+   * Wrapper so ProtocolPlugin doesn't have to friend UserManager
+   *
+   * @param id Owner user id
+   * @return A newly created owner object
+   */
+  Licq::Owner* createProtocolOwner(const Licq::UserId& id);
 
   // From Licq::PluginManager
   void getGeneralPluginsList(Licq::GeneralPluginsList& plugins) const;
@@ -89,9 +112,11 @@ public:
 
   bool startGeneralPlugin(const std::string& name, int argc, char** argv);
   bool startProtocolPlugin(const std::string& name);
+  void unloadGeneralPlugin(Licq::GeneralPlugin::Ptr plugin);
+  void unloadProtocolPlugin(Licq::ProtocolPlugin::Ptr plugin);
   void pushPluginEvent(Licq::Event* event);
   void pushPluginSignal(Licq::PluginSignal* signal);
-  void pushProtocolSignal(Licq::ProtocolSignal* signal, unsigned long protocolId);
+  void pushProtocolSignal(Licq::ProtocolSignal* signal);
 
 private:
   /// Helper function to delete a general plugin and close library in the correct order
@@ -120,7 +145,6 @@ private:
   mutable Licq::Mutex myProtocolPluginsMutex;
 
   Licq::Mutex myExitListMutex;
-  Licq::Condition myExitListSignal;
   std::queue<unsigned short> myExitList;
 };
 

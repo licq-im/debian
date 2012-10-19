@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2011 Licq developers
+ * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,10 @@
 #include <licq/translator.h>
 #include <licq/userevents.h>
 
+#include "user.h"
+
 using namespace std;
+using namespace LicqMsn;
 using Licq::UserId;
 using Licq::Conversation;
 using Licq::OnEventData;
@@ -51,7 +54,6 @@ using Licq::gUserManager;
 
 void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
 {
-  char szCommand[4];
   CMSNPacket *pReply;
   bool bSkipPacket;
 
@@ -59,9 +61,8 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
   {
     pReply = 0;
     bSkipPacket = true;
-    packet->UnpackRaw(szCommand, 3);
-    string strCmd(szCommand);
- 
+    string strCmd = packet->unpackRawString(3);
+
     if (strCmd == "IRO")
     {
       packet->SkipParameter(); // Seq
@@ -137,10 +138,9 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         gLog.info("Message from %s", strUser.c_str());
 
         bSkipPacket = false;  
-        string msg = packet->unpackRawString(nSize);
+        string msg = Licq::gTranslator.returnToUnix(packet->unpackRawString(nSize));
 
-        Licq::EventMsg* e = new Licq::EventMsg(Licq::gTranslator.serverToClient(msg),
-            time(0), 0, SocketToCID(nSock));
+        Licq::EventMsg* e = new Licq::EventMsg(msg, time(0), 0, SocketToCID(nSock));
         Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
         if (u.isLocked())
           u->setIsTyping(false);
@@ -353,7 +353,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       int nThisSock = -1;
 
       {
-        Licq::UserWriteGuard u(userId);
+        UserWriteGuard u(userId);
         if (u.isLocked())
         {
           u->clearNormalSocketDesc();
@@ -417,7 +417,7 @@ void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket *p, int nSocket, bool
   int nSock = nSocket;
   if (nSocket == -1)
   {
-    Licq::UserReadGuard u(userId);
+    UserReadGuard u(userId);
     if (!u.isLocked())
       return;
     nSock = u->normalSocketDesc();
@@ -426,8 +426,8 @@ void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket *p, int nSocket, bool
   if (!s)
     s = gSocketMan.FetchSocket(nSocket);
   if (!s) return;
-  Licq::TCPSocket* sock = static_cast<Licq::TCPSocket*>(s);
-  if (!sock->SendRaw(p->getBuffer()) && userId.isValid())
+  Licq::TCPSocket* sock = dynamic_cast<Licq::TCPSocket*>(s);
+  if (!sock->send(*p->getBuffer()) && userId.isValid())
   {
     gLog.info("Connection with %s lost", userId.toString().c_str());
 
@@ -440,7 +440,7 @@ void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket *p, int nSocket, bool
       convo->removeUser(userId);
 
     {
-      Licq::UserWriteGuard u(userId);
+      UserWriteGuard u(userId);
       if (u.isLocked())
         u->clearNormalSocketDesc();
     }
@@ -512,12 +512,13 @@ bool CMSN::MSNSBConnectStart(const string &strServer, const string &strCookie)
   gSocketMan.AddSocket(sock);
 
   {
-    Licq::UserWriteGuard u(pStart->userId);
+    UserWriteGuard u(pStart->userId);
     if (u.isLocked())
     {
       if (pStart->m_bDataConnection)
-        sock->setChannel(Licq::TCPSocket::ChannelInfo);
-      u->setSocketDesc(sock);
+        u->setInfoSocketDesc(sock);
+      else
+        u->setNormalSocketDesc(sock);
     }
   }
   gSocketMan.DropSocket(sock);
@@ -566,8 +567,8 @@ bool CMSN::MSNSBConnectAnswer(const string& strServer, const string& strSessionI
 
   {
     bool newUser = false;
-    Licq::UserWriteGuard u(userId, true, &newUser);
-    u->setSocketDesc(sock);
+    UserWriteGuard u(userId, true, &newUser);
+    u->setNormalSocketDesc(sock);
     if (newUser)
     {
       u->SetEnableSave(false);
@@ -620,10 +621,9 @@ void CMSN::MSNSendMessage(unsigned long eventId, const UserId& userId, const str
 
   string msgDos = Licq::gTranslator.returnToDos(message);
   CMSNPacket* pSend = new CPS_MSNMessage(msgDos.c_str());
-  Licq::EventMsg* m = new Licq::EventMsg(msgDos, Licq::UserEvent::TimeNow, Licq::EventMsg::FlagSender);
-  Licq::Event* e = new Licq::Event(eventId, 0, pSend, Licq::Event::ConnectServer, userId, m);
+  Licq::EventMsg* m = new Licq::EventMsg(message, Licq::UserEvent::TimeNow, Licq::EventMsg::FlagSender);
+  Licq::Event* e = new Licq::Event(_tPlugin, eventId, 0, pSend, Licq::Event::ConnectServer, userId, m);
   e->myCommand = Licq::Event::CommandMessage;
-  e->thread_plugin = _tPlugin;  
 
   if (nSocket > 0)
   {
@@ -689,7 +689,7 @@ void CMSN::killConversation(int sock)
       convo->removeUser(userId);
 
       // Clear socket from user if it's still is associated with this conversation
-      Licq::UserWriteGuard u(userId);
+      UserWriteGuard u(userId);
       if (u.isLocked() && u->normalSocketDesc() == sock)
         u->clearNormalSocketDesc();
     }

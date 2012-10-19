@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -20,8 +20,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef JABBER_PLUGIN_H
-#define JABBER_PLUGIN_H
+#ifndef LICQJABBER_PLUGIN_H
+#define LICQJABBER_PLUGIN_H
 
 #include <licq/plugin/protocolplugin.h>
 
@@ -38,6 +38,7 @@ class ProtoGrantAuthSignal;
 class ProtoLogonSignal;
 class ProtoRefuseAuthSignal;
 class ProtoRemoveUserSignal;
+class ProtoRenameGroupSignal;
 class ProtoRenameUserSignal;
 class ProtoRequestAuthSignal;
 class ProtoRequestInfo;
@@ -48,7 +49,7 @@ class ProtocolSignal;
 class UserId;
 }
 
-namespace Jabber
+namespace LicqJabber
 {
 
 class Client;
@@ -94,6 +95,7 @@ private:
   void doGrantAuth(Licq::ProtoGrantAuthSignal* signal);
   void doRefuseAuth(Licq::ProtoRefuseAuthSignal* signal);
   void doRequestAuth(Licq::ProtoRequestAuthSignal* signal);
+  void doRenameGroup(Licq::ProtoRenameGroupSignal* s);
 
   Config myConfig;
   Handler* myHandler;
@@ -101,6 +103,6 @@ private:
   Client* myClient;
 };
 
-} // namespace Jabber
+} // namespace LicqJabber
 
 #endif

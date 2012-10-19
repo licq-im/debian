@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "owner.h"
+#include <licq/contactlist/owner.h>
 
 #include <cerrno>
 #include <cstdio>
@@ -27,17 +27,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <licq/daemon.h>
-#include <licq/plugin/pluginmanager.h>
+#include <licq/inifile.h>
 
+#include "../daemon.h"
 #include "gettext.h"
 #include <licq/logging/log.h>
 
 using std::string;
-using Licq::UserId;
-using Licq::gDaemon;
-using Licq::gLog;
-using namespace LicqDaemon;
+using namespace Licq;
 
 
 Owner::Owner(const UserId& id)
@@ -47,12 +44,13 @@ Owner::Owner(const UserId& id)
 
   m_bSavePassword = true;
   myPassword = "";
-  myPDINFO = 0;
 
   myPictureFileName = gDaemon.baseDir() + "owner.pic";
 
+  IniFile& conf(userConf());
+
   // Make sure config file is mode 0600
-  string filename = gDaemon.baseDir() + myConf.filename();
+  string filename = gDaemon.baseDir() + conf.filename();
   if (chmod(filename.c_str(), S_IRUSR | S_IWUSR) == -1)
   {
     gLog.warning(tr("Unable to set %s to mode 0600. Your password is vulnerable if stored locally."),
@@ -62,29 +60,17 @@ Owner::Owner(const UserId& id)
   // Owner encoding fixup to be UTF-8 by default
   if (myEncoding.empty())
     myEncoding = "UTF-8";
-  myConf.get("Password", myPassword, "");
-  myConf.get("WebPresence", m_bWebAware, false);
-  myConf.get("HideIP", m_bHideIp, false);
-  myConf.get("RCG", myRandomChatGroup, 0);
-  myConf.get("AutoResponse", myAutoResponse, "");
+  conf.get("Password", myPassword, "");
+  conf.get("AutoResponse", myAutoResponse, "");
   string statusStr;
-  myConf.get("StartupStatus", statusStr, "");
+  conf.get("StartupStatus", statusStr, "");
   if (!User::stringToStatus(statusStr, myStartupStatus))
     myStartupStatus = User::OfflineStatus;
 
-  string defaultHost;
-  int defaultPort = 0;
-  Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(myId.protocolId());
-  if (protocol.get() != NULL)
-  {
-    defaultHost = protocol->defaultServerHost();
-    defaultPort = protocol->defaultServerPort();
-  }
-
   bool gotserver = false;
-  if (myConf.get("ServerHost", myServerHost, defaultHost))
+  if (conf.get("ServerHost", myServerHost))
     gotserver = true;
-  if (myConf.get("ServerPort", myServerPort, defaultPort))
+  if (conf.get("ServerPort", myServerPort))
     gotserver = true;
 
   if (!gotserver)
@@ -95,94 +81,67 @@ Owner::Owner(const UserId& id)
     {
       case LICQ_PPID:
       {
-        Licq::IniFile conf("licq.conf");
-        conf.loadFile();
-        conf.setSection("network");
-        conf.get("ICQServer", myServerHost, defaultHost);
-        conf.get("ICQServerPort", myServerPort, defaultPort);
+        Licq::IniFile& oldConf(LicqDaemon::gDaemon.getLicqConf());
+        oldConf.setSection("network");
+        oldConf.get("ICQServer", myServerHost);
+        oldConf.get("ICQServerPort", myServerPort);
+        LicqDaemon::gDaemon.releaseLicqConf();
         break;
       }
       case MSN_PPID:
       {
-        Licq::IniFile conf("licq_msn.conf");
-        conf.loadFile();
-        conf.setSection("network");
-        conf.get("MsnServerAddress", myServerHost, defaultHost);
-        conf.get("MsnServerPort", myServerPort, defaultPort);
+        Licq::IniFile oldConf("licq_msn.conf");
+        oldConf.loadFile();
+        oldConf.setSection("network");
+        oldConf.get("MsnServerAddress", myServerHost);
+        oldConf.get("MsnServerPort", myServerPort);
         break;
       }
       case JABBER_PPID:
       {
-        Licq::IniFile conf("licq_jabber.conf");
-        conf.loadFile();
-        conf.setSection("network");
-        conf.get("Server", myServerHost, defaultHost);
-        conf.get("Port", myServerPort, defaultPort);
+        Licq::IniFile oldConf("licq_jabber.conf");
+        oldConf.loadFile();
+        oldConf.setSection("network");
+        oldConf.get("Server", myServerHost);
+        oldConf.get("Port", myServerPort);
         break;
       }
     }
   }
 
-  unsigned long sstime;
-  myConf.get("SSTime", sstime, 0);
-  m_nSSTime = sstime;
-  myConf.get("SSCount", mySsCount, 0);
-  myConf.get("PDINFO", myPDINFO, 0);
-
   gLog.info(tr("Loading owner configuration for %s"), myId.toString().c_str());
 
-  setHistoryFile(gDaemon.baseDir() + HistoryDir + "owner." + myId.accountId() +
-      "." + Licq::protocolId_toString(myId.protocolId()) + HistoryExt);
-
-  if (m_nTimezone != SystemTimezone() && m_nTimezone != TimezoneUnknown)
+  int systz = systemTimezone();
+  int mytz = timezone();
+  if (mytz != TimezoneUnknown && mytz != systz)
   {
-    gLog.warning(tr("Current Licq GMT offset (%d) does not match system GMT offset (%d).\n"
+    gLog.warning(tr("Current Licq GMT offset (%c%i:%02i) does not match system GMT offset (%c%i:%02i).\n"
                     "Update general info on server to fix."),
-                 m_nTimezone, SystemTimezone());
+        (mytz >= 0 ? '+' : '-'), abs(mytz / 3600), abs(mytz / 60) % 60,
+        (systz >= 0 ? '+' : '-'), abs(systz / 3600), abs(systz / 60) % 60);
   }
   SetEnableSave(true);
 }
 
 Owner::~Owner()
 {
-  // Save the current auto response
-  if (!myConf.loadFile())
-  {
-     gLog.error("Error opening '%s' for reading. See log for details.",
-         myConf.filename().c_str());
-     return;
-  }
-  myConf.setSection("user");
-  myConf.set("SSTime", (unsigned long)m_nSSTime);
-  myConf.set("SSCount", mySsCount);
-  myConf.set("PDINFO", myPDINFO);
-  if (!myConf.writeFile())
-  {
-    gLog.error("Error opening '%s' for writing. See log for details.",
-        myConf.filename().c_str());
-    return;
-  }
+  // Empty
 }
 
 void Owner::saveOwnerInfo()
 {
-  myConf.set("Uin", accountId());
-  myConf.set("WebPresence", WebAware());
-  myConf.set("HideIP", HideIp());
-  myConf.set("Authorization", GetAuthorization());
-  myConf.set("StartupStatus", User::statusToString(myStartupStatus));
-  myConf.set("ServerHost", myServerHost);
-  myConf.set("ServerPort", myServerPort);
-  myConf.set("RCG", myRandomChatGroup);
-  myConf.set("SSTime", (unsigned long)m_nSSTime);
-  myConf.set("SSCount", mySsCount);
-  myConf.set("PDINFO", myPDINFO);
-  myConf.set("AutoResponse", myAutoResponse);
+  IniFile& conf(userConf());
+
+  conf.set("Authorization", GetAuthorization());
+  conf.set("StartupStatus", User::statusToString(myStartupStatus));
+  conf.set("ServerHost", myServerHost);
+  conf.set("ServerPort", myServerPort);
+  conf.set("AutoResponse", myAutoResponse);
 
   if (m_bSavePassword)
-    myConf.set("Password", myPassword);
+    conf.set("Password", myPassword);
   else
-    myConf.set("Password", "");
+    conf.set("Password", "");
 }
 
 void Licq::Owner::SetPicture(const char *f)

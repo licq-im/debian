@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2012 Licq Developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
 #include "../plugin.h"
 #include "../pluginthread.h"
 
+#define PPID_TEST ('P' << 24 | 'P' << 16 | 'I' << 8 | 'D')
 
 using Licq::ProtocolPlugin;
 using LicqDaemon::DynamicLibrary;
@@ -64,7 +65,7 @@ public:
   { return "ConfigFile"; }
 
   unsigned long protocolId() const
-  { return 'P' << 24 | 'P' << 16 | 'I' << 8 | 'D'; }
+  { return PPID_TEST; }
 
   std::string defaultServerHost() const
   { return "DefSrvHost"; }
@@ -92,6 +93,8 @@ public:
 } // namespace LicqDaemon
 
 using LicqDaemon::ProtocolPluginTest;
+
+namespace LicqTest {
 
 struct ProtocolPluginFixture : public ::testing::Test
 {
@@ -136,7 +139,7 @@ TEST_F(ProtocolPluginFixture, callApiFunctions)
   EXPECT_EQ("Name", plugin.name());
   EXPECT_EQ("Version", plugin.version());
   EXPECT_EQ("ConfigFile", plugin.configFile());
-  unsigned long ppid = 'P' << 24 | 'P' << 16 | 'I' << 8 | 'D';
+  unsigned long ppid = PPID_TEST;
   EXPECT_EQ(ppid, plugin.protocolId());
   EXPECT_TRUE(plugin.callInit());
   EXPECT_EQ(42u, plugin.capabilities());
@@ -172,3 +175,5 @@ TEST_F(ProtocolPluginFixture, popSignalEmpty)
 {
   EXPECT_EQ(static_cast<Licq::ProtocolSignal*>(NULL), plugin.popSignal());
 }
+
+} // namespace LicqTest

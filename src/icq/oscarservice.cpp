@@ -1,8 +1,20 @@
-/* ----------------------------------------------------------------------------
- * Licq - A ICQ Client for Unix
- * Copyright (C) 2007-2011 Licq developers
+/*
+ * This file is part of Licq, an instant messaging client for UNIX.
+ * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
  *
- * This program is licensed under the terms found in the LICENSE file.
+ * Licq is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * Licq is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Licq; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include "oscarservice.h"
@@ -19,22 +31,23 @@
 #include <licq/buffer.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/byteorder.h>
+#include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/proxy.h>
-#include <licq/socket.h>
 #include <licq/logging/log.h>
 
-#include "../daemon.h"
 #include "../gettext.h"
 #include "icq.h"
-#include "packet.h"
+#include "packet-srv.h"
+#include "socket.h"
+#include "user.h"
 
 using namespace std;
-using Licq::Buffer;
+using namespace LicqIcq;
 using Licq::gLog;
-using LicqDaemon::gDaemon;
+using Licq::gDaemon;
 
 COscarService::COscarService(unsigned short Fam)
 {
@@ -42,7 +55,6 @@ COscarService::COscarService(unsigned short Fam)
   mySocketDesc = -1;
   myProxy = NULL;
   myStatus = STATUS_UNINITIALIZED;
-  myServer = NULL;
   pthread_mutex_init(&mutex_sendqueue, NULL);
   pthread_cond_init(&cond_sendqueue, NULL);
   pthread_mutex_init(&mutex_status, NULL);
@@ -52,7 +64,6 @@ COscarService::COscarService(unsigned short Fam)
 COscarService::~COscarService()
 {
   if (myProxy) delete myProxy;
-  if (myServer) free(myServer);
 }
 
 void COscarService::ChangeStatus(EOscarServiceStatus s)
@@ -87,23 +98,20 @@ bool COscarService::WaitForStatus(EOscarServiceStatus s)
   return false;
 }
 
-void COscarService::SetConnectCredential(char *Server, unsigned short Port,
-                                         char *Cookie, unsigned short CookieLen)
+void COscarService::setConnectCredential(const string& server,
+    unsigned short port, const string& cookie)
 {
-  if (myServer) free(myServer);
-  myServer = strdup(Server);
-  myPort = Port;
-  myCookie.reset(new char[CookieLen]);
-  memcpy(myCookie.get(), Cookie, CookieLen);
-  myCookieLen = CookieLen;
+  myServer = server;
+  myPort = port;
+  myCookie = cookie;
 }
 
 bool COscarService::SendPacket(CPacket *p)
 {
   Licq::INetSocket* s = gSocketManager.FetchSocket(mySocketDesc);
   if (s == NULL) return false;
-  Buffer *b = p->Finalize(s);
-  if (!s->Send(b))
+  Licq::Buffer* b = p->Finalize(s);
+  if (!s->send(*b))
   {
     gLog.warning(tr("Error sending event (FAM #%02X, Subtype #%02X, Sequence #%hu): %s."),
         (unsigned short)((p->SNAC() >> 16) & 0xffff), (unsigned short)(p->SNAC() & 0xffff),
@@ -135,11 +143,10 @@ void COscarService::ClearQueue()
   pthread_mutex_unlock(&mutex_sendqueue);
 }
 
-unsigned long COscarService::SendEvent(const Licq::UserId& userId,
-                                       unsigned short SubType, bool Request)
+void COscarService::SendEvent(pthread_t caller, unsigned long eventId,
+    const Licq::UserId& userId, unsigned short SubType, bool Request)
 {
-  unsigned long eventId = gDaemon.getNextEventId();
-  Licq::Event* e = new Licq::Event(eventId, mySocketDesc, NULL, Licq::Event::ConnectServer, userId);
+  Licq::Event* e = new Licq::Event(caller, eventId, mySocketDesc, NULL, Licq::Event::ConnectServer, userId);
   e->SetSubType(SubType);
   if (Request)
     gIcqProtocol.PushEvent(e);
@@ -149,8 +156,6 @@ unsigned long COscarService::SendEvent(const Licq::UserId& userId,
   mySendQueue.push_back(e);
   pthread_cond_signal(&cond_sendqueue);
   pthread_mutex_unlock(&mutex_sendqueue);
-
-  return eventId;
 }
 
 bool COscarService::SendBARTFam(Licq::Event* e)
@@ -161,7 +166,7 @@ bool COscarService::SendBARTFam(Licq::Event* e)
     {
       CPU_RequestBuddyIcon* p;
       {
-        Licq::UserReadGuard u(e->userId());
+        UserReadGuard u(e->userId());
         if (!u.isLocked())
           return false;
         p = new CPU_RequestBuddyIcon(u->accountId(),
@@ -342,16 +347,13 @@ void COscarService::ProcessBARTFam(Buffer& packet, unsigned short SubType,
 
     case ICQ_SNACxBART_DOWNLOADxREPLY:
     {
-      char *Id = packet.UnpackUserString();
-      Licq::UserId userId(Id, LICQ_PPID);
-      Licq::UserWriteGuard u(userId);
+      string id = packet.unpackByteString();
+      UserWriteGuard u(id);
       if (!u.isLocked())
       {
-        gLog.warning(tr("Buddy icon for unknown user (%s)."), Id);
-        delete [] Id;
+        gLog.warning(tr("Buddy icon for unknown user (%s)."), id.c_str());
         break;
       }
-      delete [] Id;
 
       unsigned short IconType = packet.UnpackUnsignedShortBE();
       char HashType = packet.UnpackChar();                     
@@ -383,9 +385,8 @@ void COscarService::ProcessBARTFam(Buffer& packet, unsigned short SubType,
                 break;
               }
 
-              boost::scoped_array<char> Icon(new char[IconLen]);
-              packet.UnpackBinBlock(Icon.get(), IconLen);
-              write(FD, Icon.get(), IconLen);
+              string icon = packet.unpackRawString(IconLen);
+              write(FD, icon.c_str(), IconLen);
               close(FD);
 
               u->SetEnableSave(false);
@@ -444,9 +445,9 @@ bool COscarService::Initialize()
   }
 
   ChangeStatus(STATUS_CONNECTED);
-  Licq::SrvSocket* s = new Licq::SrvSocket(Licq::gUserManager.ownerUserId(LICQ_PPID));
+  SrvSocket* s = new SrvSocket(Licq::gUserManager.ownerUserId(LICQ_PPID));
   gLog.info(tr("Connecting to separate server for service 0x%02X."), myFam);
-  if (gLicqDaemon->GetProxy() == NULL)
+  if (gIcqProtocol.GetProxy() == NULL)
   {
     if (myProxy != NULL)
     {
@@ -459,7 +460,7 @@ bool COscarService::Initialize()
     if (myProxy == NULL)
       myProxy = gDaemon.createProxy();
   }
-  if (!s->connectTo(string(myServer), myPort, myProxy))
+  if (!s->connectTo(myServer, myPort, myProxy))
   {
     gLog.warning(tr("Can't establish service 0x%02X socket."), myFam);
     ChangeStatus(STATUS_UNINITIALIZED);
@@ -471,8 +472,7 @@ bool COscarService::Initialize()
   // Alert the select thread that there is a new socket
   gIcqProtocol.myNewSocketPipe.putChar('S');
 
-  string cookie(myCookie.get(), myCookieLen);
-  CPU_SendCookie *p1 = new CPU_SendCookie(cookie, myFam);
+  CPU_SendCookie* p1 = new CPU_SendCookie(myCookie, myFam);
   gLog.info(tr("Sending cookie for service 0x%02X."), myFam);
   if (!SendPacket(p1))
   {
@@ -551,7 +551,7 @@ bool COscarService::Initialize()
   return true;
 }
 
-void *OscarServiceSendQueue_tep(void *p)
+void* LicqIcq::OscarServiceSendQueue_tep(void *p)
 {
   pthread_detach(pthread_self());
   
