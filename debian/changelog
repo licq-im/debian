@@ -1,3 +1,9 @@
+licq (1.7.0-1) unstable; urgency=low
+
+  * New upstream version 1.7.0
+
+ -- Erik Johansson <debian@ejohansson.se>  Wed, 31 Oct 2012 21:30:00 +0100
+
 licq (1.6.1-3) unstable; urgency=low
 
   * Add lintian override for hardening-no-fortify-functions
