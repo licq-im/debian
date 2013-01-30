@@ -1,3 +1,10 @@
+licq (1.7.1-1) unstable; urgency=low
+
+  * New upstream version 1.7.1
+  * Bump standards version to 3.9.4 with no changes
+
+ -- Erik Johansson <debian@ejohansson.se>  Wed, 30 Jan 2013 21:36:43 +0100
+
 licq (1.7.0-1) unstable; urgency=low
 
   * New upstream version 1.7.0
