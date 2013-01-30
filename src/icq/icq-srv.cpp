@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1998-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1683,14 +1683,16 @@ int IcqProtocol::ConnectToLoginServer()
   if (gDaemon.proxyEnabled())
     InitProxy();
 
+  // Try and get server address from owner, but use default in case we're registering
   string serverHost;
-  int serverPort;
+  int serverPort = 0;
   {
     Licq::OwnerReadGuard o(LICQ_PPID);
-    if (!o.isLocked())
-      return -1;
-    serverHost = o->serverHost();
-    serverPort = o->serverPort();
+    if (o.isLocked())
+    {
+      serverHost = o->serverHost();
+      serverPort = o->serverPort();
+    }
   }
 
   if (serverHost.empty())
@@ -2145,7 +2147,6 @@ void IcqProtocol::processIconHash(User* u, Buffer& packet)
       case BART_TYPExBUDDY_ICON_PHOTO:
       {
         // TODO: Handle photo item
-        packet.incDataPosRead(length);
         break;
       }
       case BART_TYPExBUDDY_ICON:
@@ -2159,38 +2160,37 @@ void IcqProtocol::processIconHash(User* u, Buffer& packet)
           u->setBuddyIconType(type);
           u->setBuddyIconHashType(flags);
           u->save(Licq::User::SavePictureInfo);
+          continue;
         }
         break;
       }
       case BART_TYPExSTATUS_STR:
       {
         // TODO: Handle status string
-        packet.incDataPosRead(length);
         break;
       }
       case BART_TYPExSTATUS_STR_TIMESTAMP:
       {
         // TODO: Handle status string timestamp
-        packet.incDataPosRead(length);
         break;
       }
       case BART_TYPExSTATUS_MOOD:
       {
         // TODO: Handle status mood item
-        packet.incDataPosRead(length);
         break;
       }
       case BART_TYPExITUNES_LINK:
       {
         // TODO: Handle iTunes music store link
-        packet.incDataPosRead(length);
         break;
       }
       default:
         gLog.warning(tr("Unknown Extended Status Data type 0x%04x flags 0x%02x length 0x%02x"),
             type, flags, length);
-        packet.incDataPosRead(length);
     }
+
+    // Unhandled part, skip the data
+    packet.incDataPosRead(length);
   }
 }
 
