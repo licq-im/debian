@@ -1,6 +1,8 @@
 set(tested_SRCS
   conversation.cpp
+  crypto.cpp
   inifile.cpp
+  md5.cpp
 
   logging/adjustablelogsink.cpp
   logging/log.cpp
@@ -9,9 +11,14 @@ set(tested_SRCS
   logging/pluginlogsink.cpp
 
   plugin/generalplugin.cpp
+  plugin/generalpluginhelper.cpp
+  plugin/generalplugininstance.cpp
   plugin/plugin.cpp
+  plugin/plugininstance.cpp
   plugin/pluginthread.cpp
   plugin/protocolplugin.cpp
+  plugin/protocolpluginhelper.cpp
+  plugin/protocolplugininstance.cpp
 
   thread/condition.cpp
   thread/mutexlocker.cpp
@@ -29,9 +36,11 @@ set(licq_SRCS
   filter.cpp
   gpghelper.cpp
   hebrev.c
+  icq-public.cpp
   licq.cpp
+  licq-upgrade.cpp
   main.cpp
-  md5.cpp
+  mainloop.cpp
   oneventmanager.cpp
   packet.cpp
   protocolmanager.cpp
@@ -52,24 +61,6 @@ set(licq_SRCS
   contactlist/userhistory.cpp
   contactlist/usermanager.cpp
 
-  icq/buffer.cpp
-  icq/chat.cpp
-  icq/codes.c
-  icq/filetransfer.cpp
-  icq/icq-srv.cpp
-  icq/icq-tcp.cpp
-  icq/icq.cpp
-  icq/icqprotocolplugin.cpp
-  icq/oscarservice.cpp
-  icq/owner.cpp
-  icq/packet-srv.cpp
-  icq/packet-tcp.cpp
-  icq/rtf.cc
-  icq/socket.cpp
-  icq/threads.cpp
-  icq/user.cpp
-  icq/userclients.cpp
-
   logging/logservice.cpp
   logging/streamlogsink.cpp
   logging/threadlog.cpp
@@ -82,6 +73,7 @@ set(licq_SRCS
 set(test_SRCS
   tests/conversationtest.cpp
   tests/inifiletest.cpp
+  tests/cryptotest.cpp
 
   logging/tests/adjustablelogsinktest.cpp
   logging/tests/logdistributortest.cpp
@@ -89,9 +81,11 @@ set(test_SRCS
   logging/tests/logutilstest.cpp
   logging/tests/pluginlogsinktest.cpp
 
+  plugin/tests/generalpluginhelpertest.cpp
   plugin/tests/generalplugintest.cpp
   plugin/tests/plugintest.cpp
   plugin/tests/pluginthreadtest.cpp
+  plugin/tests/protocolpluginhelpertest.cpp
   plugin/tests/protocolplugintest.cpp
 
   thread/tests/conditiontest.cpp
@@ -118,6 +112,11 @@ add_executable(licq ${licq_SRCS})
 
 # Link with thread library
 target_link_libraries(licq ${CMAKE_THREAD_LIBS_INIT})
+
+# Must link with rt for clock_gettime
+if (UNIX AND NOT APPLE)
+  target_link_libraries(licq rt)
+endif (UNIX AND NOT APPLE)
 
 # Must export symbols from daemon so that plugins can use them
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_EXPORTS_CXX_FLAG}")
@@ -161,6 +160,7 @@ if (BUILD_TESTS)
   target_link_libraries(unittest ${GTEST_LIBRARIES})
   target_link_libraries(unittest ${GMOCK_LIBRARIES})
   target_link_libraries(unittest ${CMAKE_DL_LIBS})
+  target_link_libraries(unittest ${OPENSSL_LIBRARIES})
   target_link_libraries(unittest ${SOCKET_LIBRARIES})
 
   # Link with thread library

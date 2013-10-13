@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1998-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,18 +20,15 @@
 #include "config.h"
 
 #include <boost/foreach.hpp>
-#include <boost/scoped_array.hpp>
 #include <cassert>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
-#include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <iostream>
-#include <poll.h>
 #include <pwd.h>
 #include <string>
 #include <sys/stat.h>
@@ -62,9 +59,10 @@
 #include "fifo.h"
 #endif
 
-using namespace std;
 using Licq::GeneralPlugin;
 using Licq::ProtocolPlugin;
+using Licq::gLog;
+using Licq::gUtilityManager;
 using LicqDaemon::Daemon;
 using LicqDaemon::PluginManager;
 using LicqDaemon::gDaemon;
@@ -78,8 +76,8 @@ using LicqDaemon::gSarManager;
 using LicqDaemon::gPluginManager;
 using LicqDaemon::gStatistics;
 using LicqDaemon::gUserManager;
-using Licq::gLog;
-using Licq::gUtilityManager;
+using std::list;
+using std::string;
 
 /*-----Start OpenSSL code--------------------------------------------------*/
 
@@ -381,10 +379,6 @@ bool CLicq::Init(int argc, char **argv)
   if ( (access(gDaemon.baseDir().c_str(), F_OK) < 0 || bForceInit) && !Install() )
     return false;
 
-  // ICQ-PLUGIN: Remove when ICQ is put into its own plugin. This is just a
-  // dummy plugin. It can't really be stopped.
-  gPluginManager.loadProtocolPlugin("", true, true);
-
   // Load up the plugins
   BOOST_FOREACH(string& pluginName, generalPlugins)
   {
@@ -504,7 +498,7 @@ bool CLicq::Init(int argc, char **argv)
   Licq::IniFile& licqConf(gDaemon.getLicqConf());
   if (!licqConf.loadFile())
   {
-    gLog.error("Could not load config file '%s'", licqConf.filename().c_str());
+    gLog.error(tr("Could not load config file '%s'"), licqConf.filename().c_str());
     gDaemon.releaseLicqConf();
     return false;
   }
@@ -513,23 +507,28 @@ bool CLicq::Init(int argc, char **argv)
   licqConf.setSection("licq");
   unsigned nVersion;
   licqConf.get("Version", nVersion, 0);
-  if (nVersion < LICQ_MAKE_VERSION(1, 2, 8))
+  if (nVersion < LICQ_VERSION)
   {
-    gLog.info("Upgrading config file formats");
-    if (upgradeLicq128(licqConf))
-      gLog.info("Upgrade completed");
-    else
+    try
     {
-      gLog.error("Upgrade failed. Please save your licq directory and "
-                 "report this as a bug.");
+      // Perform upgrades as needed
+      if (nVersion < LICQ_MAKE_VERSION(1, 2, 8))
+        upgradeLicq128(licqConf);
+      if (nVersion < LICQ_MAKE_VERSION(1, 8, 0))
+        upgradeLicq18(licqConf);
+
+      // Write new version
+      licqConf.setSection("licq");
+      licqConf.set("Version", LICQ_VERSION);
+      licqConf.writeFile();
+    }
+    catch (...)
+    {
+      gLog.error(tr("Upgrade failed. Please save your licq directory and "
+          "report this as a bug."));
       gDaemon.releaseLicqConf();
       return false;
     }
-  }
-  else if (nVersion < LICQ_VERSION)
-  {
-    licqConf.set("Version", LICQ_VERSION);
-    licqConf.writeFile();
   }
 
   // Find and load the protocol plugins before the UI plugins
@@ -592,7 +591,7 @@ bool CLicq::Init(int argc, char **argv)
     }
     else  // If no plugins, try some defaults one by one
     {
-      const char* plugins[] = {"qt4-gui", "kde4-gui", "console"};
+      const char* plugins[] = {"qt4-gui", "kde4-gui"};
       unsigned short i = 0, size = sizeof(plugins) / sizeof(char*);
 
       GeneralPlugin::Ptr plugin;
@@ -660,107 +659,6 @@ const char *CLicq::Version()
 
 
 /*-----------------------------------------------------------------------------
- * UpgradeLicq
- *
- * Upgrades the config files to the current version.
- *---------------------------------------------------------------------------*/
-bool CLicq::upgradeLicq128(Licq::IniFile& licqConf)
-{
-  string strBaseDir = gDaemon.baseDir();
-  Licq::IniFile ownerFile("owner.uin");
-  if (!ownerFile.loadFile())
-    return false;
-
-  // Get the UIN
-  unsigned long nUin;
-  ownerFile.setSection("user");
-  ownerFile.get("Uin", nUin, 0);
-
-  // Set the new version number
-  licqConf.setSection("licq");
-  licqConf.set("Version", LICQ_VERSION);
-
-  // Create the owner section and fill it
-  licqConf.setSection("owners");
-  licqConf.set("NumOfOwners", 1);
-  licqConf.set("Owner1.Id", nUin);
-  licqConf.set("Owner1.PPID", "Licq");
-
-  // Add the protocol plugins info
-  licqConf.setSection("plugins");
-  licqConf.set(string("NumProtoPlugins"), 0);
-  licqConf.writeFile();
-
-  // Rename owner.uin to owner.Licq
-  if (rename((strBaseDir + "owner.uin").c_str(), (strBaseDir + "owner.Licq").c_str()))
-    return false;
-
-  // Update all the user files and update users.conf
-  string strUserDir = strBaseDir + "users";
-  DIR* userDir = opendir(strUserDir.c_str());
-  if (userDir != NULL)
-  {
-    Licq::IniFile userConf("users.conf");
-    if (!userConf.loadFile())
-      return false;
-    userConf.setSection("users");
-    int n = 0;
-
-    boost::scoped_array<char> ent(new char[offsetof(struct dirent, d_name) +
-        pathconf(strUserDir.c_str(), _PC_NAME_MAX) + 1]);
-    struct dirent* res;
-
-    while (readdir_r(userDir, (struct dirent*)ent.get(), &res) == 0 && res != NULL)
-    {
-      const char* dot = strrchr(res->d_name, '.');
-      if (dot == NULL || strcmp(dot, ".uin") != 0)
-        continue;
-
-      char szKey[20];
-      snprintf(szKey, sizeof(szKey), "User%d", n+1);
-      string strFileName = strUserDir + "/" + res->d_name;
-      string strNewName = res->d_name;
-      strNewName.replace(strNewName.find(".uin", 0), 4, ".Licq");
-      string strNewFile = strUserDir + "/" + strNewName;
-      if (rename(strFileName.c_str(), strNewFile.c_str()))
-        return false;
-      userConf.set(szKey, strNewName);
-      ++n;
-    }
-    userConf.set("NumOfUsers", n);
-    userConf.writeFile();
-    closedir(userDir);
-  }
-
-
-  // Rename the history files
-  string strHistoryDir = strBaseDir + "history";
-  DIR* historyDir = opendir(strHistoryDir.c_str());
-  if (historyDir != NULL)
-  {
-    boost::scoped_array<char> ent(new char[offsetof(struct dirent, d_name) +
-        pathconf(strHistoryDir.c_str(), _PC_NAME_MAX) + 1]);
-    struct dirent* res;
-
-    while (readdir_r(historyDir, (struct dirent*)ent.get(), &res) == 0 && res != NULL)
-    {
-      const char* dot = strrchr(res->d_name, '.');
-      if (dot == NULL || (strcmp(dot, ".history") != 0 && strcmp(dot, ".history.removed") != 0))
-        continue;
-
-      string strFileName = strHistoryDir + "/" + res->d_name;
-      string strNewFile = strHistoryDir + "/" + res->d_name;
-      strNewFile.replace(strNewFile.find(".history", 0), 8, ".Licq.history");
-      if (rename(strFileName.c_str(), strNewFile.c_str()))
-        return false;
-    }
-    closedir(historyDir);
-  }
-  
-  return true;
-}
-
-/*-----------------------------------------------------------------------------
  * LoadPlugin
  *
  * Loads the given plugin using the given command line arguments.
@@ -791,6 +689,42 @@ ProtocolPlugin::Ptr CLicq::LoadProtoPlugin(const string& name, bool keep)
   return gPluginManager.loadProtocolPlugin(name, keep);
 }
 
+void CLicq::rawFileEvent(int /*fd*/, int /*revents*/)
+{
+  switch (myPipe.getChar())
+  {
+    case NotifyReapPlugin:
+      gPluginManager.reapPlugin();
+
+      // Exit when there are no plugins left running
+      if (gPluginManager.pluginCount() == 0)
+        myMainLoop.quit();
+      break;
+
+    case NotifyShuttingDown:
+      // Time to quit, but wait for plugins to shut down first
+      myMainLoop.addTimeout(PluginManager::MAX_WAIT_PLUGIN * 1000, this, 2);
+      // Stop flushing statistics
+      myMainLoop.removeTimeout(1);
+      break;
+  }
+}
+
+void CLicq::timeoutEvent(int id)
+{
+  switch (id)
+  {
+    case 1:
+      // Flush statistics data regulary
+      gStatistics.flush();
+      break;
+
+    case 2:
+      // Timeout waiting for plugins to shut down
+      myMainLoop.quit();
+      break;
+  }
+}
 
 int CLicq::Main()
 {
@@ -802,17 +736,11 @@ int CLicq::Main()
   }
 
   // Setup file descriptors to manage
-  struct pollfd fds[2];
-  int numfds = 1;
-  fds[0].fd = myPipe.getReadFd();
-  fds[0].events = POLLIN;
+  myMainLoop.addRawFile(myPipe.getReadFd(), this);
 
 #ifdef USE_FIFO
   // Init the fifo
-  gFifo.initialize();
-  struct pollfd *const fds_fifo = &fds[numfds++];
-  fds_fifo->fd = gFifo.fifo_fd;
-  fds_fifo->events = POLLIN;
+  gFifo.initialize(myMainLoop);
 #endif
 
   // Run the plugins
@@ -825,48 +753,11 @@ int CLicq::Main()
   // Logon all protocols according to owner configuration
   gDaemon.autoLogon();
 
-  bool shuttingDown = false;
-  int timeout = 60 * 1000;
-  while (true)
-  {
-    int ret = poll(fds, numfds, timeout);
-    if (ret < 0)
-    {
-      // Interrupted by a signal is ok, anything else is bad
-      assert(errno == EINTR);
-      continue;
-    }
+  // Flush statistics data regulary
+  myMainLoop.addTimeout(60*1000, this, 1, false);
 
-    if (shuttingDown && ret == 0)
-      break;
-
-    // Flush statistics data regulary
-    gStatistics.flush();
-
-    if (fds[0].revents & POLLIN)
-    {
-      char c = myPipe.getChar();
-      if (c == NotifyReapPlugin)
-      {
-        gPluginManager.reapPlugin();
-
-        // Exit when there are no plugins left running
-        if (gPluginManager.pluginCount() == 0)
-          break;
-      }
-
-      if (c == NotifyShuttingDown)
-      {
-        shuttingDown = true;
-        timeout = PluginManager::MAX_WAIT_PLUGIN * 1000;
-      }
-    }
-
-#ifdef USE_FIFO
-    if (fds_fifo->revents & POLLIN)
-      gFifo.process();
-#endif
-  }
+  // Run
+  myMainLoop.run();
 
   gPluginManager.cancelAllPlugins();
 
@@ -924,22 +815,31 @@ void CLicq::SaveLoadedPlugins()
     licqConf.set(szKey, plugin->libraryName());
   }
 
+  // Don't leave old higher numbered plugins in config
+  do
+  {
+    sprintf(szKey, "Plugin%d", i++);
+  }
+  while (licqConf.unset(szKey));
+
   Licq::ProtocolPluginsList protocols;
   gPluginManager.getProtocolPluginsList(protocols);
 
-  // ICQ-PLUGIN: Remove -1
-  licqConf.set("NumProtoPlugins", (protocols.size() - 1));
+  licqConf.set("NumProtoPlugins", protocols.size());
 
   i = 1;
   BOOST_FOREACH(ProtocolPlugin::Ptr plugin, protocols)
   {
-    // ICQ-PLUGIN: Remove if
-    if (!plugin->libraryName().empty())
-    {
-      sprintf(szKey, "ProtoPlugin%d", i++);
-      licqConf.set(szKey, plugin->libraryName());
-    }
+    sprintf(szKey, "ProtoPlugin%d", i++);
+    licqConf.set(szKey, plugin->libraryName());
   }
+
+  // Don't leave old higher numbered protocols in config
+  do
+  {
+    sprintf(szKey, "ProtoPlugin%d", i++);
+  }
+  while (licqConf.unset(szKey));
 
   licqConf.writeFile();
 }

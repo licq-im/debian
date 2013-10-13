@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,11 +17,13 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <boost/foreach.hpp>
 #include <cctype>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <list>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -38,6 +40,7 @@
 #include "autoreply.h"
 
 #include <licq/logging/log.h>
+#include <licq/contactlist/owner.h>
 #include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/event.h>
@@ -48,9 +51,6 @@
 #include <licq/translator.h>
 #include <licq/userevents.h>
 
-#include "pluginversion.h"
-
-using namespace std;
 using Licq::UserId;
 using Licq::gLog;
 using Licq::gProtocolManager;
@@ -61,9 +61,8 @@ const unsigned short SUBJ_CHARS = 20;
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::Constructor
  *-------------------------------------------------------------------------*/
-CLicqAutoReply::CLicqAutoReply(Licq::GeneralPlugin::Params& p)
-  : Licq::GeneralPlugin(p),
-    myIsEnabled(false),
+CLicqAutoReply::CLicqAutoReply()
+  : myIsEnabled(false),
     myMarkAsRead(false)
 {
   m_bExit = false;
@@ -77,41 +76,6 @@ CLicqAutoReply::~CLicqAutoReply()
 {
 }
 
-std::string CLicqAutoReply::name() const
-{
-  return "ICQ Auto Replyer";
-}
-
-std::string CLicqAutoReply::version() const
-{
-  return PLUGIN_VERSION_STRING;
-}
-
-std::string CLicqAutoReply::description() const
-{
-  return "ICQ message Auto Replyer";
-}
-
-std::string CLicqAutoReply::usage() const
-{
-  return
-      "Usage:  Licq [options] -p autoreply -- [ -h ] [ -e ] [ -l <status> ] [ -d ]\n"
-      "         -h          : help\n"
-      "         -e          : start enabled\n"
-      "         -l <status> : log on at startup\n"
-      "         -d          : delete messages after auto-replying\n";
-}
-
-std::string CLicqAutoReply::configFile() const
-{
-  return "licq_autoreply.conf";
-}
-
-bool CLicqAutoReply::isEnabled() const
-{
-  return myIsEnabled;
-}
-
 bool CLicqAutoReply::init(int argc, char** argv)
 {
   //char *LocaleVal = new char;
@@ -121,13 +85,10 @@ bool CLicqAutoReply::init(int argc, char** argv)
 
   // parse command line for arguments
   int i = 0;
-  while ( (i = getopt(argc, argv, "dhel:")) > 0)
+  while ( (i = getopt(argc, argv, "del:")) > 0)
   {
     switch (i)
     {
-      case 'h':  // help
-        puts(usage().c_str());
-        return false;
       case 'e': // enable
         myIsEnabled = true;
         break;
@@ -171,7 +132,18 @@ int CLicqAutoReply::run()
     if (!Licq::User::stringToStatus(myStartupStatus, s))
       gLog.warning("Invalid startup status");
     else
-      gProtocolManager.setStatus(gUserManager.ownerUserId(LICQ_PPID), s);
+    {
+      // Get a list of owners first since we can't call changeStatus with list locked
+      std::list<Licq::UserId> owners;
+      {
+        Licq::OwnerListGuard ownerList;
+        BOOST_FOREACH(const Licq::Owner* o, **ownerList)
+          owners.push_back(o->id());
+      }
+
+      BOOST_FOREACH(const Licq::UserId& ownerId, owners)
+        gProtocolManager.setStatus(ownerId, s);
+    }
   }
 
   fd_set fdSet;
@@ -198,9 +170,9 @@ int CLicqAutoReply::run()
   return 0;
 }
 
-void CLicqAutoReply::destructor()
+bool CLicqAutoReply::isEnabled() const
 {
-  delete this;
+  return myIsEnabled;
 }
 
 /*---------------------------------------------------------------------------
@@ -212,42 +184,38 @@ void CLicqAutoReply::ProcessPipe()
   read(m_nPipe, buf, 1);
   switch (buf[0])
   {
-    case Licq::GeneralPlugin::PipeSignal:
-    {
-      Licq::PluginSignal* s = popSignal();
+    case PipeSignal:
       if (myIsEnabled)
-        ProcessSignal(s);
-      delete s;
+        ProcessSignal(popSignal().get());
+      else
+        popSignal();
       break;
-    }
 
-    case Licq::GeneralPlugin::PipeEvent:
-    {
+    case PipeEvent:
       // An event is pending (should never happen)
-      Licq::Event* e = popEvent();
       if (myIsEnabled)
-        ProcessEvent(e);
-      delete e;
+        ProcessEvent(popEvent().get());
+      else
+        popEvent();
+      break;
+
+    case PipeShutdown:
+    {
+      gLog.info("Exiting");
+      m_bExit = true;
       break;
     }
 
-    case Licq::GeneralPlugin::PipeShutdown:
+    case PipeDisable:
     {
-    gLog.info("Exiting");
-    m_bExit = true;
-    break;
-  }
-
-    case Licq::GeneralPlugin::PipeDisable:
-    {
-    gLog.info("Disabling");
+      gLog.info("Disabling");
       myIsEnabled = false;
       break;
     }
 
-    case Licq::GeneralPlugin::PipeEnable:
+    case PipeEnable:
     {
-    gLog.info("Enabling");
+      gLog.info("Enabling");
       myIsEnabled = true;
       break;
     }
@@ -261,12 +229,12 @@ void CLicqAutoReply::ProcessPipe()
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::ProcessSignal
  *-------------------------------------------------------------------------*/
-void CLicqAutoReply::ProcessSignal(Licq::PluginSignal* s)
+void CLicqAutoReply::ProcessSignal(const Licq::PluginSignal* s)
 {
   switch (s->signal())
   {
     case Licq::PluginSignal::SignalUser:
-      if (s->subSignal() == Licq::PluginSignal::UserEvents && !gUserManager.isOwner(s->userId()) && s->argument() > 0)
+      if (s->subSignal() == Licq::PluginSignal::UserEvents && !s->userId().isOwner() && s->argument() > 0)
         processUserEvent(s->userId(), s->argument());
       break;
     // We should never get any other signal
@@ -279,7 +247,7 @@ void CLicqAutoReply::ProcessSignal(Licq::PluginSignal* s)
 /*---------------------------------------------------------------------------
  * CLicqAutoReply::ProcessEvent
  *-------------------------------------------------------------------------*/
-void CLicqAutoReply::ProcessEvent(Licq::Event* e)
+void CLicqAutoReply::ProcessEvent(const Licq::Event* e)
 {
   const Licq::UserEvent* user_event;
 
@@ -331,7 +299,7 @@ void CLicqAutoReply::processUserEvent(const UserId& userId, unsigned long nId)
 
 bool CLicqAutoReply::autoReplyEvent(const UserId& userId, const Licq::UserEvent* event)
 {
-  string command = myProgram + " ";
+  std::string command = myProgram + " ";
   {
     Licq::UserReadGuard u(userId);
     command += u->usprintf(myArguments);

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2004-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,7 +41,6 @@
 
 #include "user.h"
 
-using namespace std;
 using namespace LicqMsn;
 using Licq::UserId;
 using Licq::Conversation;
@@ -50,10 +49,12 @@ using Licq::gConvoManager;
 using Licq::gLog;
 using Licq::gOnEventManager;
 using Licq::gUserManager;
+using std::string;
 
-
-void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
+void CMSN::ProcessSBPacket(const Licq::UserId& socketUserId, CMSNBuffer* packet,
+    Licq::TCPSocket* sock)
 {
+  int nSock = sock->Descriptor();
   CMSNPacket *pReply;
   bool bSkipPacket;
 
@@ -68,7 +69,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       packet->SkipParameter(); // Seq
       packet->SkipParameter(); // current user to add
       packet->SkipParameter(); // total users in conversation
-      UserId userId(packet->GetParameter(), MSN_PPID);
+      UserId userId(myOwnerId, packet->GetParameter());
 
       bool newUser;
       {
@@ -86,7 +87,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       // Add the user to the conversation
       Conversation* convo = gConvoManager.getFromSocket(nSock);
       if (convo == NULL)
-        convo = gConvoManager.add(gUserManager.ownerUserId(MSN_PPID), nSock);
+        convo = gConvoManager.add(myOwnerId, nSock);
       convo->addUser(userId);
 
       // Notify the plugins of the new CID
@@ -103,11 +104,11 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
     else if (strCmd == "ANS")
     {
       // Send our capabilities
-      Send_SB_Packet(Licq::UserId(), new CPS_MsnClientCaps(), nSock);
+      Send_SB_Packet(Licq::UserId(), new CPS_MsnClientCaps(), sock);
     }
     else if (strCmd == "MSG")
     {
-      string strUser = packet->GetParameter();
+      Licq::UserId userId(myOwnerId, packet->GetParameter());
       packet->SkipParameter(); // Nick
       string strSize = packet->GetParameter(); // Size
       int nSize = atoi(strSize.c_str()) + 1; // Make up for the \n
@@ -124,26 +125,21 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         packet->SkipRN();
         packet->SkipRN();
         packet->SkipRN();
-        Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
+        Licq::UserWriteGuard u(userId);
         if (u.isLocked())
-        {
-          u->setIsTyping(true);
-          Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
-              Licq::PluginSignal::SignalUser,
-              Licq::PluginSignal::UserTyping, u->id(), SocketToCID(nSock)));
-        }
+          setIsTyping(*u, true, SocketToCID(nSock));
       }
       else if (strncmp(strType.c_str(), "text/plain", 10) == 0)
       {
-        gLog.info("Message from %s", strUser.c_str());
+        gLog.info("Message from %s", userId.accountId().c_str());
 
         bSkipPacket = false;  
         string msg = Licq::gTranslator.returnToUnix(packet->unpackRawString(nSize));
 
         Licq::EventMsg* e = new Licq::EventMsg(msg, time(0), 0, SocketToCID(nSock));
-        Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
+        Licq::UserWriteGuard u(userId);
         if (u.isLocked())
-          u->setIsTyping(false);
+          setIsTyping(*u, false, SocketToCID(nSock));
         if (Licq::gDaemon.addUserEvent(*u, e))
           gOnEventManager.performOnEvent(OnEventData::OnEventMessage, *u);
       }
@@ -160,7 +156,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         {
           // Invitation for unknown application, tell inviter that we don't have it
           gLog.info("Invitation from %s for unknown application (%s)",
-                    strUser.c_str(), application.c_str());
+              userId.accountId().c_str(), application.c_str());
           pReply = new CPS_MSNCancelInvite(cookie, "REJECT_NOT_INSTALLED");
         }
       }
@@ -188,7 +184,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
 	      nAckDataSize[0], nAckDataSize[1]);
 	*/
 
-	CMSNDataEvent *p = FetchDataEvent(strUser, nSock);
+	CMSNDataEvent* p = FetchDataEvent(userId, sock);
 	if (p)
 	{
 	  if (p->ProcessPacket(packet) > 0)
@@ -206,14 +202,14 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         {
           gLog.info("Identified user client as %s", userClient.c_str());
 
-          Licq::UserWriteGuard u(UserId(strUser, MSN_PPID));
+          Licq::UserWriteGuard u(userId);
           u->setClientInfo(userClient);
         }
       }
       else
       {
         gLog.info("Message from %s with unknown content type (%s)",
-                  strUser.c_str(), strType.c_str());
+            userId.accountId().c_str(), strType.c_str());
       }
     }
     else if (strCmd == "ACK")
@@ -266,7 +262,6 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
     else if (strCmd == "USR")
     {
       SStartMessage *pStart = 0;
-      pthread_mutex_lock(&mutex_StartList);
       StartList::iterator it;
       for (it = m_lStart.begin(); it != m_lStart.end(); it++)
       {
@@ -279,20 +274,17 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       if (pStart)
       {
 	pStart->m_bConnecting = true;
-        string accountId = pStart->userId.accountId();
-        pReply = new CPS_MSNCall(accountId.c_str());
+        pReply = new CPS_MSNCall(pStart->userId.accountId());
 	pStart->m_nSeq = pReply->Sequence();
       }
-      pthread_mutex_unlock(&mutex_StartList);
     }
     else if (strCmd == "JOI")
     {
-      UserId userId(packet->GetParameter(), MSN_PPID);
+      UserId userId(myOwnerId, packet->GetParameter());
       gLog.info("%s joined the conversation", userId.toString().c_str());
 
       SStartMessage *pStart = 0;
       StartList::iterator it;
-      pthread_mutex_lock(&mutex_StartList);
       for (it = m_lStart.begin(); it != m_lStart.end(); it++)
       {
         if ((*it)->userId == userId) // case insensitive perhaps?
@@ -304,14 +296,14 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       }
 
       // Send our capabilities
-      Send_SB_Packet(userId, new CPS_MsnClientCaps(), nSock);
+      Send_SB_Packet(userId, new CPS_MsnClientCaps(), sock);
 
       if ((pStart && pStart->m_bDataConnection == false) || pStart == 0)
       {
         // Add the user to the conversation
         Conversation* convo = gConvoManager.getFromSocket(nSock);
         if (convo == NULL)
-          convo = gConvoManager.add(gUserManager.ownerUserId(MSN_PPID), nSock);
+          convo = gConvoManager.add(myOwnerId, nSock);
         convo->addUser(userId);
 
         // Notify the plugins of the new CID
@@ -330,16 +322,15 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
         if (pStart->m_pEvent)
           m_pEvents.push_back(pStart->m_pEvent);
 
-        Send_SB_Packet(pStart->userId, pStart->m_pPacket, nSock, false);
+        Send_SB_Packet(pStart->userId, pStart->m_pPacket, sock, false);
 
         delete pStart;
       }
-      pthread_mutex_unlock(&mutex_StartList);
     }
     else if (strCmd == "BYE")
     {
       // closed the window and connection
-      UserId userId(packet->GetParameter(), MSN_PPID);
+      UserId userId(myOwnerId, packet->GetParameter());
       gLog.info("Connection with %s closed", userId.toString().c_str());
 
       Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
@@ -350,22 +341,15 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       if (convo != NULL)
         convo->removeUser(userId);
 
-      int nThisSock = -1;
-
       {
         UserWriteGuard u(userId);
         if (u.isLocked())
-        {
           u->clearNormalSocketDesc();
-          nThisSock = u->normalSocketDesc();
-        }
       }
 
       if (convo == NULL || convo->isEmpty())
       {
-        Licq::INetSocket* s = gSocketMan.FetchSocket(nThisSock);
-        gSocketMan.DropSocket(s);
-        gSocketMan.CloseSocket(nSock);
+        closeSocket(sock);
         if (convo != NULL)
           gConvoManager.remove(convo->id());
       }
@@ -378,7 +362,6 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       // signals to the daemon and remove these item from the list.
       SStartMessage *pStart = 0;
       StartList::iterator it;
-      pthread_mutex_lock(&mutex_StartList);
       for (it = m_lStart.begin(); it != m_lStart.end(); it++)
       {
         if ((*it)->m_nSeq == nSeq)
@@ -390,8 +373,7 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
           m_lStart.erase(it);
           break; 
         }
-      }     
-      pthread_mutex_unlock(&mutex_StartList);
+      }
     }
     else
     {
@@ -403,34 +385,28 @@ void CMSN::ProcessSBPacket(char *szUser, CMSNBuffer *packet, int nSock)
       packet->SkipPacket();
     
     if (pReply)
-    {
-      UserId userId(szUser, MSN_PPID);
-      Send_SB_Packet(userId, pReply, nSock);
-    }
+      Send_SB_Packet(socketUserId, pReply, sock);
   }
   
   //delete packet;
 }
 
-void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket *p, int nSocket, bool bDelete)
+void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket* p, Licq::TCPSocket* sock, bool bDelete)
 {
-  int nSock = nSocket;
-  if (nSocket == -1)
+  if (sock == NULL)
   {
     UserReadGuard u(userId);
-    if (!u.isLocked())
+    if (u.isLocked())
+      sock = u->normalSocketDesc();
+    if (sock == NULL)
       return;
-    nSock = u->normalSocketDesc();
   }
-  Licq::INetSocket* s = gSocketMan.FetchSocket(nSock);
-  if (!s)
-    s = gSocketMan.FetchSocket(nSocket);
-  if (!s) return;
-  Licq::TCPSocket* sock = dynamic_cast<Licq::TCPSocket*>(s);
+
   if (!sock->send(*p->getBuffer()) && userId.isValid())
   {
     gLog.info("Connection with %s lost", userId.toString().c_str());
 
+    int nSock = sock->Descriptor();
     Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
         Licq::PluginSignal::SignalConversation,
         Licq::PluginSignal::ConvoLeave, userId, 0, SocketToCID(nSock)));
@@ -447,15 +423,12 @@ void CMSN::Send_SB_Packet(const UserId& userId, CMSNPacket *p, int nSocket, bool
 
     if (convo == NULL || convo->isEmpty())
     {
-      gSocketMan.DropSocket(s);
-      gSocketMan.CloseSocket(nSock);
+      closeSocket(sock);
       if (convo != NULL)
         gConvoManager.remove(convo->id());
     }
   }
-  else
-    gSocketMan.DropSocket(sock);
-  
+
   if (bDelete)
     delete p;
 }
@@ -478,7 +451,6 @@ bool CMSN::MSNSBConnectStart(const string &strServer, const string &strCookie)
   }
 
   SStartMessage *pStart = 0;  
-  pthread_mutex_lock(&mutex_StartList);
   StartList::iterator it;
   for (it = m_lStart.begin(); it != m_lStart.end(); it++)
   {
@@ -488,13 +460,9 @@ bool CMSN::MSNSBConnectStart(const string &strServer, const string &strCookie)
     break;
   }
   if (!pStart)
-  {
-    pthread_mutex_unlock(&mutex_StartList);
     return false;
-  }
   //pStart->m_bConnecting = true;
   Licq::TCPSocket* sock = new Licq::TCPSocket(pStart->userId);
-  pthread_mutex_unlock(&mutex_StartList);
 
   gLog.info("Connecting to SB at %s:%d", host.c_str(), port);
   if (!sock->connectTo(host, port))
@@ -504,12 +472,10 @@ bool CMSN::MSNSBConnectStart(const string &strServer, const string &strCookie)
     return false;
   }
 
-  int nSocket = sock->Descriptor();
-
   // This socket was just opened so make sure there isn't any old left over conversation associated with it
-  killConversation(nSocket);
+  killConversation(sock);
 
-  gSocketMan.AddSocket(sock);
+  myMainLoop.addSocket(sock, this);
 
   {
     UserWriteGuard u(pStart->userId);
@@ -521,18 +487,16 @@ bool CMSN::MSNSBConnectStart(const string &strServer, const string &strCookie)
         u->setNormalSocketDesc(sock);
     }
   }
-  gSocketMan.DropSocket(sock);
-  
-  CMSNPacket *pReply = new CPS_MSN_SBStart(strCookie.c_str(), m_szUserName);
-  Send_SB_Packet(pStart->userId, pReply, nSocket);
+
+  CMSNPacket* pReply = new CPS_MSN_SBStart(strCookie, myOwnerId.accountId());
+  Send_SB_Packet(pStart->userId, pReply, sock);
 
   return true;
 }
 
 bool CMSN::MSNSBConnectAnswer(const string& strServer, const string& strSessionId,
-    const string& strCookie, const string& strUser)
+    const string& strCookie, const Licq::UserId& userId)
 {
-  UserId userId(strUser, MSN_PPID);
   size_t sep = strServer.rfind(':');
   string host;
   int port;
@@ -556,14 +520,12 @@ bool CMSN::MSNSBConnectAnswer(const string& strServer, const string& strSessionI
     delete sock;
     return false;
   }
-  int nSocket = sock->Descriptor();
 
   // This socket was just opened so make sure there isn't any old left over conversation associated with it
-  killConversation(nSocket);
+  killConversation(sock);
 
-  gSocketMan.AddSocket(sock);
-  CMSNPacket *pReply = new CPS_MSN_SBAnswer(strSessionId.c_str(),
-    strCookie.c_str(), m_szUserName);
+  myMainLoop.addSocket(sock, this);
+  CMSNPacket* pReply = new CPS_MSN_SBAnswer(strSessionId, strCookie, myOwnerId.accountId());
 
   {
     bool newUser = false;
@@ -578,18 +540,13 @@ bool CMSN::MSNSBConnectAnswer(const string& strServer, const string& strSessionI
     }
   }
 
-  gSocketMan.DropSocket(sock);
-
-  Send_SB_Packet(userId, pReply, nSocket);
+  Send_SB_Packet(userId, pReply, sock);
 
   return true;
 }
 
-void CMSN::MSNSendInvitation(const char* _szUser, CMSNPacket* _pPacket)
+void CMSN::MSNSendInvitation(const Licq::UserId& userId, CMSNPacket* _pPacket)
 {
-  UserId userId(_szUser, MSN_PPID);
-  //if (!gUserManager.userExists(userId)) return;
-
   // Must connect to the SB and call the user
   CMSNPacket *pSB = new CPS_MSNXfr();
       
@@ -600,10 +557,8 @@ void CMSN::MSNSendInvitation(const char* _szUser, CMSNPacket* _pPacket)
   p->m_nSeq = pSB->Sequence();
   p->m_bConnecting = false;
   p->m_bDataConnection = true;
-  pthread_mutex_lock(&mutex_StartList);
   m_lStart.push_back(p);
-  pthread_mutex_unlock(&mutex_StartList);
-  
+
   SendPacket(pSB);
 }
 
@@ -629,7 +584,9 @@ void CMSN::MSNSendMessage(unsigned long eventId, const UserId& userId, const str
   {
     m_pEvents.push_back(e);
 
-    Send_SB_Packet(userId, pSend, nSocket, false);
+    Licq::TCPSocket* sock = dynamic_cast<Licq::TCPSocket*>(myMainLoop.getSocketFromFd(nSocket));
+
+    Send_SB_Packet(userId, pSend, sock, false);
   }
   else
   {
@@ -643,17 +600,15 @@ void CMSN::MSNSendMessage(unsigned long eventId, const UserId& userId, const str
     p->m_nSeq = pSB->Sequence();
     p->m_bConnecting = false;
     p->m_bDataConnection = false;
-    pthread_mutex_lock(&mutex_StartList);
     m_lStart.push_back(p);
-    pthread_mutex_unlock(&mutex_StartList);
-   
+
     SendPacket(pSB);
   }  
 }
 
 void CMSN::MSNSendTypingNotification(const UserId& userId, unsigned long _nCID)
 {
-  CMSNPacket *pSend = new CPS_MSNTypingNotification(m_szUserName);
+  CMSNPacket* pSend = new CPS_MSNTypingNotification(myOwnerId.accountId());
   int nSockDesc = -1;
   
   if (_nCID)
@@ -664,14 +619,19 @@ void CMSN::MSNSendTypingNotification(const UserId& userId, unsigned long _nCID)
   }
 
   if (nSockDesc > 0)
-    Send_SB_Packet(userId, pSend, nSockDesc);
+  {
+    Licq::TCPSocket* sock = dynamic_cast<Licq::TCPSocket*>(myMainLoop.getSocketFromFd(nSockDesc));
+    Send_SB_Packet(userId, pSend, sock);
+  }
 }
 
-void CMSN::killConversation(int sock)
+void CMSN::killConversation(Licq::TCPSocket* sock)
 {
+  int sockFd = sock->Descriptor();
+
   Conversation* convo;
   // There should never be more than one but loop just in case
-  while ((convo = gConvoManager.getFromSocket(sock)) != NULL)
+  while ((convo = gConvoManager.getFromSocket(sockFd)) != NULL)
   {
     int convoId = convo->id();
 
@@ -688,11 +648,124 @@ void CMSN::killConversation(int sock)
       // Remove user from the conversation
       convo->removeUser(userId);
 
-      // Clear socket from user if it's still is associated with this conversation
+      sendIsTyping(userId, false, convoId);
+
       UserWriteGuard u(userId);
-      if (u.isLocked() && u->normalSocketDesc() == sock)
-        u->clearNormalSocketDesc();
+      if (u.isLocked())
+      {
+        setIsTyping(*u, false, convoId);
+
+        // Clear socket from user if it's still is associated with this conversation
+        if (u->normalSocketDesc() == sock)
+          u->clearNormalSocketDesc();
+      }
     }
     gConvoManager.remove(convoId);
+  }
+}
+
+int CMSN::getNextTimeoutId()
+{
+  // If no id is in use, reset the counter
+  if (myUserTypingTimeouts.empty() && myOwnerTypingTimeouts.empty())
+    myNextTimeoutId = 1;
+
+  return myNextTimeoutId++;
+}
+
+void CMSN::setIsTyping(Licq::User* u, bool typing, unsigned long cid)
+{
+  if (u->isTyping() != typing)
+  {
+    u->setIsTyping(typing);
+    Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+        Licq::PluginSignal::SignalUser, Licq::PluginSignal::UserTyping, u->id(), cid));
+  }
+
+  // Check if there already exist a timeout timer for this user
+  for (TypingTimeoutList::iterator i = myUserTypingTimeouts.begin();
+      i != myUserTypingTimeouts.end(); ++i)
+  {
+    if ((*i).convoId != cid || (*i).userId != u->id())
+      continue;
+
+    // Found a timeout for previous change, no longer relevant
+    myMainLoop.removeTimeout((*i).timeoutId);
+    myUserTypingTimeouts.erase(i);
+    break;
+  }
+
+  // Setup timeout to clear typing status if we don't receive any update
+  if (typing)
+  {
+    TypingTimeout t;
+    t.timeoutId = getNextTimeoutId();
+    t.convoId = cid;
+    t.userId = u->id();
+    myUserTypingTimeouts.push_back(t);
+    myMainLoop.addTimeout(10000, this, t.timeoutId, true);
+  }
+}
+
+void CMSN::sendIsTyping(const Licq::UserId& userId, bool typing, unsigned long cid)
+{
+  // Check if there exist a timeout timer for this user
+  for (TypingTimeoutList::iterator i = myOwnerTypingTimeouts.begin();
+      i != myOwnerTypingTimeouts.end(); ++i)
+  {
+    if ((*i).convoId != cid || (*i).userId != userId)
+      continue;
+
+    // Found a timeout for previous notification, no longer relevant
+    myMainLoop.removeTimeout((*i).timeoutId);
+    myOwnerTypingTimeouts.erase(i);
+    break;
+  }
+
+  if (typing)
+  {
+    // Send (the first) typing notification
+    MSNSendTypingNotification(userId, cid);
+
+    // Setup timer to resend typing notification regulary while active
+    TypingTimeout t;
+    t.timeoutId = getNextTimeoutId();
+    t.convoId = cid;
+    t.userId = userId;
+    myOwnerTypingTimeouts.push_back(t);
+    myMainLoop.addTimeout(5000, this, t.timeoutId, false);
+  }
+}
+
+void CMSN::typingTimeout(int id)
+{
+  for (TypingTimeoutList::iterator i = myUserTypingTimeouts.begin();
+      i != myUserTypingTimeouts.end(); ++i)
+  {
+    if ((*i).timeoutId != id)
+      continue;
+
+    // Haven't received a typing notification for some time, clear status
+    UserWriteGuard u((*i).userId);
+    if (u.isLocked())
+    {
+      u->setIsTyping(false);
+      Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalUser, Licq::PluginSignal::UserTyping,
+          u->id(), (*i).convoId));
+    }
+    myUserTypingTimeouts.erase(i);
+    return;
+  }
+
+  for (TypingTimeoutList::iterator i = myOwnerTypingTimeouts.begin();
+      i != myOwnerTypingTimeouts.end(); ++i)
+  {
+    if ((*i).timeoutId != id)
+      continue;
+
+    // Resend our typing notification
+    MSNSendTypingNotification((*i).userId, (*i).convoId);
+    return;
   }
 }

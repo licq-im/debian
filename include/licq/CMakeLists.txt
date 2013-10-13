@@ -5,13 +5,14 @@ set(licq_HEADERS
   byteorder.h
   color.h
   conversation.h
+  crypto.h
   daemon.h
   event.h
   filter.h
   gpghelper.h
   inifile.h
   macro.h
-  md5.h
+  mainloop.h
   oneventmanager.h
   packet.h
   pipe.h

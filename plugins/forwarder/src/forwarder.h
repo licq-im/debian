@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 #ifndef LICQEMAIL_H
 #define LICQEMAIL_H
 
-#include <licq/plugin/generalplugin.h>
+#include <licq/plugin/generalpluginhelper.h>
 
 #include <string>
 
@@ -38,26 +38,20 @@ class UserEvent;
 #define FORWARD_EMAIL 0
 #define FORWARD_LICQ 1
 
-class CLicqForwarder : public Licq::GeneralPlugin
+class CLicqForwarder : public Licq::GeneralPluginHelper
 {
 public:
-  CLicqForwarder(Params& p);
+  CLicqForwarder();
   ~CLicqForwarder();
 
-  // From Licq::GeneralPlugin
-  std::string name() const;
-  std::string version() const;
-  std::string description() const;
-  std::string usage() const;
-  std::string configFile() const;
-  bool isEnabled() const;
-
-protected:
-  // From Licq::GeneralPlugin
+  // From Licq::PluginInterface
   bool init(int argc, char** argv);
   int run();
-  void destructor();
 
+  // From Licq::GeneralPluginInterface
+  bool isEnabled() const;
+  
+protected:
   int m_nPipe;
   bool m_bExit;
   bool myIsEnabled;
@@ -76,8 +70,8 @@ protected:
 
 public:
   void ProcessPipe();
-  void ProcessSignal(Licq::PluginSignal* s);
-  void ProcessEvent(Licq::Event* e);
+  void ProcessSignal(const Licq::PluginSignal* s);
+  void ProcessEvent(const Licq::Event* e);
 
   void ProcessUserEvent(const Licq::UserId& userId, unsigned long nId);
   bool ForwardEvent(const Licq::User* u, const Licq::UserEvent* e);

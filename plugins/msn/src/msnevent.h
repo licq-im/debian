@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2005-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2005-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +22,13 @@
 
 #include <string>
 
+#include <licq/userid.h>
+
 #include "msnpacket.h"
 
 namespace Licq
 {
+class TCPSocket;
 class UserId;
 }
 
@@ -48,27 +51,27 @@ class CMSNDataEvent
 public:
   CMSNDataEvent(CMSN *);
   CMSNDataEvent(unsigned long event, unsigned long sessionId,
-      unsigned long baseId, const Licq::UserId& userId, const std::string& fromId,
+      unsigned long baseId, const Licq::UserId& userId, const Licq::UserId& fromId,
       const std::string& callId, CMSN* p);
   ~CMSNDataEvent();
 
   int ProcessPacket(CMSNBuffer *);
 
-  int getSocket() { return m_nSocketDesc; }
-  std::string getUser() const { return m_strId; }
+  Licq::TCPSocket* getSocket() { return mySocketDesc; }
+  const Licq::UserId& userId() const { return myUserId; }
   unsigned long getSessionId() { return m_nSessionId; }
   unsigned long getBaseId() { return m_nBaseId; }
 
-  void setSocket(int _n) { m_nSocketDesc = _n; }
+  void setSocket(Licq::TCPSocket* s) { mySocketDesc = s; }
 
 protected:
   CMSN *m_pMSN;
 
-  int m_nSocketDesc;
+  Licq::TCPSocket* mySocketDesc;
   unsigned long m_nEvent;
-  std::string m_strId,
-         m_strFromId,
-         m_strCallId;
+  Licq::UserId myUserId;
+  Licq::UserId myFromId;
+  std::string m_strCallId;
   ESTATE m_eState;
   int m_nFileDesc;
   std::string m_strFileName;

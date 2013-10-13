@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,9 +20,8 @@
 #ifndef SIGNALMANAGER_H
 #define SIGNALMANAGER_H
 
+#include <boost/shared_ptr.hpp>
 #include <QObject>
-
-class QSocketNotifier;
 
 namespace Licq
 {
@@ -65,9 +64,9 @@ signals:
   /**
    * Status has changed
    *
-   * @param ppid Protocol instance id for owner that changed status
+   * @param ownerId Id of owner that changed status
    */
-  void updatedStatus(unsigned long ppid);
+  void updatedStatus(const Licq::UserId& ownerId);
 
   void doneUserFcn(const Licq::Event* ev);
   void searchResult(const Licq::Event* ev);
@@ -162,15 +161,10 @@ signals:
    */
   void ownerRemoved(const Licq::UserId& userId);
 
-private:
-  int myPipe;
-  QSocketNotifier* sn;
-
-  void ProcessSignal(Licq::PluginSignal* sig);
-  void ProcessEvent(Licq::Event* ev);
-
 private slots:
-  void process();
+  void processSignal(boost::shared_ptr<const Licq::PluginSignal> sig);
+  void processEvent(boost::shared_ptr<const Licq::Event> ev);
+  void shutdown();
 };
 
 extern SignalManager* gGuiSignalManager;

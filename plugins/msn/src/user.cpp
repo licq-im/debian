@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2012-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,10 +24,10 @@
 
 using namespace LicqMsn;
 
-User::User(const Licq::UserId& id, bool temporary, bool isOwner)
-  : Licq::User(id, temporary, isOwner),
-    myNormalSocketDesc(-1),
-    myInfoSocketDesc(-1)
+User::User(const Licq::UserId& id, bool temporary)
+  : Licq::User(id, temporary),
+    myNormalSocketDesc(NULL),
+    myInfoSocketDesc(NULL)
 {
   Licq::IniFile& conf(userConf());
   conf.get("PictureObject", myPictureObject);
@@ -48,8 +48,8 @@ void User::savePictureInfo()
 
 void User::clearSocketDesc(Licq::INetSocket* s)
 {
-  if (s == NULL || s->Descriptor() == myNormalSocketDesc)
-    myNormalSocketDesc = -1;
-  if (s == NULL || s->Descriptor() == myInfoSocketDesc)
-    myInfoSocketDesc = -1;
+  if (s == NULL || s == myNormalSocketDesc)
+    myNormalSocketDesc = NULL;
+  if (s == NULL || s == myInfoSocketDesc)
+    myInfoSocketDesc = NULL;
 }

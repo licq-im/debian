@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1998-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@
 #include <cstring>
 #include <ctime>
 #include <cctype>
+#include <list>
 #include <string>
 #include <sys/types.h>
 #include <unistd.h>
@@ -56,6 +57,7 @@
 #include <licq/logging/logservice.h>
 #include <licq/logging/logutils.h>
 #include <licq/plugin/pluginmanager.h>
+#include <licq/plugin/protocolplugin.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
 #include <licq/translator.h>
@@ -77,11 +79,12 @@ using Licq::gUserManager;
 using namespace LicqDaemon;
 
 #define ReportMissingParams(cmdname) \
-  (gLog.info("%s `%s': missing arguments. try `help %s'\n",  \
-  L_FIFOxSTR,cmdname,cmdname))
+    (gLog.info("%s `%s': %s `help %s'", \
+    L_FIFOxSTR, cmdname, tr("missing arguments. try"), cmdname))
 
 #define ReportBadBuddy(cmdname,szUin) \
-  (gLog.info("%s `%s': bad buddy string `%s'\n",L_FIFOxSTR,cmdname,szUin))
+    (gLog.info("%s `%s': %s `%s'", L_FIFOxSTR, cmdname, \
+    tr("bad buddy string"), szUin))
 
 static const char L_FIFOxSTR[] = "[FIF] ";
 
@@ -182,64 +185,40 @@ struct command_t
 
 static int process_tok(const command_t *table,const char *tok);
 
-static bool buffer_is_uin(const char *buffer)
+static std::string buffer_get_ids(const std::string& buffer, unsigned long* protocolId)
 {
-  unsigned len = 0;
-  
-  for( ; buffer && isdigit(*buffer) ; buffer++ , len++ )
-    ;
+  std::string name(buffer);
+  size_t pos = 0;
+  *protocolId = 0;
 
-  return (len>0 && len <= MAX_UIN_DIGITS) && *buffer=='\0';
-}
-
-static bool buffer_get_ids(char* buffer, char** szId, unsigned long* nPPID,
-    bool* missing_protocol)
-{
-  bool found = false;
-  char *write = buffer;
-
-  *missing_protocol = true;
-  *szId = write;
-  for( ; *buffer && !found ; buffer++ )
+  while (1)
   {
-    if( *buffer == '@' ) 
-    {
-      if( *(buffer+1)== '@' ) // @@ -> @
-      {
-        buffer++;
-        *write = '@';
-        write++;
-      }
-      else
-        found = true;
-    }
-    else
-    {
-      *write = *buffer;
-      write++;
-    }
-  }
-  *write = 0;
-  
-  if( found )
-  { 
-    found = false;
-    *missing_protocol = false;
-    
-    Licq::ProtocolPluginsList plugins;
-    gPluginManager.getProtocolPluginsList(plugins);
+    pos = name.find('@', pos);
 
-    BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
+    if (pos == string::npos)
+      // Single @ not found, return unmodified buffer
+      return buffer;
+
+    if (name[pos+1] == '@')
     {
-      if (plugin->name() == buffer)
-      {
-        *nPPID = plugin->protocolId();
-        found = true;
-      }
+      // @@ -> @
+      name.erase(pos, 1);
+      pos++;
+      continue;
     }
+
+    break;
   }
 
-  return found;
+  std::string protocolName = name.substr(pos+1);
+  name.erase(pos);
+
+  *protocolId = Licq::protocolId_fromString(protocolName);
+  if (*protocolId != 0)
+    return name;
+
+  // Protocol not recognized, return unmodified buffer
+  return buffer;
 }
 
 /*! \brief Given an ascii string gets the szId and the nPPID
@@ -248,83 +227,35 @@ static bool buffer_get_ids(char* buffer, char** szId, unsigned long* nPPID,
  *    -# assume it is a uin, and if bList flag is on, then check if it 
  *       is in the list
  *  -# If that fail try with alias Params.
- * 
- *  \param  buff     string to convert
- *  \param  bOnList  fail if #buff is not in the list
- *  \param  szId     address where the szId is returned
- *  \param  nPPID    address where the nPPID is returned
  *
- * \returns true on success
+ * @param buff string to convert
+ * @return Valid user id on success
  */
-static bool atoid(const char* buff, bool bOnList, char** szId, unsigned long* nPPID)
+static Licq::UserId atoid(const char* buff, bool missingok = true)
 {
-  char *_szId = 0;
-  unsigned long _nPPID = 0;
-  bool ret = false, missing_protocol=true;
-  char *s = 0;
-  
-  if (buff == NULL) 
-    ret = false; 
-  else if( (s=strdup(buff)) == 0 )
-    ret  = false;
-  else if ( buffer_is_uin(buff) && 
-      ((bOnList && gUserManager.userExists(Licq::UserId(buff, LICQ_PPID))) || !bOnList))
-  {
-    _nPPID = LICQ_PPID;
-    _szId = s;
-    ret = true;
-  }
-  else if (buffer_get_ids(s, &_szId, &_nPPID, &missing_protocol))
-  {
-    ret = false;
+  if (buff == NULL)
+    return Licq::UserId();
 
-    Licq::UserListGuard userList(_nPPID);
-    BOOST_FOREACH(const Licq::User* user, **userList)
-    {
-      Licq::UserReadGuard pUser(user);
-      if (pUser->getAlias() == _szId)
-      {
-        _szId = strdup(pUser->accountId().c_str());
-        ret = true;
-        break;
-      }
-    }
-  }
-  else if( missing_protocol )
-  {  
-     /* assume ICQ */
-    _nPPID = LICQ_PPID;
+  unsigned long protocolId;
+  string name = buffer_get_ids(buff, &protocolId);
 
-    Licq::UserListGuard userList(_nPPID);
-    BOOST_FOREACH(const Licq::User* user, **userList)
-    {
-      Licq::UserReadGuard pUser(user);
-      if (pUser->getAlias() == s)
-      {
-        _szId = strdup(pUser->accountId().c_str());
-        ret = true;
-        break;
-      }
-    }
-    free(s);
-    s = 0;
-  }
-  else
+  Licq::UserListGuard userList(protocolId);
+  BOOST_FOREACH(const Licq::User* user, **userList)
   {
-    free(s);
-    s = 0;
-    ret = false;
+    Licq::UserReadGuard u(user);
+    if (u->accountId() == name || u->getAlias() == name)
+      return u->id();
   }
 
-  if( ret )
+  if (missingok && protocolId != 0)
   {
-    if( szId )
-      *szId = _szId;
-    if( nPPID )
-      *nPPID = _nPPID;
+    // Use first owner with matching protocol id
+    Licq::OwnerListGuard ownerList(protocolId);
+    if (!ownerList->empty())
+      return Licq::UserId((*ownerList->begin())->id(), name);
   }
-  
-  return ret;
+
+  return Licq::UserId();
 }
 
 // status 
@@ -347,15 +278,20 @@ static int fifo_status(int argc, const char* const* argv)
     return -1;
   }
 
-  gProtocolManager.setStatus(gUserManager.ownerUserId(LICQ_PPID), status);
+  string statusMsg = Licq::ProtocolManager::KeepAutoResponse;
+  if ( argc > 2 )
+    statusMsg = gTranslator.toUtf8(argv[2]);
 
-  // Now set the auto response
-  if( argc > 2 )
+  // Get a list of owners first since we can't call setStatus with list locked
+  std::list<Licq::UserId> owners;
   {
-    Licq::OwnerWriteGuard o(LICQ_PPID);
-    o->setAutoResponse(gTranslator.toUtf8(argv[2]));
-    o->save(Licq::Owner::SaveOwnerInfo);
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* o, **ownerList)
+      owners.push_back(o->id());
   }
+
+  BOOST_FOREACH(const Licq::UserId& ownerId, owners)
+    gProtocolManager.setStatus(ownerId, status, statusMsg);
 
   return 0;
 }
@@ -370,9 +306,16 @@ static int fifo_auto_response(int argc, const char* const* argv)
     return -1;
   }
 
-  Licq::OwnerWriteGuard o(LICQ_PPID);
-  o->setAutoResponse(gTranslator.toUtf8(argv[1]));
-  o->save(Licq::Owner::SaveOwnerInfo);
+  Licq::OwnerListGuard ownerList;
+  BOOST_FOREACH(Licq::Owner* owner, **ownerList)
+  {
+    Licq::OwnerWriteGuard o(owner);
+    if ((o->protocolCapabilities() & Licq::ProtocolPlugin::CanHoldStatusMsg) == 0)
+      continue;
+
+    o->setAutoResponse(gTranslator.toUtf8(argv[1]));
+    o->save(Licq::Owner::SaveOwnerInfo);
+  }
 
   return 0;
 }
@@ -380,22 +323,17 @@ static int fifo_auto_response(int argc, const char* const* argv)
 // message <buddy> <message>
 static int fifo_message(int argc, const char* const* argv)
 {
-  unsigned long nPPID;
-  char *szId = 0;
-
   if( argc < 3 )
   {
     ReportMissingParams(argv[0]);
     return -1;
   }
 
-  if (atoid(argv[1], false, &szId, &nPPID))
-    gProtocolManager.sendMessage(UserId(szId, nPPID), gTranslator.toUtf8(argv[2]));
-
+  Licq::UserId userId(atoid(argv[1]));
+  if (userId.isValid())
+    gProtocolManager.sendMessage(userId, gTranslator.toUtf8(argv[2]));
   else
     ReportBadBuddy(argv[0], argv[1]);
-
-  free(szId);
 
   return 0;
 }
@@ -403,26 +341,21 @@ static int fifo_message(int argc, const char* const* argv)
 // url <buddy> <url> [<description>]
 static int fifo_url(int argc, const char* const* argv)
 {
-  const char *szDescr;
-  unsigned long nPPID;
-  char *szId = 0;
-
   if( argc < 3 )
   {
     ReportMissingParams(argv[0]);
     return -1;
   }
 
-  if (atoid(argv[1], false, &szId, &nPPID))
+  Licq::UserId userId(atoid(argv[1]));
+  if (userId.isValid())
   {
-    szDescr = (argc > 3) ? argv[3] : "" ;
-    gProtocolManager.sendUrl(UserId(szId, nPPID), gTranslator.toUtf8(argv[2]),
+    const char* szDescr = (argc > 3) ? argv[3] : "" ;
+    gProtocolManager.sendUrl(userId, gTranslator.toUtf8(argv[2]),
         gTranslator.toUtf8(szDescr));
   }
   else
     ReportBadBuddy(argv[0],argv[1]);
-
-  free(szId);
 
   return 0;
 }
@@ -430,40 +363,42 @@ static int fifo_url(int argc, const char* const* argv)
 //sms <buddy> <message>
 static int fifo_sms(int argc, const char *const *argv)
 {
-  unsigned long nPPID;
-  char *szId = 0;
-
   if (argc < 3)
   {
     ReportMissingParams(argv[0]);
     return -1;
   }
 
-  if (atoid(argv[1], false, &szId, &nPPID))
-  { 
-    if( nPPID == LICQ_PPID )
-    {
-      UserId userId(szId, nPPID);
-      string number;
-      {
-        Licq::UserReadGuard u(userId);
-        {
-          if (u.isLocked())
-            number = u->getCellularNumber();
-        }
-      }
-      if (!number.empty())
-        gLicqDaemon->icqSendSms(userId, number, gTranslator.toUtf8(argv[2]));
-      else
-        gLog.error("Unable to send SMS to %s, no SMS number found", szId);
-    }
-    else
-      gLog.info(tr("%s `%s': bad protocol. ICQ only allowed"), L_FIFOxSTR, argv[0]);
-  }
-  else
+  Licq::UserId userId(atoid(argv[1]));
+  if (!userId.isValid())
+  {
     ReportBadBuddy(argv[0], argv[1]);
+    return 0;
+  }
 
-  free(szId);
+  if (userId.protocolId() != ICQ_PPID)
+  {
+    gLog.info(tr("%s `%s': bad protocol. ICQ only allowed"), L_FIFOxSTR, argv[0]);
+    return 0;
+  }
+
+  Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+      Licq::gPluginManager.getProtocolInstance(userId.ownerId()));
+  if (!icq)
+    return -1;
+
+  string number;
+  {
+    Licq::UserReadGuard u(userId);
+    {
+      if (u.isLocked())
+        number = u->getCellularNumber();
+    }
+  }
+  if (!number.empty())
+    icq->icqSendSms(userId, number, gTranslator.toUtf8(argv[2]));
+  else
+    gLog.error(tr("Unable to send SMS to %s, no SMS number found"), userId.accountId().c_str());
 
   return 0;
 }
@@ -477,7 +412,20 @@ static int fifo_sms_number(int argc, const char *const *argv)
     return -1;
   }
 
-  gLicqDaemon->icqSendSms(gUserManager.ownerUserId(LICQ_PPID), argv[1], gTranslator.toUtf8(argv[2]));
+  Licq::UserId ownerId;
+  {
+    Licq::OwnerListGuard ownerList(ICQ_PPID);
+    if (ownerList->empty())
+      return -1;
+    ownerId = (*ownerList->begin())->id();
+  }
+
+  Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+      Licq::gPluginManager.getProtocolInstance(ownerId));
+  if (!icq)
+    return -1;
+
+  icq->icqSendSms(ownerId, argv[1], gTranslator.toUtf8(argv[2]));
   return 0;
 }
 
@@ -522,23 +470,17 @@ static int fifo_debuglvl(int argc, const char* const* argv)
 // adduser <buddy>
 static int fifo_adduser(int argc, const char* const* argv)
 {
-  unsigned long nPPID;
-  char *szId = 0;
-
   if( argc  == 1 )
   {
     ReportMissingParams(argv[0]);
     return -1;
   }
 
-  if (atoid(argv[1], false, &szId, &nPPID))
-  {
-    UserId userId(szId, nPPID);
+  Licq::UserId userId(atoid(argv[1]));
+  if (userId.isValid())
     gUserManager.addUser(userId);
-  }
   else
     ReportBadBuddy(argv[0],argv[1]);
-  free(szId);
 
   return 0;
 }
@@ -546,32 +488,27 @@ static int fifo_adduser(int argc, const char* const* argv)
 // userinfo <buddy>
 static int fifo_userinfo(int argc, const char* const* argv)
 {
-  unsigned long nPPID;
-  char *szId = 0; 
-  int ret = -1; 
-
   if ( argc == 1 )
-    ReportMissingParams(argv[0]);
-  else if (!atoid(argv[1], true, &szId, &nPPID))
-    ReportBadBuddy(argv[0],argv[1]);
-  else if( nPPID != LICQ_PPID )
-     gLog.info(tr("%s `%s': bad protocol. ICQ only allowed\n"), L_FIFOxSTR, argv[0]);
-  else
   {
-    UserId userId(szId, nPPID);
-    if (!gUserManager.userExists(userId))
-      gLog.warning(tr("%s: user %s not on contact list, not retrieving "
-                "info"), argv[0], szId);
-    else
-    {
-      gProtocolManager.requestUserInfo(userId);
-      ret = 0;
-    }
+    ReportMissingParams(argv[0]);
+    return -1;
   }
-  
-  free( szId );
-  
-  return ret;
+
+  Licq::UserId userId(atoid(argv[1], false));
+  if (!userId.isValid())
+  {
+    ReportBadBuddy(argv[0],argv[1]);
+    return -1;
+  }
+
+  if (!gUserManager.userExists(userId))
+  {
+    gLog.warning(tr("%s: user %s not on contact list, not retrieving info"), argv[0], userId.accountId().c_str());
+    return -1;
+  }
+
+  gProtocolManager.requestUserInfo(userId);
+  return 0;
 }
 
 static int fifo_setpicture(int argc, const char* const* argv)
@@ -582,51 +519,22 @@ static int fifo_setpicture(int argc, const char* const* argv)
     return -1;
   }
 
+  unsigned long protocolId = 0;
   if (argc > 2)
   {
     // Just one plugin, find which one
 
-    unsigned long protocolId = 0;
-
-    Licq::ProtocolPluginsList plugins;
-    gPluginManager.getProtocolPluginsList(plugins);
-
-    BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
-    {
-      if (plugin->name() == argv[2])
-      {
-        protocolId = plugin->protocolId();
-        break;
-      }
-    }
-
+    protocolId = Licq::protocolId_fromString(argv[2]);
     if (protocolId == 0)
     {
       gLog.info(tr("Couldn't find plugin '%s'"), argv[2]);
       return -1;
     }
-
-    {
-      Licq::OwnerWriteGuard o(protocolId);
-      if (!o.isLocked())
-      {
-        gLog.info(tr("No account registered for plugin '%s'"), argv[2]);
-        return -1;
-      }
-      if (strlen(argv[1]) == 0)
-        o->SetPicture(NULL);
-      else
-        o->SetPicture(argv[1]);
-      o->save(Licq::Owner::SavePictureInfo);
-      Licq::gUserManager.notifyUserUpdated(o->id(), Licq::PluginSignal::UserPicture);
-    }
   }
-  else
-  {
-    // All plugins
 
-    Licq::OwnerListGuard ownerList;
-    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
+  Licq::OwnerListGuard ownerList(protocolId);
+  BOOST_FOREACH(Licq::Owner* owner, **ownerList)
+  {
     {
       Licq::OwnerWriteGuard o(owner);
       if (strlen(argv[1]) == 0)
@@ -634,11 +542,19 @@ static int fifo_setpicture(int argc, const char* const* argv)
       else
         o->SetPicture(argv[1]);
       o->save(Licq::Owner::SavePictureInfo);
-      Licq::gUserManager.notifyUserUpdated(o->id(), Licq::PluginSignal::UserPicture);
+    }
+    Licq::gUserManager.notifyUserUpdated(owner->id(), Licq::PluginSignal::UserPicture);
+
+    if (owner->id().protocolId() == ICQ_PPID)
+    {
+      Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+          Licq::gPluginManager.getProtocolInstance(owner->id()));
+
+      icq->icqUpdateInfoTimestamp(
+          owner->id(), Licq::IcqProtocol::PluginPicture);
     }
   }
 
-  gLicqDaemon->icqUpdatePictureTimestamp();
   return 0;
 }
 
@@ -652,27 +568,20 @@ static int fifo_exit(int /* argc */, const char* const* /* argv */)
 // ui_viewevent [<buddy>]
 static int fifo_ui_viewevent(int argc, const char* const* argv)
 {
-  unsigned long nPPID;
-  char *szId = 0; 
-  
-  if( argc ==1 )
-  {
-    szId = strdup("0");
-    nPPID = 0;
-  }
-  else if (!atoid(argv[1], true, &szId, &nPPID))
-  {
-    ReportBadBuddy(argv[0],argv[1]);
-    free(szId);
+  Licq::UserId userId;
 
-    return 0;
+  if (argc > 1)
+  {
+    userId = atoid(argv[1], false);
+    if (!userId.isValid())
+    {
+      ReportBadBuddy(argv[0],argv[1]);
+      return 0;
+    }
   }
 
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
-      PluginSignal::PluginViewEvent, UserId(szId, nPPID)));
-
-  if (szId != NULL)
-    free(szId);
+      PluginSignal::PluginViewEvent, userId));
 
   return 0;
 }
@@ -680,28 +589,23 @@ static int fifo_ui_viewevent(int argc, const char* const* argv)
 // ui_message <buddy>
 static int fifo_ui_message(int argc, const char* const* argv)
 {
-  unsigned long nPPID = 0;
-  char *szId = 0;
-  int nRet = 0;
-
   if ( argc == 1 )
   {
     ReportMissingParams(argv[0]);
-    nRet = -1;
+    return -1;
   }
-  else if (atoid(argv[1], true, &szId, &nPPID))
-  {
-    gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
-        PluginSignal::PluginStartMessage, UserId(szId, nPPID)));
-  }
-  else
+
+  Licq::UserId userId(atoid(argv[1], false));
+  if (!userId.isValid())
   {
     ReportBadBuddy(argv[0],argv[1]);
     return -1;
   }
-  free(szId);
 
-  return nRet;
+  gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalPluginEvent,
+      PluginSignal::PluginStartMessage, userId));
+
+  return 0;
 }
 
 static int fifo_ui_showuserlist(int /* argc */, const char* const* /* argv */)
@@ -725,7 +629,7 @@ static int fifo_plugin_list(int /* argc */, const char* const* /* argv */)
 
   BOOST_FOREACH(Licq::GeneralPlugin::Ptr plugin, plugins)
   {
-    gLog.info("[%3d] %s\n", plugin->id(), plugin->name().c_str());
+    gLog.info("%s\n", plugin->name().c_str());
   }
   return 0;
 }
@@ -740,8 +644,8 @@ static int fifo_plugin_load(int argc, const char* const* argv)
 
   if (gPluginManager.startGeneralPlugin(argv[1], 0, NULL))
     return 0;
-  
-  gLog.info("Couldn't load plugin '%s'\n", argv[1]);
+
+  gLog.info(tr("Couldn't load plugin '%s'"), argv[1]);
   return -1;
 }
 
@@ -764,7 +668,7 @@ static int fifo_plugin_unload(int argc, const char* const* argv)
       return 0;
     }
   }
-  gLog.info("Couldn't find plugin '%s'\n", argv[1]);
+  gLog.info(tr("Couldn't find plugin '%s'"), argv[1]);
   return -1;
 }
 
@@ -775,7 +679,7 @@ static int fifo_proto_plugin_list(int /* argc */, const char* const* /* argv */)
 
   BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
   {
-    gLog.info("[%3d] %s\n", plugin->id(), plugin->name().c_str());
+    gLog.info("%s\n", plugin->name().c_str());
   }
   return 0;
 }
@@ -790,8 +694,8 @@ static int fifo_proto_plugin_load(int argc, const char* const* argv)
 
   if (gPluginManager.startProtocolPlugin(argv[1]))
     return 0;
-  
-  gLog.info("Couldn't load protocol plugin '%s'\n", argv[1]);
+
+  gLog.info(tr("Couldn't load protocol plugin '%s'"), argv[1]);
   return -1;
 }
 
@@ -814,7 +718,7 @@ static int fifo_proto_plugin_unload(int argc, const char* const* argv)
       return 0;
     }
   }
-  gLog.info("Couldn't find protocol plugin '%s'\n", argv[1]);
+  gLog.info(tr("Couldn't find protocol plugin '%s'"), argv[1]);
   return -1;
 }
 
@@ -973,7 +877,6 @@ static int process_tok(const command_t *table,const char *tok)
 LicqDaemon::Fifo LicqDaemon::gFifo;
 
 Fifo::Fifo()
-  : fifo_fs(NULL)
 {
   // Empty
 }
@@ -983,7 +886,7 @@ Fifo::~Fifo()
   // Empty
 }
 
-void Fifo::initialize()
+void Fifo::initialize(Licq::MainLoop& mainLoop)
 {
   string filename = gDaemon.baseDir() + "licq_fifo";
 
@@ -1001,7 +904,6 @@ void Fifo::initialize()
         gLog.warning(tr("Unable to open fifo: %s"), strerror(errno));
     }
   }
-  fifo_fs = NULL;
   if (fifo_fd != -1)
   {
     struct stat buf;
@@ -1013,44 +915,57 @@ void Fifo::initialize()
       close(fifo_fd);
       fifo_fd = -1;
     }
-    else
-      fifo_fs = fdopen(fifo_fd, "r");
   }
+
+  // Register callback from main loop when there is data to read
+  if (fifo_fd != -1)
+    mainLoop.addRawFile(fifo_fd, this);
 }
 
 void Fifo::shutdown()
 {
-  if (fifo_fs != NULL)
-  {
-    fclose(fifo_fs);
-    fifo_fs = NULL;
-  }
+  if (fifo_fd != -1)
+    close(fifo_fd);
 }
 
-void Fifo::process()
+void Fifo::rawFileEvent(int /*fd*/, int /*revents*/)
 {
   char szBuf[1024];
-  fgets(szBuf, 1024, fifo_fs);
+  ssize_t readret = read(fifo_fd, szBuf, sizeof(szBuf));
+  if (readret <= 0)
+    return;
+  myInputBuffer.append(szBuf, readret);
 
-  int argc, index;
-  const char* argv[MAX_ARGV];
-
-  gLog.info(tr("%sReceived string: %s"), L_FIFOxSTR, szBuf);
-  line2argv(szBuf, argv, &argc, sizeof(argv) / sizeof(argv[0]) );
-  index = process_tok(fifocmd_table,argv[0]);
-
-  switch( index )
+  // Handle each line in the buffer (and don't assume it's only one at a time)
+  size_t nlpos;
+  while ((nlpos = myInputBuffer.find('\n')) != string::npos)
   {
-    case CL_UNKNOWN:
-      gLog.info(tr("%s: '%s' Unknown fifo command. Try 'help'\n"),
-                L_FIFOxSTR,argv[0]);
-      break;
-    case CL_NONE:
-      break;
-    default:
-      argv[0] = fifocmd_table[index].szName;
-      if( fifocmd_table[index].fnc )
-        fifocmd_table[index].fnc(argc, argv);
-      break;
+    // Extract first line from buffer
+    size_t copylen = (nlpos < sizeof(szBuf) ? nlpos+1 : sizeof(szBuf));
+    myInputBuffer.copy(szBuf, 0, copylen);
+    szBuf[copylen] = '\0';
+    myInputBuffer.erase(0, nlpos+1);
+
+    int argc, index;
+    const char* argv[MAX_ARGV];
+
+    gLog.info(tr("%sReceived string: %s"), L_FIFOxSTR, szBuf);
+    line2argv(szBuf, argv, &argc, sizeof(argv) / sizeof(argv[0]) );
+    index = process_tok(fifocmd_table,argv[0]);
+
+    switch (index)
+    {
+      case CL_UNKNOWN:
+        gLog.info(tr("%s: '%s' Unknown fifo command. Try 'help'\n"),
+            L_FIFOxSTR,argv[0]);
+        break;
+      case CL_NONE:
+        break;
+      default:
+        argv[0] = fifocmd_table[index].szName;
+        if (fifocmd_table[index].fnc)
+          fifocmd_table[index].fnc(argc, argv);
+        break;
+    }
   }
 }

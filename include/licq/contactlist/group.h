@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010 Licq developers
+ * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 
 namespace Licq
 {
+class UserId;
 
 /**
  * Class holding data for a user group in the contact list.
@@ -69,10 +70,10 @@ public:
   /**
    * Group id for this group at the server side
    *
-   * @param protocolId Id of protocol to get group id for
+   * @param ownerId Id of owner to get group id for
    * @return Server side group id or 0 if not set or not known
    */
-  virtual unsigned long serverId(unsigned long protocolId) const = 0;
+  virtual unsigned long serverId(const UserId& ownerId) const = 0;
 
   /**
    * Set group name
@@ -91,10 +92,17 @@ public:
   /**
    * Set server side id for this group
    *
-   * @param protocolId Id of protocol to set group id for
+   * @param ownerId Id of owner to set group id for
    * @param serverId Id for this group on server side list
    */
-  virtual void setServerId(unsigned long protocolId, unsigned long serverId) = 0;
+  virtual void setServerId(const UserId& ownerId, unsigned long serverId) = 0;
+
+  /**
+   * Remove a server side id for this group
+   *
+   * @param ownerId Id of owner to clear group id for
+   */
+  virtual void unsetServerId(const UserId& ownerId) = 0;
 
 protected:
   virtual ~Group() { /* Empty */ }

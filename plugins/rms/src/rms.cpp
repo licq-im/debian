@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
  */
 
 #include "rms.h"
+#include "pluginversion.h"
 
 #include <boost/foreach.hpp>
 #include <cctype>
@@ -25,7 +26,6 @@
 #include <cstdio>
 #include <cstring>
 #include <sstream>
-#include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -43,20 +43,19 @@
 #include <licq/logging/log.h>
 #include <licq/logging/logservice.h>
 #include <licq/logging/logutils.h>
+#include <licq/mainloop.h>
 #include <licq/plugin/pluginmanager.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
 #include <licq/translator.h>
 #include <licq/userevents.h>
 
-#include "pluginversion.h"
-
-using namespace std;
 using Licq::UserId;
 using Licq::gLog;
 using Licq::gPluginManager;
 using Licq::gProtocolManager;
 using Licq::gUserManager;
+using std::string;
 
 CLicqRMS *licqRMS = NULL;
 
@@ -178,15 +177,13 @@ static const unsigned short NUM_COMMANDS = sizeof(commands)/sizeof(*commands);
 /*---------------------------------------------------------------------------
  * CLicqRMS::Constructor
  *-------------------------------------------------------------------------*/
-CLicqRMS::CLicqRMS(Licq::GeneralPlugin::Params& p)
-  : GeneralPlugin(p),
-    m_bEnabled(true),
+CLicqRMS::CLicqRMS(const std::string& configFile)
+  : m_bEnabled(true),
     myPort(0),
-    myAuthProtocol(LICQ_PPID)
+    myConfigFile(configFile)
 {
   licqRMS = this;
   server = NULL;
-  m_bExit = false;
 }
 
 
@@ -201,36 +198,15 @@ CLicqRMS::~CLicqRMS()
     delete *iter;
 }
 
-string CLicqRMS::name() const
+/*---------------------------------------------------------------------------
+ * CLicqRMS::Shutdown
+ *-------------------------------------------------------------------------*/
+void CLicqRMS::Shutdown()
 {
-  return "RMS";
-}
+  gLog.info("Shutting down remote manager server");
 
-string CLicqRMS::description() const
-{
-  return "Licq remote management server";
-}
-
-string CLicqRMS::version() const
-{
-  return PLUGIN_VERSION_STRING;
-}
-
-string CLicqRMS::usage() const
-{
-  return "Usage:  Licq [options] -p rms -- [ -h ] [ -d ]\n"
-      "         -h          : help\n"
-      "         -d          : start disabled\n";
-}
-
-string CLicqRMS::configFile() const
-{
-  return "licq_rms.conf";
-}
-
-bool CLicqRMS::isEnabled() const
-{
-  return m_bEnabled;
+  if (myLogSink)
+    Licq::gLogService.unregisterLogSink(myLogSink);
 }
 
 bool CLicqRMS::init(int argc, char** argv)
@@ -242,13 +218,10 @@ bool CLicqRMS::init(int argc, char** argv)
 
   // parse command line for arguments
   int i = 0;
-  while ( (i = getopt(argc, argv, "hdp:")) > 0)
+  while ( (i = getopt(argc, argv, "dp:")) > 0)
   {
     switch (i)
     {
-    case 'h':  // help
-      puts(usage().c_str());
-      return false;
     case 'd': // enable
       m_bEnabled = false;
       break;
@@ -261,25 +234,13 @@ bool CLicqRMS::init(int argc, char** argv)
 }
 
 /*---------------------------------------------------------------------------
- * CLicqRMS::Shutdown
- *-------------------------------------------------------------------------*/
-void CLicqRMS::Shutdown()
-{
-  gLog.info("Shutting down remote manager server");
-
-  if (myLogSink)
-    Licq::gLogService.unregisterLogSink(myLogSink);
-}
-
-
-/*---------------------------------------------------------------------------
  * CLicqRMS::Run
  *-------------------------------------------------------------------------*/
 int CLicqRMS::run()
 {
   setSignalMask(Licq::PluginSignal::SignalAll);
 
-  Licq::IniFile conf(configFile());
+  Licq::IniFile conf(myConfigFile);
   if (conf.loadFile())
   {
     conf.setSection("RMS");
@@ -289,12 +250,11 @@ int CLicqRMS::run()
       conf.get("Port", myPort, 0);
 
     string protocolStr;
-    conf.get("AuthProtocol", protocolStr, "Licq");
+    conf.get("AuthProtocol", protocolStr, "ICQ");
+    conf.get("AuthUser", myAuthUser);
     if (protocolStr == "Config")
     {
-      // Get user and password from config file
-      myAuthProtocol = 0;
-      conf.get("AuthUser", myAuthUser);
+      // Get password from config file
       conf.get("AuthPassword", myAuthPassword);
 
       // Make sure we got something instead of opening a security problem
@@ -302,22 +262,20 @@ int CLicqRMS::run()
       {
         gLog.warning("Missing value for AuthUser or AuthPassword in configuration, "
             "login will not be possible.");
-
-        // Dummy value that should never match any real protocol
-        myAuthProtocol = 1;
       }
-    }
-    else if (protocolStr.size() == 4)
-    {
-      // Parse protocol id
-      myAuthProtocol = Licq::protocolId_fromString(protocolStr);
     }
     else
     {
-      // Invalid
-      gLog.warning("Invalid value for AuthProtocol in configuration, "
-          "will use ICQ account.");
-      myAuthProtocol = LICQ_PPID;
+      // Parse protocol id
+      unsigned long protocolId = Licq::protocolId_fromString(protocolStr);
+      if (protocolId == 0 || myAuthUser.empty())
+      {
+        // Invalid
+        gLog.warning("Invalid value for AuthProtocol or AuthUser in configuration, "
+            "login will not be possible");
+      }
+      else
+        myAuthOwnerId = Licq::UserId(protocolId, myAuthUser);
     }
   }
 
@@ -343,83 +301,56 @@ int CLicqRMS::run()
   }
 
   gLog.info("RMS server started on port %d", server->getLocalPort());
-  CRMSClient::sockman.AddSocket(server);
-  CRMSClient::sockman.DropSocket(server);
+  myMainLoop.addSocket(server, this);
+  myMainLoop.addRawFile(getReadPipe(), this);
 
-  fd_set f;
-  int l;
-  int nResult;
+  myMainLoop.run();
 
-  int m_nPipe = getReadPipe();
-
-  while (!m_bExit)
-  {
-    f = CRMSClient::sockman.socketSet();
-    l = CRMSClient::sockman.LargestSocket() + 1;
-
-    // Add the new socket pipe descriptor
-    FD_SET(m_nPipe, &f);
-    if (m_nPipe >= l) l = m_nPipe + 1;
-    if (myLogSink)
-    {
-      int fd = myLogSink->getReadPipe();
-      FD_SET(fd, &f);
-      if (fd >= l)
-        l = fd + 1;
-    }
-
-    nResult = select(l, &f, NULL, NULL, NULL);
-    if (nResult == -1)
-    {
-      gLog.error("Error in select(): %s", strerror(errno));
-      m_bExit = true;
-    }
-    else
-    {
-      while (nResult > 0)
-      {
-        if (FD_ISSET(m_nPipe, &f))
-          ProcessPipe();
-        else if (FD_ISSET(server->Descriptor(), &f))
-          ProcessServer();
-        else if (myLogSink && FD_ISSET(myLogSink->getReadPipe(), &f))
-          ProcessLog();
-        else
-        {
-          ClientList::iterator iter;
-          for (iter = clients.begin(); iter != clients.end(); iter++)
-          {
-            if (FD_ISSET((*iter)->sock.Descriptor(), &f))
-            {
-              if ((*iter)->Activity() == -1)
-              {
-                delete *iter;
-                clients.erase(iter);
-                if (myLogSink)
-                {
-                  unsigned int mask = 0;
-                  BOOST_FOREACH(CRMSClient* client, clients)
-                  {
-                    mask |= client->myLogLevelsBitmask;
-                  }
-                  myLogSink->setLogLevelsFromBitmask(mask);
-                }
-              }
-              break;
-            }
-          }
-        }
-        nResult--;
-      }
-    }
-  }
   Shutdown();
   return 0;
 }
 
-void CLicqRMS::destructor()
+bool CLicqRMS::isEnabled() const
 {
-  delete this;
+  return m_bEnabled;
+}
+
+void CLicqRMS::rawFileEvent(int fd, int /* revents */)
+{
+  if (fd == getReadPipe())
+    ProcessPipe();
+  else if (myLogSink && fd == myLogSink->getReadPipe())
+    ProcessLog();
+}
+
+void CLicqRMS::setupLogSink()
+{
+  if (!myLogSink)
+  {
+    myLogSink.reset(new Licq::PluginLogSink);
+    Licq::gLogService.registerLogSink(myLogSink);
+    myMainLoop.addRawFile(myLogSink->getReadPipe(), this);
+  }
+
+  unsigned int mask = 0;
+  BOOST_FOREACH(CRMSClient* client, clients)
+    mask |= client->myLogLevelsBitmask;
+  myLogSink->setLogLevelsFromBitmask(mask);
+}
+
+void CLicqRMS::deleteClient(CRMSClient* client)
+{
+  delete client;
+
+  for (ClientList::iterator iter = clients.begin(); iter != clients.end(); ++iter)
+    if (*iter == client)
+    {
+      clients.erase(iter);
+      break;
+    }
+
+  if (myLogSink)
+    setupLogSink();
 }
 
 /*---------------------------------------------------------------------------
@@ -431,36 +362,32 @@ void CLicqRMS::ProcessPipe()
   read(getReadPipe(), &buf, 1);
   switch (buf)
   {
-    case Licq::GeneralPlugin::PipeSignal:
-    {
-      Licq::PluginSignal* s = popSignal();
+    case PipeSignal:
       if (m_bEnabled)
-        ProcessSignal(s);
-      delete s;
+        ProcessSignal(popSignal().get());
+      else
+        popSignal();
       break;
-    }
 
-    case Licq::GeneralPlugin::PipeEvent:
-    {
+    case PipeEvent:
       // An event is pending (should never happen)
-      Licq::Event* e = popEvent();
       if (m_bEnabled)
-        ProcessEvent(e);
-      delete e;
+        ProcessEvent(popEvent().get());
+      else
+        popEvent();
       break;
-    }
 
-    case Licq::GeneralPlugin::PipeShutdown:
+    case PipeShutdown:
       gLog.info("Exiting");
-      m_bExit = true;
+      myMainLoop.quit();
       break;
 
-    case Licq::GeneralPlugin::PipeDisable:
+    case PipeDisable:
       gLog.info("Disabling");
       m_bEnabled = false;
       break;
 
-    case Licq::GeneralPlugin::PipeEnable:
+    case PipeEnable:
       gLog.info("Enabling");
       m_bEnabled = true;
       break;
@@ -509,7 +436,7 @@ void CLicqRMS::ProcessLog()
 /*---------------------------------------------------------------------------
  * CLicqRMS::ProcessSignal
  *-------------------------------------------------------------------------*/
-void CLicqRMS::ProcessSignal(Licq::PluginSignal* s)
+void CLicqRMS::ProcessSignal(const Licq::PluginSignal* s)
 {
   switch (s->signal())
   {
@@ -556,30 +483,25 @@ void CLicqRMS::ProcessSignal(Licq::PluginSignal* s)
 /*---------------------------------------------------------------------------
  * CLicqRMS::ProcessEvent
  *-------------------------------------------------------------------------*/
-void CLicqRMS::ProcessEvent(Licq::Event* e)
+void CLicqRMS::ProcessEvent(const Licq::Event* e)
 {
   ClientList ::iterator iter;
   for (iter = clients.begin(); iter != clients.end(); iter++)
   {
-    if ((*iter)->ProcessEvent(e)) break;
+    if ((*iter)->ProcessEvent(e))
+      break;
   }
 }
 
-
-
-/*---------------------------------------------------------------------------
- * CLicqRMS::ProcessServer
- *-------------------------------------------------------------------------*/
-void CLicqRMS::ProcessServer()
+void CLicqRMS::socketEvent(Licq::INetSocket* inetSocket, int /* revents */)
 {
-  server->Lock();
-  clients.push_back(new CRMSClient(server));
-  server->Unlock();
+  if (inetSocket == server)
+  {
+    server->Lock();
+    clients.push_back(new CRMSClient(server));
+    server->Unlock();
+  }
 }
-
-
-
-Licq::SocketManager CRMSClient::sockman;
 
 /*---------------------------------------------------------------------------
  * CRMSClient::constructor
@@ -588,13 +510,12 @@ CRMSClient::CRMSClient(Licq::TCPSocket* sin)
   : myLogLevelsBitmask(0)
 {
   sin->RecvConnection(sock);
-  sockman.AddSocket(&sock);
-  sockman.DropSocket(&sock);
+  licqRMS->myMainLoop.addSocket(&sock, this);
 
   gLog.info("Client connected from %s", sock.getRemoteIpString().c_str());
   fs = fdopen(sock.Descriptor(), "r+");
-  fprintf(fs, "Licq Remote Management Server v%s\n"
-      "%d Enter your UIN:\n", licqRMS->version().c_str(), CODE_ENTERxUIN);
+  fprintf(fs, "Licq Remote Management Server v" PLUGIN_VERSION_STRING "\n"
+      "%d Enter your UIN:\n", CODE_ENTERxUIN);
   fflush(fs);
 
   m_szCheckId = 0;
@@ -609,31 +530,19 @@ CRMSClient::CRMSClient(Licq::TCPSocket* sin)
  *-------------------------------------------------------------------------*/
 CRMSClient::~CRMSClient()
 {
-  sockman.CloseSocket(sock.Descriptor(), false, false);
-  
+  licqRMS->myMainLoop.removeSocket(&sock);
+  sock.CloseConnection();
+
   if (m_szCheckId)
     free(m_szCheckId);
 }
 
-/*---------------------------------------------------------------------------
- * CRMSClient::GetProtocol
- *-------------------------------------------------------------------------*/
-unsigned long CRMSClient::getProtocol(const string& data)
+void CRMSClient::socketEvent(Licq::INetSocket* /*inetSocket*/, int /*revents*/)
 {
-  unsigned long nPPID = 0;
-
-  Licq::ProtocolPluginsList plugins;
-  gPluginManager.getProtocolPluginsList(plugins);
-  BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
+  if (Activity() == -1)
   {
-    if (strcasecmp(plugin->name().c_str(), data.c_str()) == 0)
-    {
-      nPPID = plugin->protocolId();
-      break;
-    }
+    licqRMS->deleteClient(this);
   }
-  
-  return nPPID;
 }
 
 /*---------------------------------------------------------------------------
@@ -642,30 +551,49 @@ unsigned long CRMSClient::getProtocol(const string& data)
 void CRMSClient::ParseUser(const string& strData)
 {
   myUserId = UserId();
-  string::size_type nPos= strData.find_last_of(".");
-  if (nPos == string::npos)
+  unsigned long protocolId = 0;
+  string accountId;
+
+  size_t pos = strData.rfind('.');
+  if (pos != string::npos)
   {
-    Licq::ProtocolPluginsList plugins;
-    gPluginManager.getProtocolPluginsList(plugins);
-    BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
-    {
-      myUserId = UserId(data_arg, plugin->protocolId());
-      if (gUserManager.userExists(myUserId))
-        break;
-    }
+    // Protocol specified
+    protocolId = Licq::protocolId_fromString(strData.substr(pos+1));
+    accountId = strData.substr(0, pos-1);
   }
   else
+    accountId = strData;
+
+  // Try and find an existing user that matches
+  Licq::UserListGuard userList(protocolId);
+  BOOST_FOREACH(const Licq::User* user, **userList)
   {
-    string strId(strData, 0, strData.find_last_of("."));
-    string strProtocol(strData, strData.find_last_of(".")+1, strData.size());
-    myUserId = UserId(strId, getProtocol(strProtocol));
+    if (user->accountId() == accountId)
+    {
+      myUserId = user->id();
+      return;
+    }
   }
+
+  if (protocolId != 0)
+  {
+    // Use first owner for protocol
+    Licq::OwnerListGuard ownerList(protocolId);
+    if (!ownerList->empty())
+    {
+      myUserId = Licq::UserId((*ownerList->begin())->id(), accountId);
+      return;
+    }
+  }
+
+  // Failed
+  myUserId = Licq::UserId();
 }
 
 /*---------------------------------------------------------------------------
  * CRMSClient::ProcessEvent
  *-------------------------------------------------------------------------*/
-bool CRMSClient::ProcessEvent(Licq::Event* e)
+bool CRMSClient::ProcessEvent(const Licq::Event* e)
 {
   TagList::iterator iter;
   for (iter = tags.begin(); iter != tags.end(); iter++)
@@ -769,23 +697,23 @@ int CRMSClient::StateMachine()
     }
     case STATE_PASSWORD:
     {
-      bool ok;
+      bool ok = false;
       string name;
-      if (licqRMS->myAuthProtocol == 0)
+      if (licqRMS->myAuthOwnerId.isValid())
+      {
+        // Check against protocol owner
+        Licq::OwnerReadGuard o(licqRMS->myAuthOwnerId);
+        if (!o.isLocked())
+          return -1;
+        ok = (myLoginUser == o->accountId() && data_line == o->password());
+        name = o->getAlias();
+      }
+      else if (!licqRMS->myAuthUser.empty() && !licqRMS->myAuthPassword.empty())
       {
         // User and password specified in RMS config
         ok = (myLoginUser == licqRMS->myAuthUser &&
             data_line == licqRMS->myAuthPassword);
         name = myLoginUser;
-      }
-      else
-      {
-        // Check against protocol owner
-        Licq::OwnerReadGuard o(licqRMS->myAuthProtocol);
-        if (!o.isLocked())
-          return -1;
-        ok = (myLoginUser == o->accountId() && data_line == o->password());
-        name = o->getAlias();
       }
 
       if (!ok)
@@ -890,16 +818,12 @@ int CRMSClient::ProcessCommand()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_INFO()
 {
-  char *szId = strdup(data_arg);
-  NEXT_WORD(data_arg);
-  unsigned long nPPID = getProtocol(data_arg);
-
-  UserId userId = UserId(szId, nPPID);
+  ParseUser(data_arg);
 
   //XXX Handle the case when we have the owner
 
   // Print the user info
-  Licq::UserReadGuard u(userId);
+  Licq::UserReadGuard u(myUserId);
   if (!u.isLocked())
   {
     fprintf(fs, "%d No such user.\n", CODE_INVALIDxUSER);
@@ -919,9 +843,6 @@ int CRMSClient::Process_INFO()
   fprintf(fs, "%d %s Email 2: %s\n", CODE_USERxINFO, u->accountId().c_str(),
     u->getUserInfoString("Email2").c_str());
 
-  if (szId)
-    free(szId);
-    
   return fflush(fs);
 }
 
@@ -940,16 +861,13 @@ int CRMSClient::Process_STATUS()
   // Show status
   if (data_arg[0] == '\0')
   {
-    Licq::ProtocolPluginsList plugins;
-    gPluginManager.getProtocolPluginsList(plugins);
-    BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
     {
-      Licq::OwnerReadGuard o(plugin->protocolId());
-      if (o.isLocked())
-      {
-        fprintf(fs, "%d %s %s %s\n", CODE_STATUS, o->accountId().c_str(),
-            plugin->name().c_str(), o->statusString().c_str());
-      }
+      Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(owner->protocolId());
+      Licq::OwnerReadGuard o(owner);
+      fprintf(fs, "%d %s %s %s\n", CODE_STATUS, o->accountId().c_str(),
+          protocol->name().c_str(), o->statusString().c_str());
     }
     fprintf(fs, "%d\n", CODE_STATUSxDONE);
     return fflush(fs);
@@ -958,40 +876,48 @@ int CRMSClient::Process_STATUS()
   // Set status
   string strData(data_arg);
   string::size_type nPos = strData.find_last_of(".");
+  string status;
+
+  // Get a list of owners first since we can't call changeStatus with list locked
+  std::list<Licq::UserId> owners;
   if (nPos == string::npos)
   {
-    Licq::ProtocolPluginsList plugins;
-    gPluginManager.getProtocolPluginsList(plugins);
-    BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
-    {
-      changeStatus(plugin->protocolId(), data_arg);
-    }
+    status = data_arg;
+
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* o, **ownerList)
+      owners.push_back(o->id());
   }
   else
   {
-    string strStatus(strData, 0, strData.find_last_of("."));
-    string strProtocol(strData, strData.find_last_of(".")+1, strData.size());
-    unsigned long nPPID = getProtocol(strProtocol);
-    char *szStatus = strdup(strStatus.c_str());
-    changeStatus(nPPID, szStatus);
-    free(szStatus);
+    status = string(strData, 0, nPos);
+    string param(strData, nPos+1);
+    unsigned long protocolId = Licq::protocolId_fromString(param);
+
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* o, **ownerList)
+      if (o->protocolId() == protocolId || o->accountId() == param)
+        owners.push_back(o->id());
   }
+
+  BOOST_FOREACH(const Licq::UserId& ownerId, owners)
+    changeStatus(ownerId, status);
+
   fprintf(fs, "%d Done setting status\n", CODE_STATUSxDONE);
   return fflush(fs);
 }
 
-int CRMSClient::changeStatus(unsigned long nPPID, const char *szStatus)
+int CRMSClient::changeStatus(const Licq::UserId& ownerId, const string& strStatus)
 {
   unsigned status;
-  if (!Licq::User::stringToStatus(szStatus, status))
+  if (!Licq::User::stringToStatus(strStatus, status))
   {
     fprintf(fs, "%d Invalid status.\n", CODE_INVALIDxSTATUS);
     return -1;
   }
-  UserId ownerId = gUserManager.ownerUserId(nPPID);
   if (status == Licq::User::OfflineStatus)
   {
-    fprintf(fs, "%d [0] Logging off %s.\n", CODE_COMMANDxSTART, szStatus);
+    fprintf(fs, "%d [0] Logging off %s.\n", CODE_COMMANDxSTART, strStatus.c_str());
     fflush(fs);
     gProtocolManager.setStatus(ownerId, Licq::User::OfflineStatus);
     fprintf(fs, "%d [0] Event done.\n", CODE_STATUSxDONE);
@@ -1001,7 +927,7 @@ int CRMSClient::changeStatus(unsigned long nPPID, const char *szStatus)
   {
     bool b;
     {
-      Licq::OwnerReadGuard o(nPPID);
+      Licq::OwnerReadGuard o(ownerId);
       if (!o.isLocked())
       {
         fprintf(fs, "%d Invalid protocol.\n", CODE_INVALIDxUSER);
@@ -1011,9 +937,9 @@ int CRMSClient::changeStatus(unsigned long nPPID, const char *szStatus)
     }
     unsigned long tag = gProtocolManager.setStatus(ownerId, status);
     if (b)
-      fprintf(fs, "%d [%ld] Logging on to %s.\n", CODE_COMMANDxSTART, tag, szStatus);
+      fprintf(fs, "%d [%ld] Logging on to %s.\n", CODE_COMMANDxSTART, tag, strStatus.c_str());
     else
-      fprintf(fs, "%d [%ld] Setting status for %s.\n", CODE_COMMANDxSTART, tag, szStatus);
+      fprintf(fs, "%d [%ld] Setting status for %s.\n", CODE_COMMANDxSTART, tag, strStatus.c_str());
     tags.push_back(tag);
   }
   return 0;
@@ -1026,7 +952,8 @@ int CRMSClient::Process_QUIT()
 {
   fprintf(fs, "%d Sayonara.\n", CODE_QUIT);
   fflush(fs);
-  if (strtoul(data_arg, (char**)NULL, 10) > 0) licqRMS->m_bExit = true;
+  if (strtoul(data_arg, (char**)NULL, 10) > 0)
+    licqRMS->myMainLoop.quit();
   return -1;
 }
 
@@ -1124,7 +1051,7 @@ int CRMSClient::Process_HISTORY()
     if (u->isUser())
     {
       userAlias = u->getAlias();
-      Licq::OwnerReadGuard o(u->protocolId());
+      Licq::OwnerReadGuard o(myUserId.ownerId());
       if (o.isLocked())
         ownerAlias = o->getAlias();
     }
@@ -1346,16 +1273,15 @@ int CRMSClient::Process_URL_text()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_SMS()
 {
-  unsigned long nUin = strtoul(data_arg, (char**)NULL, 10);
+  ParseUser(data_arg);
 
-  if (nUin < 10000)
+  if (!myUserId.isValid())
   {
     fprintf(fs, "%d Invalid UIN.\n", CODE_INVALIDxUSER);
     return fflush(fs);
   }
   fprintf(fs, "%d Enter NUMBER:\n", CODE_ENTERxLINE);
 
-  m_nUin = nUin;
   myText.clear();
 
   m_nState = STATE_ENTERxSMSxNUMBER;
@@ -1379,14 +1305,16 @@ int CRMSClient::Process_SMS_number()
 
 int CRMSClient::Process_SMS_message()
 {
-  char id[16];
-  snprintf(id, 16, "%lu", m_nUin);
-  Licq::UserId userId(id, LICQ_PPID);
-  unsigned long tag = gLicqDaemon->icqSendSms(userId, myLine,
-      Licq::gTranslator.toUtf8(myText));
+  Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+      Licq::gPluginManager.getProtocolInstance(myUserId.ownerId()));
+  if (!icq)
+    return fflush(fs);
 
-  fprintf(fs, "%d [%lu] Sending SMS to %lu (%s).\n", CODE_COMMANDxSTART,
-     tag, m_nUin, myLine.c_str());
+  unsigned long tag = icq->icqSendSms(
+      myUserId, myLine, Licq::gTranslator.toUtf8(myText));
+
+  fprintf(fs, "%d [%lu] Sending SMS to %s (%s).\n", CODE_COMMANDxSTART,
+     tag, myUserId.accountId().c_str(), myLine.c_str());
 
   tags.push_back(tag);
   m_nState = STATE_COMMAND;
@@ -1409,12 +1337,21 @@ int CRMSClient::Process_SMS_message()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_AR()
 {
-  ParseUser(data_arg);
-
-  if (myUserId.isValid() && !gUserManager.userExists(myUserId))
+  if (data_arg[0] == '\0')
   {
-    fprintf(fs, "%d Invalid User.\n", CODE_INVALIDxUSER);
-    return fflush(fs);
+    // Clear user id to set general auto response
+    myUserId = Licq::UserId();
+  }
+  else
+  {
+    // Parameter is user id to set custom autoresponse for
+    ParseUser(data_arg);
+
+    if (!myUserId.isValid())
+    {
+      fprintf(fs, "%d Invalid User.\n", CODE_INVALIDxUSER);
+      return fflush(fs);
+    }
   }
 
   fprintf(fs, "%d Enter %sauto response, terminate with a . on a line by itself:\n",
@@ -1432,9 +1369,10 @@ int CRMSClient::Process_AR_text()
 
   if (!myUserId.isValid())
   {
-    Licq::OwnerWriteGuard o(LICQ_PPID);
-    if (o.isLocked())
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(Licq::Owner* owner, **ownerList)
     {
+      Licq::OwnerWriteGuard o(owner);
       o->setAutoResponse(textUtf8);
       o->save(Licq::Owner::SaveOwnerInfo);
     }
@@ -1464,21 +1402,10 @@ int CRMSClient::Process_AR_text()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_LOG()
 {
-  if (!licqRMS->myLogSink)
-  {
-    licqRMS->myLogSink.reset(new Licq::PluginLogSink);
-    Licq::gLogService.registerLogSink(licqRMS->myLogSink);
-  }
-
   unsigned short lt = strtoul(data_arg, (char**)NULL, 10);
   myLogLevelsBitmask = Licq::LogUtils::convertOldBitmaskToNew(lt);
 
-  unsigned int mask = 0;
-  BOOST_FOREACH(CRMSClient* client, licqRMS->clients)
-  {
-    mask |= client->myLogLevelsBitmask;
-  }
-  licqRMS->myLogSink->setLogLevelsFromBitmask(mask);
+  licqRMS->setupLogSink();
 
   fprintf(fs, "%d Log type set to %d.\n", CODE_LOGxTYPE, lt);
 
@@ -1620,12 +1547,13 @@ void CRMSClient::printUserEvent(const Licq::UserEvent* e, const string& alias)
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_ADDUSER()
 {
-  char *szId = strdup(data_arg);
-  NEXT_WORD(data_arg);
-  unsigned long nPPID = getProtocol(data_arg);
-  UserId userId(szId, nPPID);
+  ParseUser(data_arg);
 
-  if (gUserManager.addUser(userId) != 0)
+  if (!myUserId.isValid())
+  {
+    fprintf(fs, "%d Invalid UIN.\n", CODE_INVALIDxUSER);
+  }
+  else if (gUserManager.addUser(myUserId) != 0)
   {
     fprintf(fs, "%d User added\n", CODE_ADDUSERxDONE);
   }
@@ -1634,7 +1562,6 @@ int CRMSClient::Process_ADDUSER()
     fprintf(fs, "%d User not added\n", CODE_ADDUSERxERROR);
   }
 
-  free(szId);
   return fflush(fs);
 }
 
@@ -1649,11 +1576,11 @@ int CRMSClient::Process_ADDUSER()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_REMUSER()
 {
-  unsigned long nUin = strtoul(data_arg, (char**)NULL, 10);
+  ParseUser(data_arg);
 
-  if (nUin >= 10000)
+  if (myUserId.isValid() && gUserManager.userExists(myUserId))
   {
-    gUserManager.removeUser(UserId(data_arg, LICQ_PPID));
+    gUserManager.removeUser(myUserId);
     fprintf(fs, "%d User removed\n", CODE_REMUSERxDONE);
   }
   else
@@ -1675,45 +1602,36 @@ int CRMSClient::Process_REMUSER()
  *-------------------------------------------------------------------------*/
 int CRMSClient::Process_SECURE()
 {
-  unsigned long nUin = 0;
-
   if (!Licq::gDaemon.haveCryptoSupport())
   {
     fprintf(fs, "%d Licq secure channel not compiled. Please recompile with OpenSSL.\n", CODE_SECURExNOTCOMPILED);
     return fflush(fs);
   }
 
-  if (!isdigit(*data_arg))
+  ParseUser(data_arg);
+
+  if (!myUserId.isValid())
   {
     fprintf(fs, "%d Invalid UIN.\n", CODE_INVALIDxUSER);
     return fflush(fs);
   }
-  char* id = strdup(data_arg);
-  UserId userId(id, LICQ_PPID);
-  nUin = strtoul(data_arg, (char**)NULL, 10);
   while (*data_arg != '\0' && *data_arg != ' ') data_arg++;
   NEXT_WORD(data_arg);
-
-  if (nUin < 10000)
-  {
-    fprintf(fs, "%d Invalid UIN.\n", CODE_INVALIDxUSER);
-    return fflush(fs);
-  }
 
   if (strncasecmp(data_arg, "open", 4) == 0)
   {
     fprintf(fs, "%d Opening secure connection.\n", CODE_SECURExOPEN);
-    gProtocolManager.secureChannelOpen(userId);
+    gProtocolManager.secureChannelOpen(myUserId);
   }
   else
   if (strncasecmp(data_arg, "close", 5) == 0)
   {
     fprintf(fs, "%d Closing secure connection.\n", CODE_SECURExCLOSE);
-    gProtocolManager.secureChannelClose(userId);
+    gProtocolManager.secureChannelClose(myUserId);
   }
   else
   {
-    Licq::UserReadGuard u(userId);
+    Licq::UserReadGuard u(myUserId);
     if (u.isLocked())
     {
       if (u->Secure() == 0)
@@ -1723,6 +1641,5 @@ int CRMSClient::Process_SECURE()
     }
   }
 
-  free(id);
   return fflush(fs);
 }

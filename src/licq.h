@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <pthread.h>
 #include <list>
 
+#include <licq/mainloop.h>
 #include <licq/plugin/generalplugin.h>
 #include <licq/plugin/protocolplugin.h>
 #include <licq/pipe.h>
@@ -42,7 +43,7 @@ namespace LicqDaemon
 class StreamLogSink;
 }
 
-class CLicq
+class CLicq : public Licq::MainLoopCallback
 {
 public:
   CLicq();
@@ -70,16 +71,22 @@ public:
   { myPipe.putChar(c); }
 
 protected:
-  bool upgradeLicq128(Licq::IniFile& licqConf);
+  void upgradeLicq128(Licq::IniFile& licqConf);
+  void upgradeLicq18(Licq::IniFile& licqConf);
 
   Licq::GeneralPlugin::Ptr LoadPlugin(const std::string& name, int argc,
       char** argv, bool keep = true);
   Licq::ProtocolPlugin::Ptr LoadProtoPlugin(const std::string& name, bool keep = true);
 
 private:
+  // From Licq::MainLoopCallback
+  void rawFileEvent(int fd, int revents);
+  void timeoutEvent(int id);
+
   boost::shared_ptr<LicqDaemon::StreamLogSink> myConsoleLog;
   int myConsoleLogLevel;
   Licq::Pipe myPipe;
+  Licq::MainLoop myMainLoop;
 };
 
 #endif

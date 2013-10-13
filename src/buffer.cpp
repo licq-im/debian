@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1998-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,9 +31,8 @@
 
 #include "gettext.h"
 
-using namespace std;
 using Licq::Buffer;
-
+using std::string;
 
 Buffer::Buffer()
 {
@@ -392,6 +391,19 @@ void Buffer::packShortNullStringLE(const string& data)
   incDataPosWrite(2);
   memcpy(getDataPosWrite(), data.c_str(), data.size()+1);
   incDataPosWrite(data.size()+1);
+}
+
+void Buffer::packString16BE(const char* data, size_t length)
+{
+  assert(remainingDataToWrite() >= length + 2);
+
+  *(uint16_t*)getDataPosWrite() = BE_16(length);
+  incDataPosWrite(2);
+  if (length > 0)
+  {
+    memcpy(getDataPosWrite(), data, length);
+    incDataPosWrite(length);
+  }
 }
 
 void Buffer::packString32LE(const char* data, size_t length)

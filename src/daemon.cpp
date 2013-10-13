@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2011-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,11 +53,12 @@
 #include "logging/filelogsink.h"
 #include "plugin/pluginmanager.h"
 
-using namespace std;
 using namespace LicqDaemon;
 using Licq::gLog;
 using Licq::User;
 using Licq::UserId;
+using std::map;
+using std::string;
 
 
 // Declare global Daemon (internal for daemon)
@@ -140,7 +141,7 @@ void Daemon::initialize()
     if (logSink->isOpen())
       Licq::gLogService.registerLogSink(logSink);
     else
-      gLog.error("Unable to open %s as error log:\n%s",
+      gLog.error(tr("Unable to open %s as error log:\n%s"),
                  errorFile.c_str(), strerror(errno));
   }
 
@@ -321,7 +322,7 @@ bool Daemon::addUserEvent(Licq::User* u, Licq::UserEvent* e)
   if (filteraction == Licq::FilterRule::ActionIgnore)
   {
     // Ignore => Just drop the event
-    gLog.info("Event dropped by filter");
+    gLog.info(tr("Event dropped by filter"));
     delete e;
     return false;
   }

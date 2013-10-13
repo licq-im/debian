@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 
 // Known Protocol IDs
 // Should be local per protocol but defined here as they can also be useful for plugins
-#define LICQ_PPID 0x4C696371    // "Licq" (ICQ & AIM)
+#define ICQ_PPID 0x4943515F     // "ICQ_" (ICQ & AIM)
 #define MSN_PPID 0x4D534E5F     // "MSN_" (MSN)
 #define JABBER_PPID 0x584D5050  // "XMPP" (Jabber)
 
@@ -44,12 +44,14 @@ inline std::string protocolId_toString(unsigned long protocolId)
   return ret;
 }
 
-inline unsigned long protocolId_fromString(const std::string& s)
-{
-  if (s.size() < 4)
-    return 0;
-  return (s[0] << 24) | (s[1] << 16) | (s[2] << 8) | (s[3]);
-}
+/**
+ * Get protocol id from a protocol name
+ * Matches both protocol names and the string forms of the PPID constants
+ *
+ * @param protocolName Protocol name to identify
+ * @return Protocol id on success, otherwise zero
+ */
+unsigned long protocolId_fromString(const std::string& protocolName);
 
 
 /**
@@ -67,31 +69,52 @@ public:
   { /* Empty */ }
 
   /**
-   * Constructor
-   * Creates a user id from account id and protocol id
+   * Constructor for owner id
    */
-  UserId(const std::string& accountId, unsigned long protocolId)
-      : myProtocolId(protocolId), myAccountId(normalizeId(accountId, protocolId))
+  UserId(unsigned long protocolId, const std::string& accountId)
+    : myProtocolId(protocolId),
+      myOwnerAccountId(normalizeId(accountId, protocolId)),
+      myAccountId(myOwnerAccountId)
+  { /* Empty */ }
+
+  /**
+   * Constructor for user id
+   */
+  UserId(const UserId& ownerId, const std::string& accountId)
+    : myProtocolId(ownerId.myProtocolId),
+      myOwnerAccountId(ownerId.myOwnerAccountId),
+      myAccountId(normalizeId(accountId, myProtocolId))
   { /* Empty */ }
 
   /**
    * Copy constructor
    */
   UserId(const UserId& userId)
-      : myProtocolId(userId.myProtocolId), myAccountId(userId.myAccountId)
+    : myProtocolId(userId.myProtocolId),
+      myOwnerAccountId(userId.myOwnerAccountId),
+      myAccountId(userId.myAccountId)
   { /* Empty */ }
 
   /**
    * Assignment operator
    */
   UserId& operator=(const UserId& userId)
-  { myProtocolId = userId.myProtocolId; myAccountId = userId.myAccountId; return *this; }
+  {
+    myProtocolId = userId.myProtocolId;
+    myOwnerAccountId = userId.myOwnerAccountId;
+    myAccountId = userId.myAccountId;
+    return *this;
+  }
 
   /**
    * Test if two user ids are the same
    */
   bool operator==(const UserId& userId) const
-  { return (myProtocolId == userId.myProtocolId && myAccountId == userId.myAccountId); }
+  {
+    return (myProtocolId == userId.myProtocolId &&
+        myAccountId == userId.myAccountId &&
+        myOwnerAccountId == userId.myOwnerAccountId);
+  }
 
   /**
    * Test if two user ids are not equal
@@ -103,7 +126,11 @@ public:
    * Determine sort order of user ids
    */
   bool operator<(const UserId& userId) const
-  { return (myProtocolId < userId.myProtocolId || (myProtocolId == userId.myProtocolId && myAccountId < userId.myAccountId)); }
+  {
+    return (myProtocolId < userId.myProtocolId || (myProtocolId == userId.myProtocolId &&
+        (myOwnerAccountId < userId.myOwnerAccountId || (myOwnerAccountId == userId.myOwnerAccountId &&
+        myAccountId < userId.myAccountId))));
+  }
 
   /**
    * Get protocol id part of user id
@@ -122,12 +149,24 @@ public:
   { return myAccountId; }
 
   /**
+   * Get owner id part of user id
+   */
+  UserId ownerId() const
+  { return UserId(myProtocolId, myOwnerAccountId); }
+
+  /**
    * Check if user id is valid
    *
    * @return True if user id is valid
    */
   bool isValid() const
   { return (myProtocolId != 0); }
+
+  /**
+   * Check if user id is an owner
+   */
+  bool isOwner() const
+  { return (myAccountId == myOwnerAccountId); }
 
   /**
    * Convert user id to string (for use in debug printouts etc.)
@@ -149,6 +188,7 @@ public:
 
 private:
   unsigned long myProtocolId;
+  std::string myOwnerAccountId;
   std::string myAccountId;
 };
 

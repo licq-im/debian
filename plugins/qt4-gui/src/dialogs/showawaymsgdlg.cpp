@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@
 #include <licq/contactlist/user.h>
 #include <licq/event.h>
 #include <licq/icq/icq.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/protocolmanager.h>
 
 #include "core/signalmanager.h"
@@ -92,7 +93,14 @@ ShowAwayMsgDlg::ShowAwayMsgDlg(const Licq::UserId& userId, bool fetch, QWidget* 
     mleAwayMsg->setEnabled(false);
     connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
         SLOT(doneEvent(const Licq::Event*)));
-    icqEventTag = gLicqDaemon->icqFetchAutoResponse(myUserId);
+
+    if (myUserId.protocolId() == ICQ_PPID)
+    {
+      Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+          Licq::gPluginManager.getProtocolInstance(myUserId.ownerId()));
+      if (icq)
+        icqEventTag = icq->icqFetchAutoResponse(myUserId);
+    }
   }
 
   show();
@@ -156,7 +164,7 @@ void ShowAwayMsgDlg::doneEvent(const Licq::Event* e)
        e->ExtendedAck()->response().c_str() :
        u->autoResponse().c_str());
 
-    if (u->protocolId() == LICQ_PPID && QString(u->accountId().c_str())[0].isLetter())
+    if (u->protocolId() == ICQ_PPID && QString(u->accountId().c_str())[0].isLetter())
     {
       // Strip HTML
       QRegExp regExp("<.*>");

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -22,14 +22,48 @@
 
 #include "vcard.h"
 
+#include "user.h"
+
 #include <gloox/vcard.h>
-#include <licq/contactlist/user.h>
+
+#include <licq/crypto.h>
+#include <licq/logging/log.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
 
 using namespace LicqJabber;
+using Licq::gLog;
+
+namespace
+{
+static std::string guessPictureMimeType(const std::string& bindata)
+{
+  if (bindata.size() > 4 && bindata.substr(1, 3) == "PNG")
+    return "image/png";
+
+  if (bindata.size() > 11
+      && (bindata.substr(0, 11).find("JFIF") != std::string::npos
+          || bindata.substr(0, 11).find("Exif") != std::string::npos))
+    return "image/jpeg";
+
+  if (bindata.size() > 3 && bindata.substr(0, 3) == "GIF")
+    return "image/gif";
+
+  return "";
+}
+
+} // namespace
+
+boost::optional<std::string> UserToVCard::pictureSha1() const
+{
+  if (Licq::Sha1::supported())
+    return myUser->pictureSha1();
+  else
+    return boost::none;
+}
 
 gloox::VCard* UserToVCard::createVCard() const
 {
@@ -44,7 +78,7 @@ gloox::VCard* UserToVCard::createVCard() const
 
   std::ostringstream tz;
   int offset = myUser->timezone();
-  if (offset == Licq::User::TimezoneUnknown)
+  if (offset == User::TimezoneUnknown)
     tz << "-00:00";
   else
   {
@@ -57,11 +91,50 @@ gloox::VCard* UserToVCard::createVCard() const
   }
   card->setTz(tz.str());
 
+  if (myUser->GetPicturePresent())
+  {
+    std::string pictureData;
+    if (myUser->readPictureData(pictureData))
+    {
+      // Only 8 KiB allowed according to XEP-0153
+      const size_t maxSize = 8 * 1024;
+
+      if (pictureData.size() < maxSize)
+        card->setPhoto(guessPictureMimeType(pictureData), pictureData);
+      else
+        gLog.error("Picture is too large (%zu bytes); must be less than %zu",
+                   pictureData.size(), maxSize);
+    }
+  }
+
   return card;
 }
 
-bool VCardToUser::updateUser(Licq::User* user) const
+
+VCardToUser::VCardToUser(const gloox::VCard* vcard)
+  : myVCard(vcard)
 {
+  if (Licq::Sha1::supported())
+  {
+    const gloox::VCard::Photo& photo = myVCard->photo();
+    if (!photo.binval.empty())
+      myPictureSha1 = Licq::Sha1::hashToHexString(photo.binval);
+  }
+}
+
+boost::optional<std::string> VCardToUser::pictureSha1() const
+{
+  if (Licq::Sha1::supported())
+    return myPictureSha1;
+  else
+    return boost::none;
+}
+
+int VCardToUser::updateUser(User* user) const
+{
+  int saveGroup = User::SaveUserInfo;
+  user->SetEnableSave(false);
+
   if (!user->KeepAliasOnUpdate())
   {
     if (!myVCard->nickname().empty())
@@ -80,6 +153,37 @@ bool VCardToUser::updateUser(Licq::User* user) const
   if (emails.begin() != emails.end())
     user->setUserInfoString("Email1", emails.begin()->userid);
 
-  user->save(Licq::User::SaveLicqInfo);
-  return true;
+  const gloox::VCard::Photo& photo = myVCard->photo();
+  if (!photo.binval.empty())
+  {
+    saveGroup |= User::SavePictureInfo;
+
+    // Store hash of too large picture as well to avoid downloading them again
+    if (Licq::Sha1::supported())
+      user->setPictureSha1(myPictureSha1);
+
+    if (photo.binval.size() <= 100 * 1024)
+      user->SetPicturePresent(user->writePictureData(photo.binval));
+    else
+    {
+      gLog.error("Picture for %s is too big (%zu bytes)",
+                 user->id().accountId().c_str(), photo.binval.size());
+
+      user->SetPicturePresent(false);
+      user->deletePictureData();
+    }
+  }
+  else if (user->GetPicturePresent())
+  {
+    saveGroup |= User::SavePictureInfo;
+
+    user->setPictureSha1("");
+    user->SetPicturePresent(false);
+    user->deletePictureData();
+  }
+
+  user->SetEnableSave(true);
+  user->save(saveGroup);
+
+  return saveGroup;
 }

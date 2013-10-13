@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2004-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,10 +30,10 @@
 #include <list>
 #include <vector>
 
-using namespace std;
 using namespace LicqMsn;
 using Licq::UserId;
 using Licq::gLog;
+using std::string;
 
 static string urlencode(const string& str)
 {
@@ -118,8 +118,8 @@ void CMSN::ProcessSSLServerPacket(CMSNBuffer &packet)
     {
       string strHost = strLocation.substr(8, pos - 8);
       string strParam = strLocation.substr(pos, strLocation.size() - pos);
-      gSocketMan.CloseSocket(m_nSSLSocket, false, true);
-      m_nSSLSocket = -1;
+      closeSocket(mySslSocket, false);
+      mySslSocket = NULL;
       delete m_pSSLPacket;
       m_pSSLPacket = 0;
 
@@ -134,76 +134,44 @@ void CMSN::ProcessSSLServerPacket(CMSNBuffer &packet)
     gLog.error("Invalid password");
     Licq::gPluginManager.pushPluginSignal(new Licq::PluginSignal(
         Licq::PluginSignal::SignalLogoff,
-        Licq::PluginSignal::LogoffPassword, UserId(m_szUserName, MSN_PPID)));
+        Licq::PluginSignal::LogoffPassword, myOwnerId));
   }
   else
   {
     gLog.error("Unknown sign in error");
   }
-  
-  gSocketMan.CloseSocket(m_nSSLSocket, false, true);
-  m_nSSLSocket = -1;
+
+  closeSocket(mySslSocket, false);
+  mySslSocket = NULL;
   delete m_pSSLPacket;
   m_pSSLPacket = 0;
 }
 
-void CMSN::ProcessNexusPacket(CMSNBuffer &packet)
-{
-  bool bNew = false;
-  if (m_pNexusBuff == 0)
-  {
-    m_pNexusBuff = new CMSNBuffer(packet);
-    bNew = true;
-  }
-
-  char *ptr = packet.getDataStart() + packet.getDataSize() - 4;
-  int x = memcmp(ptr, "\x0D\x0A\x0D\x0A", 4);
-  if (x) return;
-  else if (!bNew) *m_pNexusBuff += packet;
-
-  char cTmp = 0;
-
-  while (cTmp != '\r')
-    *m_pNexusBuff >> cTmp;
-  *m_pNexusBuff >> cTmp; // skip the \n as well
-
-  m_pNexusBuff->ParseHeaders();
-
-  const char* szLogin = strstr(m_pNexusBuff->GetValue("PassportURLs").c_str(), "DALogin=");
-  szLogin += 8; // skip to the tag
-  //char *szEndURL = strchr(szLogin, '/');
-  //char *szServer = strndup(szLogin, szEndURL - szLogin); // this is all we need
-  //char *szEnd = strchr(szLogin, ',');
-  //char *szURL = strndup(szEndURL, szEnd - szEndURL);
-
-  MSNAuthenticate();
-}
-
 void CMSN::MSNAuthenticate(const string& server, const string& path)
 {
-  UserId myOwnerId(m_szUserName, MSN_PPID);
-  Licq::TCPSocket* sock = new Licq::TCPSocket(myOwnerId);
+  mySslSocket = new Licq::TCPSocket(myOwnerId);
   gLog.info("Authenticating to https://%s%s", server.c_str(), path.c_str());
-  if (!sock->connectTo(server, 443))
+  if (!mySslSocket->connectTo(server, 443))
   {
     gLog.error("Connection to %s failed", server.c_str());
-    delete sock;
+    delete mySslSocket;
+    mySslSocket = NULL;
     return;
   }
 
-  if (!sock->SecureConnect())
+  if (!mySslSocket->SecureConnect())
   {
     gLog.error("SSL connection failed");
-    delete sock;
+    delete mySslSocket;
+    mySslSocket = NULL;
     return;
   }
 
-  gSocketMan.AddSocket(sock);
-  m_nSSLSocket = sock->Descriptor();
+  myMainLoop.addSocket(mySslSocket, this);
 
   string request = "GET " + path + " HTTP/1.1\r\n"
       "Authorization: Passport1.4 OrgVerb=GET,OrgURL=http%3A%2F%2Fmessenger%2Emsn%2Ecom,"
-          "sign-in=" + urlencode(m_szUserName) + ","
+          "sign-in=" + urlencode(myOwnerId.accountId()) + ","
           "pwd=" + urlencode(myPassword) + "," + myCookie + "\r\n"
       "User-Agent: MSMSGS\r\n"
       "Host: " + server + "\r\n"
@@ -212,7 +180,6 @@ void CMSN::MSNAuthenticate(const string& server, const string& path)
       "\r\n";
 
   Licq::Buffer buf(request.size());
-  buf.pack(request);
-  sock->send(buf);
-  gSocketMan.DropSocket(sock);
+  buf.packRaw(request);
+  mySslSocket->send(buf);
 }

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011 Licq developers
+ * Copyright (C) 2011, 2013 Licq developers
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,35 +22,38 @@
 
 #include "config.h"
 
-#include <licq/plugin/generalplugin.h>
+#include <licq/plugin/generalplugininterface.h>
 
+#include <QObject>
 
 namespace LicqQtGui
 {
 
-class QtGuiPlugin : public Licq::GeneralPlugin
+class QtGuiPlugin : public QObject,
+                    public Licq::GeneralPluginInterface
 {
+  Q_OBJECT
+
 public:
-  QtGuiPlugin(Params& p);
+  QtGuiPlugin();
 
-  // Make inherited members public so rest of GUI can use them directly
-  using Licq::GeneralPlugin::getReadPipe;
-  using Licq::GeneralPlugin::popEvent;
-  using Licq::GeneralPlugin::popSignal;
-  using Licq::GeneralPlugin::setSignalMask;
-
-  // From Licq::GeneralPlugin
-  std::string name() const;
-  std::string description() const;
-  std::string version() const;
-  std::string usage() const;
-  std::string configFile() const;
-
-protected:
-  // From Licq::GeneralPlugin
+  // From Licq::PluginInterface
   bool init(int argc, char** argv);
   int run();
-  void destructor();
+  void shutdown();
+
+  // From Licq::GeneralPluginInterface
+  bool isEnabled() const;
+  void enable();
+  void disable();
+  bool wantSignal(unsigned long signalType) const;
+  void pushSignal(boost::shared_ptr<const Licq::PluginSignal> signal);
+  void pushEvent(boost::shared_ptr<const Licq::Event> event);
+
+signals:
+  void pluginSignal(boost::shared_ptr<const Licq::PluginSignal> signal);
+  void pluginEvent(boost::shared_ptr<const Licq::Event> event);
+  void pluginShutdown();
 
 private:
   int myArgc;

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,6 @@
 #include "daemon.h"
 #include "gettext.h"
 
-using namespace std;
 using namespace LicqDaemon;
 using Licq::OwnerReadGuard;
 using Licq::OwnerWriteGuard;
@@ -45,7 +44,8 @@ using Licq::UserWriteGuard;
 using Licq::gLog;
 using Licq::gPluginManager;
 using Licq::gUserManager;
-
+using std::list;
+using std::string;
 
 // Declare global PluginManager (internal for daemon)
 LicqDaemon::ProtocolManager LicqDaemon::gProtocolManager;
@@ -78,7 +78,7 @@ unsigned long ProtocolManager::getNextEventId()
 
 bool ProtocolManager::isProtocolConnected(const UserId& userId)
 {
-  OwnerReadGuard owner(userId.protocolId());
+  OwnerReadGuard owner(userId.ownerId());
   return owner.isLocked() && owner->isOnline();
 }
 
@@ -255,7 +255,7 @@ unsigned long ProtocolManager::secureChannelOpen(const UserId& userId)
   if (!isProtocolConnected(userId))
     return 0;
 
-  if (gUserManager.isOwner(userId))
+  if (userId.isOwner())
     return 0;
 
   {

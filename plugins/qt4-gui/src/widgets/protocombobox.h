@@ -30,28 +30,16 @@ class ProtoComboBox : public QComboBox
   Q_OBJECT
 
 public:
-  enum Filter
-  {
-    FilterIncludeAll,
-    FilterOwnersOnly,
-    FilterSkipOwners,
-  };
-
   /**
    * Constructor
    *
-   * @param filter Which protocols to include
    * @param extra Text of additional selection (will use ppid=0)
    * @param parent Parent widget
    */
-  ProtoComboBox(unsigned filter = FilterIncludeAll,
-      const QString& extra = QString(), QWidget* parent = 0);
+  ProtoComboBox(const QString& extra = QString(), QWidget* parent = 0);
 
   unsigned long currentPpid() const;
   bool setCurrentPpid(unsigned long ppid);
-
-private:
-  void fillComboBox(unsigned filter);
 };
 
 } // namespace LicqQtGui

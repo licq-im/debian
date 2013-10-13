@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2007-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -163,7 +163,6 @@ UserMenu::UserMenu(QWidget* parent)
   addMenu(mySendMenu);
   addMenu(myMiscModesMenu);
   addMenu(myUtilitiesMenu);
-  //myCheckInvisibleAction = addAction(tr("Check If Invisible"), this, SLOT(checkInvisible()));
   myCheckArAction = addAction(QString::null, this, SLOT(checkAutoResponse()));
   myCustomArAction = addAction(tr("Custom Auto Response..."), this, SLOT(customAutoResponse()));
   myCustomArAction->setCheckable(true);
@@ -296,7 +295,7 @@ void UserMenu::aboutToShowMenu()
   }
 
   unsigned long sendFuncs = u->protocolCapabilities();
-  bool isIcq = myPpid == LICQ_PPID;
+  bool isIcq = myPpid == ICQ_PPID;
 
   mySendActions[SendMessage]->setVisible(sendFuncs & Licq::ProtocolPlugin::CanSendMsg);
   mySendActions[SendUrl]->setVisible(sendFuncs & Licq::ProtocolPlugin::CanSendUrl);
@@ -322,7 +321,6 @@ void UserMenu::aboutToShowMenu()
   mySendActions[RequestPhoneFollowMeStatus]->setVisible(isIcq);
   mySendActions[RequestIcqphoneStatus]->setVisible(isIcq);
   mySendActions[RequestFileServerStatus]->setVisible(isIcq);
-//  myCheckInvisibleAction->setVisible(isIcq);
   myCheckArAction->setVisible(isIcq);
   myCustomArAction->setVisible(isIcq);
   myMiscModesActions[ModeUseRealIp]->setVisible(isIcq);
@@ -395,12 +393,6 @@ void UserMenu::viewEvent()
   gLicqGui->showViewEventDialog(myUserId);
 }
 
-void UserMenu::checkInvisible()
-{
-  if (myPpid == LICQ_PPID)
-    gLicqDaemon->icqCheckInvisible(myUserId);
-}
-
 void UserMenu::checkAutoResponse()
 {
   new ShowAwayMsgDlg(myUserId, true);
@@ -456,6 +448,11 @@ void UserMenu::send(QAction* action)
 {
   int index = action->data().toInt();
 
+  Licq::IcqProtocol::Ptr icq;
+  if (myPpid == ICQ_PPID)
+    icq = plugin_internal_cast<Licq::IcqProtocol>(
+        Licq::gPluginManager.getProtocolInstance(myUserId.ownerId()));
+
   switch (index)
   {
     case SendAuthorize:
@@ -471,28 +468,28 @@ void UserMenu::send(QAction* action)
       break;
 
     case RequestUpdateInfoPlugin:
-      if (myPpid == LICQ_PPID)
-        gLicqDaemon->icqRequestInfoPluginList(myUserId, true);
+      if (icq != NULL)
+        icq->icqRequestPluginInfo(myUserId, Licq::IcqProtocol::PluginInfoList, true);
       break;
 
     case RequestUpdateStatusPlugin:
-      if (myPpid == LICQ_PPID)
-        gLicqDaemon->icqRequestStatusPluginList(myUserId, true);
+      if (icq != NULL)
+        icq->icqRequestPluginInfo(myUserId, Licq::IcqProtocol::PluginStatusList, true);
       break;
 
     case RequestPhoneFollowMeStatus:
-      if (myPpid == LICQ_PPID)
-        gLicqDaemon->icqRequestPhoneFollowMe(myUserId, true);
+      if (icq != NULL)
+        icq->icqRequestPluginInfo(myUserId, Licq::IcqProtocol::PluginPhoneFollowMe, true);
       break;
 
     case RequestIcqphoneStatus:
-      if (myPpid == LICQ_PPID)
-        gLicqDaemon->icqRequestICQphone(myUserId, true);
+      if (icq != NULL)
+        icq->icqRequestPluginInfo(myUserId, Licq::IcqProtocol::PluginIcqPhone, true);
       break;
 
     case RequestFileServerStatus:
-      if (myPpid == LICQ_PPID)
-        gLicqDaemon->icqRequestSharedFiles(myUserId, true);
+      if (icq != NULL)
+        icq->icqRequestPluginInfo(myUserId, Licq::IcqProtocol::PluginSharedFiles, true);
       break;
 
     default:

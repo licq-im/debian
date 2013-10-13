@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -24,6 +24,7 @@
 #define LICQJABBER_CLIENT_H
 
 #include <boost/noncopyable.hpp>
+#include <boost/optional.hpp>
 #include <gloox/client.h>
 #include <gloox/connectionlistener.h>
 #include <gloox/loghandler.h>
@@ -31,6 +32,11 @@
 #include <gloox/rosterlistener.h>
 #include <gloox/vcardmanager.h>
 #include <gloox/vcardhandler.h>
+
+#include <licq/mainloop.h>
+#include <licq/thread/mutex.h>
+
+#include "handler.h"
 
 namespace gloox
 {
@@ -47,14 +53,14 @@ class Handler;
 class SessionManager;
 class UserToVCard;
 
-class JClient : private boost::noncopyable,
-                public gloox::Client
+class GlooxClient : private boost::noncopyable,
+                    public gloox::Client
 {
 public:
-  JClient(const gloox::JID& jid, const std::string& password, int port=-1);
-  virtual ~JClient();
+  GlooxClient(const gloox::JID& jid, const std::string& password);
 
 protected:
+  // From gloox::Client
   virtual bool checkStreamVersion(const std::string& version);
 };
 
@@ -62,16 +68,17 @@ class Client : private boost::noncopyable,
                public gloox::ConnectionListener,
                public gloox::RosterListener,
                public gloox::LogHandler,
-               public gloox::VCardHandler
+               public gloox::VCardHandler,
+               public Licq::MainLoopCallback
 {
 public:
-  Client(const Config& config, Handler& handler, const std::string& user,
-      const std::string& password, const std::string& host, int port);
+  Client(Licq::MainLoop& mainLoop, const Licq::UserId& ownerId,
+      const std::string& user, const std::string& password,
+      const std::string& host, int port, const std::string& resource,
+      gloox::TLSPolicy tlsPolicy);
   virtual ~Client();
 
   int getSocket();
-  void recv();
-  void ping();
 
   SessionManager* getSessionManager() { return mySessionManager; }
 
@@ -81,7 +88,8 @@ public:
   void changeStatus(unsigned status, bool notifyHandler = true);
   void getVCard(const std::string& user);
   void setOwnerVCard(const UserToVCard& wrapper);
-  void addUser(const std::string& user, const gloox::StringList& groupNames, bool notify);
+  void addUser(const std::string& user, const gloox::StringList& groupNames,
+               bool notify);
   void changeUserGroups(const std::string& user,
                         const gloox::StringList& groups);
   void removeUser(const std::string& user);
@@ -128,13 +136,23 @@ public:
                          gloox::StanzaError error);
 
 private:
-  Handler& myHandler;
+  static Licq::Mutex myGlooxMutex;
+
+  // Licq::MainLoopCallback
+  void rawFileEvent(int fd, int revents);
+  void timeoutEvent(int id);
+
+  Licq::MainLoop& myMainLoop;
+  Handler myHandler;
   SessionManager* mySessionManager;
   gloox::JID myJid;
-  JClient myClient;
+  GlooxClient myClient;
   gloox::ConnectionTCPClient* myTcpClient;
   gloox::RosterManager* myRosterManager;
   gloox::VCardManager myVCardManager;
+  boost::optional<std::string> myPendingPhotoHash;
+
+  void broadcastPhotoHash(const boost::optional<std::string>& hash);
 
   bool addRosterItem(const gloox::RosterItem& item);
 

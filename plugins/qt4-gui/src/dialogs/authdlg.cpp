@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,13 +29,14 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include <licq/contactlist/usermanager.h>
 #include <licq/userid.h>
 #include <licq/protocolmanager.h>
 
 #include "helpers/support.h"
 
 #include "widgets/mledit.h"
-#include "widgets/protocombobox.h"
+#include "widgets/ownercombobox.h"
 
 using Licq::gProtocolManager;
 using namespace LicqQtGui;
@@ -70,13 +71,13 @@ AuthDlg::AuthDlg(enum AuthDlgType type, const Licq::UserId& userId, QWidget* par
   QVBoxLayout* dialogLayout = new QVBoxLayout(this);
   QHBoxLayout* userIdLayout = new QHBoxLayout();
 
-  QLabel* protocolLabel = new QLabel(this);
-  protocolLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  protocolLabel->setText(tr("&Protocol:"));
-  myProtocolCombo = new ProtoComboBox(ProtoComboBox::FilterOwnersOnly);
-  protocolLabel->setBuddy(myProtocolCombo);
-  userIdLayout->addWidget(protocolLabel);
-  userIdLayout->addWidget(myProtocolCombo);
+  QLabel* ownerLabel = new QLabel(this);
+  ownerLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  ownerLabel->setText(tr("&Account:"));
+  myOwnerCombo = new OwnerComboBox();
+  ownerLabel->setBuddy(myOwnerCombo);
+  userIdLayout->addWidget(ownerLabel);
+  userIdLayout->addWidget(myOwnerCombo);
 
   QLabel* accountIdLabel = new QLabel(this);
   accountIdLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -112,15 +113,15 @@ AuthDlg::AuthDlg(enum AuthDlgType type, const Licq::UserId& userId, QWidget* par
 
   if (userId.isValid())
   {
-    myProtocolCombo->setCurrentPpid(userId.protocolId());
-    myProtocolCombo->setEnabled(false);
+    myOwnerCombo->setCurrentOwnerId(userId.ownerId());
+    myOwnerCombo->setEnabled(false);
     myAccountIdEdit->setText(userId.accountId().c_str());
     myAccountIdEdit->setEnabled(false);
     myMessageEdit->setFocus();
   }
   else
   {
-    myProtocolCombo->setFocus();
+    myOwnerCombo->setFocus();
   }
 
   show();
@@ -130,10 +131,7 @@ void AuthDlg::send()
 {
   Licq::UserId userId = myUserId;
   if (!userId.isValid())
-  {
-    userId = Licq::UserId(myAccountIdEdit->text().toLatin1().constData(),
-        myProtocolCombo->currentPpid());
-  }
+    userId = Licq::UserId(myOwnerCombo->currentOwnerId(), myAccountIdEdit->text().toUtf8().constData());
 
   if (userId.isValid())
   {

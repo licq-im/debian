@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2011 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1998-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,11 +43,12 @@
 
 #include "gettext.h"
 
-using namespace std;
 using Licq::Utility;
 using Licq::UtilityInternalWindow;
 using Licq::UtilityManager;
 using Licq::UtilityUserField;
+using std::string;
+using std::vector;
 
 Licq::UtilityManager Licq::gUtilityManager;
 
@@ -71,7 +72,7 @@ int UtilityManager::loadUtilities(const string& dirname)
   DIR* dir = opendir(dirname.c_str());
   if (dir == NULL)
   {
-    gLog.error("Error reading utility directory \"%s\":\n%s",
+    gLog.error(tr("Error reading utility directory \"%s\":\n%s"),
         dirname.c_str(), strerror(errno));
     return (0);
   }
@@ -151,7 +152,7 @@ Utility::Utility(const string& filename)
       nField = cField - '0';
       if (nField == 0 || nField > nCurField)
       {
-        gLog.warning("Warning: Out-of-order user field id (%d) in plugin \"%s\"",
+        gLog.warning(tr("Warning: Out-of-order user field id (%d) in plugin \"%s\""),
             nField, filename.c_str());
       }
       else if (nField == nCurField)
@@ -205,8 +206,8 @@ void Utility::setUserFields(const vector<string>& userFields)
 {
   if (static_cast<int>(userFields.size()) != numUserFields())
   {
-    gLog.warning("Internal error: Utility::setUserFields(): incorrect number of data fields (%d/%d)",
-        int(userFields.size()), numUserFields());
+    gLog.warning(tr("Internal error: %s: incorrect number of data fields (%d/%d)"),
+        __func__, int(userFields.size()), numUserFields());
     return;
   }
   // Do a quick check to see if there are any users fields at all
