@@ -21,14 +21,17 @@ Homepage: http://www.licq.org/
 
 Package: licq
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4 | licq-plugin-ui
-Recommends: sox
+# Remove dependency on icq once Jessie has been release
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4 | licq-plugin-ui,
+ licq-plugin-icq
+Recommends: sox,
 Suggests: bind9-host | host, ping, traceroute
 Description: multi-protocol instant messaging client (base files)
  Licq is an instant messaging client daemon that supports a number of
  interfaces via plug-ins, currently KDE or Qt, and several utility plug-ins.
- Included in this package is support for AIM and ICQ.  Support for MSN and
- Jabber is available as separate plug-ins.
+ .
+ Support for different instant messaging networks, such as ICQ, AIM, MSN and
+ Jabber, is available as separate plug-ins.
  .
  Implemented features include messaging, chat, file transfer, whitepages,
  history, invisible list, server-side stored contacts, typing
@@ -66,6 +69,13 @@ Description: forwarder plug-in for Licq
  This is a forwarder plug-in for the Licq instant messaging client.  Any events
  (messages, URLs, etc.) received while the plug-in is enabled will be forwarded
  either via SMTP to a given email account or via ICQ to a given UIN.
+
+Package: licq-plugin-icq
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
+Description: ICQ/AIM plug-in for Licq
+ This is a plug-in for the Licq instant messaging client that enables
+ communication over ICQ and/or AIM instant messaging network.
 
 Package: licq-plugin-jabber
 Architecture: any
