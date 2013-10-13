@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <ctime>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sstream>
 #include <sys/socket.h>
@@ -52,11 +53,6 @@ using std::vector;
 using LicqDaemon::UserHistory;
 using namespace Licq;
 
-static const char* const ConfigDir = "users/";
-static const char* const HistoryDir = "history/";
-static const char* const HistoryExt = ".history";
-static const char* const HistoryOldExt = ".removed";
-
 
 unsigned short Licq::User::s_nNumUserEvents = 0;
 pthread_mutex_t Licq::User::mutex_nNumUserEvents = PTHREAD_MUTEX_INITIALIZER;
@@ -65,7 +61,7 @@ pthread_mutex_t Licq::User::mutex_nNumUserEvents = PTHREAD_MUTEX_INITIALIZER;
 User::Private::Private(User* user, const UserId& id)
   : myUser(user),
     myId(id),
-    myHistory(myId.protocolId())
+    myHistory(myId)
 {
   // Empty
 }
@@ -75,9 +71,8 @@ User::Private::~Private()
   // Empty
 }
 
-User::User(const UserId& id, bool temporary, bool isOwner)
+User::User(const UserId& id, bool temporary)
   : myId(id),
-    myIsOwner(isOwner),
     m_bNotInList(temporary),
     myPrivate(new Private(this, id))
 {
@@ -94,21 +89,20 @@ User::User(const UserId& id, bool temporary, bool isOwner)
 
   d->Init();
 
-  // Build filename for user properties
-  string filename;
-  if (isOwner)
-  {
-    filename = "owner.";
-    filename += Licq::protocolId_toString(myId.protocolId());
-  }
-  else
-  {
-    filename = ConfigDir;
-    filename += myId.accountId();
-    filename += ".";
-    filename += Licq::protocolId_toString(myId.protocolId());
-  }
-  d->myConf.setFilename(filename);
+  // Start building filename for user files
+  string filename = "users/" + myId.ownerId().accountId()
+      + "." + Licq::protocolId_toString(myId.protocolId());
+
+  // Create owner specific dir if needed
+  string dirname = gDaemon.baseDir() + filename.c_str();
+  if (mkdir(dirname.c_str(), 0700) < 0 && errno != EEXIST)
+    gLog.error(tr("Failed to create directory %s: %s"), dirname.c_str(), strerror(errno));
+
+  // Add final parts to get filenames
+  filename += "/" + myId.accountId();
+  d->myConf.setFilename(filename + ".conf");
+  d->myHistory.setFile(gDaemon.baseDir() + filename + ".history");
+  myPictureFileName = gDaemon.baseDir() + filename + ".picture";
 
   if (m_bNotInList)
   {
@@ -146,20 +140,6 @@ void User::Private::addToContactList()
   myUser->m_bOnContactList = true;
   myUser->m_bEnableSave = true;
   myUser->m_bNotInList = false;
-
-  // Check for old history file
-  if (access(myHistory.filename().c_str(), F_OK) == -1)
-  {
-    string oldHistory = myHistory.filename() + HistoryOldExt;
-    if (access(oldHistory.c_str(), F_OK) == 0)
-    {
-      if (rename(oldHistory.c_str(), myHistory.filename().c_str()) == -1)
-      {
-        gLog.warning(tr("Failed to rename old history file (%s): %s"),
-            oldHistory.c_str(), strerror(errno));
-      }
-    }
-  }
 }
 
 void User::Private::loadUserInfo()
@@ -256,10 +236,6 @@ void User::Private::loadLicqInfo()
   myConf.get("CustomAutoRsp", myUser->myCustomAutoResponse, "");
   myConf.get("SendIntIp", myUser->m_bSendIntIp, false);
   myConf.get("UserEncoding", myUser->myEncoding, "");
-  myConf.get("History", temp, "default");
-  if (temp.empty())
-    temp = "default";
-  setHistoryFile(temp);
   myConf.get("AwaitingAuth", myUser->m_bAwaitingAuth, false);
   myConf.get("UseGPG", myUser->m_bUseGPG, false );
   myConf.get("GPGKey", myUser->myGpgKey, "");
@@ -267,11 +243,11 @@ void User::Private::loadLicqInfo()
 
   if (myUser->myServerGroup > -1)
   {
-    if (!myConf.get("ServerGroup", myUser->myServerGroup, 0) && myId.protocolId() == LICQ_PPID)
+    if (!myConf.get("ServerGroup", myUser->myServerGroup, 0) && myId.protocolId() == ICQ_PPID)
     {
       unsigned gsid;
       myConf.get("GSID", gsid, 0);
-      myUser->myServerGroup = gUserManager.getGroupFromServerId(LICQ_PPID, gsid);
+      myUser->myServerGroup = gUserManager.getGroupFromServerId(myId.ownerId(), gsid);
     }
   }
 
@@ -347,19 +323,6 @@ User::~User()
 void User::Private::removeFiles()
 {
   remove(myConf.filename().c_str());
-
-  // Check for old history file and back up
-  struct stat buf;
-  if (stat(myHistory.filename().c_str(), &buf) == 0 && buf.st_size > 0)
-  {
-    string oldHistory = myHistory.filename() + HistoryOldExt;
-    if (rename(myHistory.filename().c_str(), oldHistory.c_str()) == -1)
-    {
-      gLog.warning(tr("Failed to rename history file (%s): %s"),
-          oldHistory.c_str(), strerror(errno));
-      remove(myHistory.filename().c_str());
-    }
-  }
 }
 
 void User::Private::Init()
@@ -431,7 +394,6 @@ void User::Private::Init()
 
   // Picture
   myUser->m_bPicturePresent = false;
-  myUser->myPictureFileName = gDaemon.baseDir() + ConfigDir + myId.accountId() + ".pic";
 
   // GPG key
   myUser->myGpgKey = "";
@@ -496,7 +458,6 @@ void User::Private::setPermanent()
 void User::Private::setDefaults()
 {
   myUser->setAlias(myId.accountId());
-  setHistoryFile("default");
   myUser->myOnVisibleList = false;
   myUser->myOnInvisibleList = false;
   myUser->myOnIgnoreList = false;
@@ -642,7 +603,12 @@ void Licq::User::statusChanged(unsigned newStatus, time_t onlineSince)
       save(SaveLicqInfo);
     }
 
-    setIsTyping(false);
+    if (myIsTyping)
+    {
+      setIsTyping(false);
+      gPluginManager.pushPluginSignal(new Licq::PluginSignal(
+          Licq::PluginSignal::SignalUser, Licq::PluginSignal::UserTyping, myId, 0));
+    }
     SetUserUpdated(false);
   }
   else
@@ -746,30 +712,6 @@ void Licq::User::setAlias(const string& alias)
   save(SaveUserInfo);
 }
 
-void User::Private::setHistoryFile(const std::string& file)
-{
-  string realFile;
-
-  if (!myUser->isUser())
-  {
-    realFile = gDaemon.baseDir() + HistoryDir + "owner." + myId.accountId() +
-        "." + protocolId_toString(myId.protocolId()) + HistoryExt;
-  }
-  else if (file == "default")
-  {
-    realFile = gDaemon.baseDir() + HistoryDir + myId.accountId() + '.' +
-        Licq::protocolId_toString(myId.protocolId()) + HistoryExt;
-  }
-  else if (file != "none")
-  {
-    // use given name
-    realFile = file;
-  }
-
-  myHistory.setFile(realFile, file);
-  myUser->save(SaveLicqInfo);
-}
-
 int User::GetHistory(Licq::HistoryList& history) const
 {
   LICQ_D();
@@ -780,20 +722,6 @@ int User::GetHistory(Licq::HistoryList& history) const
 void Licq::User::ClearHistory(HistoryList& h)
 {
   UserHistory::clear(h);
-}
-
-const string& User::historyName() const
-{
-  LICQ_D();
-
-  return d->myHistory.description();
-}
-
-const string& User::historyFile() const
-{
-  LICQ_D();
-
-  return d->myHistory.filename();
 }
 
 bool User::canSendDirect() const
@@ -1286,7 +1214,7 @@ string UserId::normalizeId(const string& accountId, unsigned long ppid)
 
   // TODO Make the protocol plugin normalize the accountId
   // For AIM, account id is case insensitive and spaces should be ignored
-  if (ppid == LICQ_PPID && !accountId.empty() && !isdigit(accountId[0]))
+  if (ppid == ICQ_PPID && !accountId.empty() && !isdigit(accountId[0]))
   {
     boost::erase_all(realId, " ");
     boost::to_lower(realId);
@@ -1321,7 +1249,8 @@ void User::saveLicqInfo()
   LICQ_D();
 
    char buf[64];
-  d->myConf.set("History", historyName());
+  d->myConf.unset("History");
+  d->myConf.unset("Groups.System");
   d->myConf.set("OnVisibleList", myOnVisibleList);
   d->myConf.set("OnInvisibleList", myOnInvisibleList);
   d->myConf.set("OnIgnoreList", myOnIgnoreList);
@@ -1370,6 +1299,8 @@ void User::saveLicqInfo()
 
   if (myServerGroup > -1)
     d->myConf.set("ServerGroup", myServerGroup);
+  d->myConf.unset("GSID");
+  d->myConf.unset("Groups.User");
   d->myConf.set("GroupCount", static_cast<unsigned int>(myGroups.size()));
   int i = 1;
   for (Licq::UserGroupList::iterator g = myGroups.begin(); g != myGroups.end(); ++g)
@@ -1422,6 +1353,60 @@ void User::save(unsigned group)
   if (!d->myConf.writeFile())
     gLog.error(tr("Error opening '%s' for writing. See log for details."),
         d->myConf.filename().c_str());
+}
+
+bool Licq::User::readPictureData(std::string& pictureData) const
+{
+  int fd = ::open(pictureFileName().c_str(), O_RDONLY);
+  if (fd == -1)
+  {
+    gLog.error(tr("Could not open picture file '%s' for reading (%s)"),
+               pictureFileName().c_str(), ::strerror(errno));
+    return false;
+  }
+
+  uint8_t buffer[1024];
+  ssize_t count;
+  while ((count = ::read(fd, &buffer, sizeof(buffer))) > 0)
+    pictureData.append(buffer, buffer + count);
+
+  if (count < 0)
+    gLog.error(tr("Could not read picture file '%s' (%s)"),
+               pictureFileName().c_str(), ::strerror(errno));
+
+  ::close(fd);
+  return count == 0;
+}
+
+bool Licq::User::writePictureData(const std::string& pictureData) const
+{
+  int fd = ::open(pictureFileName().c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+                  S_IRUSR | S_IWUSR);
+  if (fd == -1)
+  {
+    gLog.error(tr("Could not open picture file '%s' for writing (%s)"),
+               pictureFileName().c_str(), ::strerror(errno));
+    return false;
+  }
+
+  const ssize_t count = ::write(fd, pictureData.data(), pictureData.size());
+  if (count != static_cast<ssize_t>(pictureData.size()))
+    gLog.error(tr("Could not write picture file '%s' (%s)"),
+               pictureFileName().c_str(), ::strerror(errno));
+
+  ::close(fd);
+  return count == static_cast<ssize_t>(pictureData.size());
+}
+
+bool Licq::User::deletePictureData() const
+{
+  if (::unlink(pictureFileName().c_str()) == -1 && errno != ENOENT)
+  {
+    gLog.error(tr("Could not delete the picture file '%s' (%s)"),
+               pictureFileName().c_str(), ::strerror(errno));
+    return false;
+  }
+  return true;
 }
 
 void Licq::User::EventPush(Licq::UserEvent *e)
@@ -1583,4 +1568,27 @@ void Licq::User::decNumUserEvents()
   pthread_mutex_lock(&mutex_nNumUserEvents);
   s_nNumUserEvents--;
   pthread_mutex_unlock(&mutex_nNumUserEvents);
+}
+
+unsigned long Licq::protocolId_fromString(const std::string& s)
+{
+  // Known names (case insensitive compare) and raw string versions of protocol id
+  if (boost::iequals(s, "ICQ") || s == "ICQ_" || s == "Licq")
+    return ICQ_PPID;
+  if (boost::iequals(s, "MSN") || s == "MSN_")
+    return MSN_PPID;
+  if (boost::iequals(s, "Jabber") || s == "XMPP")
+    return JABBER_PPID;
+
+  // Try the names of all loaded plugins
+  Licq::ProtocolPluginsList plugins;
+  gPluginManager.getProtocolPluginsList(plugins);
+  BOOST_FOREACH(Licq::ProtocolPlugin::Ptr plugin, plugins)
+  {
+    if (boost::iequals(s, plugin->name()))
+      return plugin->protocolId();
+  }
+
+  // Unknown
+  return 0;
 }

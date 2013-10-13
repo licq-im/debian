@@ -94,7 +94,7 @@ public:
    */
   bool getInvisibleStatus(const Licq::UserId& userId) const;
 
-public slots:
+private slots:
   /**
    * Add menu entries for a new owner
    *
@@ -109,7 +109,6 @@ public slots:
    */
   void removeOwner(const Licq::UserId& userId);
 
-private slots:
   /**
    * Update icons in menu.
    */
@@ -122,8 +121,6 @@ private slots:
 
   void aboutToShowMenu();
   void aboutToShowGroupMenu();
-  void aboutToShowFollowMeMenu();
-  void setFollowMeStatus(QAction* action);
   void setMainStatus(QAction* action);
   void toggleMainInvisibleStatus();
   void setCurrentGroup(QAction* action);
@@ -133,22 +130,13 @@ private slots:
   void showOwnerManagerDlg();
   void showAddUserDlg();
   void showAddGroupDlg();
-  void showSearchUserDlg();
   void showAuthUserDlg();
   void showReqAuthDlg();
   void showEditGrpDlg();
-  void showRandomChatSearchDlg();
   void showSettingsDlg();
   void showGPGKeyManager();
 
 private:
-  /**
-   * Show or hide ICQ specific entries in the system menu
-   *
-   * @param visible True if ICQ entries should be visible
-   */
-  void setIcqEntriesVisible(bool visible);
-
   // Actions on top menu
   QAction* mySetArAction;
   QAction* myLogWinAction;
@@ -163,10 +151,8 @@ private:
 
   // Actions on user menu
   QAction* myAddGroupAction;
-  QAction* myUserSearchAction;
   QAction* myUserAutorizeAction;
   QAction* myUserReqAutorizeAction;
-  QAction* myIcqRandomChatAction;
   QAction* myUserPopupAllAction;
   QAction* myEditGroupsAction;
   QAction* myRedrawContactListAction;
@@ -177,7 +163,6 @@ private:
   QAction* myShowHeaderAction;
 
   // Actions on status menu
-  QAction* myIcqFollowMeAction;
   QAction* myStatusOnlineAction;
   QAction* myStatusAwayAction;
   QAction* myStatusNotAvailableAction;
@@ -192,19 +177,17 @@ private:
   QMenu* myUserAdmMenu;
   QMenu* myStatusMenu;
   QMenu* myGroupMenu;
-  QMenu* myFollowMeMenu;
   QMenu* myHelpMenu;
 
   QActionGroup* myStatusActions;
   QActionGroup* myUserGroupActions;
-  QActionGroup* myFollowMeActions;
 
+  QAction* myUserAdmActionSeparator;
   QAction* myGroupSeparator;
   QAction* myStatusSeparator;
   QAction* myIcqFollowMeSeparator;
 
   QMap<Licq::UserId, SystemMenuPrivate::OwnerData*> myOwnerData;
-  bool myHasIcqOwner;
 };
 
 namespace SystemMenuPrivate
@@ -246,6 +229,10 @@ public:
   QMenu* getStatusMenu()
   { return myStatusMenu; }
 
+  /// Get ICQ Follow Me menu
+  QMenu* getIcqFollowMeMenu()
+  { return myIcqFollowMeMenu; }
+
   /**
    * Get owner system menu
    *
@@ -253,6 +240,14 @@ public:
    */
   QMenu* getOwnerAdmMenu()
   { return myOwnerAdmMenu; }
+
+  /// Get ICQ User Search action
+  QAction* getIcqUserSearchAction()
+  { return myIcqUserSearchAction; }
+
+  /// Get ICQ Random Chat action
+  QAction* getIcqRandomChatAction()
+  { return myIcqRandomChatAction; }
 
   /**
    * Get user protocol invisibility status from the status menu
@@ -277,6 +272,10 @@ private slots:
   void showSettingsDlg();
   void setStatus(QAction* action);
   void toggleInvisibleStatus();
+  void aboutToShowIcqFollowMeMenu();
+  void setIcqFollowMeStatus(QAction* action);
+  void showIcqUserSearchDlg();
+  void showIcqRandomChatSearchDlg();
 
 private:
   Licq::UserId myUserId;
@@ -284,6 +283,7 @@ private:
 
   QMenu* myStatusMenu;
   QMenu* myOwnerAdmMenu;
+  QMenu* myIcqFollowMeMenu;
 
   // Actions on owner menu
   QAction* myOwnerAdmInfoAction;
@@ -301,6 +301,9 @@ private:
   QAction* myStatusInvisibleAction;
 
   QActionGroup* myStatusActions;
+  QActionGroup* myIcqFollowMeActions;
+  QAction* myIcqUserSearchAction;
+  QAction* myIcqRandomChatAction;
 };
 
 } // namespace SystemMenuPrivate

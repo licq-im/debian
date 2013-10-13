@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -29,6 +29,8 @@
 #include <set>
 #include <string>
 
+#include <licq/userid.h>
+
 namespace LicqJabber
 {
 
@@ -37,7 +39,7 @@ class VCardToUser;
 class Handler : private boost::noncopyable
 {
 public:
-  Handler();
+  Handler(const Licq::UserId& ownerId);
 
   void onConnect(const std::string& ip, int port, unsigned status);
   void onChangeStatus(unsigned status);
@@ -48,7 +50,8 @@ public:
                    bool awaitingAuthorization);
   void onUserRemoved(const std::string& id);
   void onUserStatusChange(const std::string& id, unsigned status,
-                          const std::string& msg);
+                          const std::string& msg,
+                          const std::string& photoHash);
   void onUserInfo(const std::string& id, const VCardToUser& wrapper);
   void onRosterReceived(const std::set<std::string>& ids);
   void onUserAuthorizationRequest(const std::string& id,
@@ -61,6 +64,7 @@ public:
   std::string getStatusMessage(unsigned status);
 
 private:
+  Licq::UserId myOwnerId;
 };
 
 } // namespace LicqJabber

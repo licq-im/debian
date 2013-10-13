@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ class Group;
 
 typedef std::map<Licq::UserId, Licq::User*> UserMap;
 typedef std::map<int, Group*> GroupMap;
-typedef std::map<unsigned long, Licq::Owner*> OwnerMap;
+typedef std::map<Licq::UserId, Licq::Owner*> OwnerMap;
 
 class UserManager : public Licq::UserManager
 {
@@ -136,32 +136,16 @@ public:
   /**
    * Fetch and lock an owner object based on protocolId
    *
-   * @param protocolId Protocol to get owner for
+   * @param userId Id of owner to get
    * @param writeLock True to lock owner for writing, false for read lock
    * @return The locked owner object if owner exists, otherwise NULL
    */
-  Licq::Owner* fetchOwner(unsigned long protocolId, bool writeLock = false);
-
-  /**
-   * Find and lock an owner object based on userId
-   *
-   * Note: Currently this is just a convenience wrapper but if/when Licq
-   *   starts supporting multiple owners per protocol this call will be needed
-   *   to be able to get any owner.
-   *
-   * @param userId User id of owner
-   * @param writeLock True to lock owner for writing, false for read lock
-   * @return The locked owner object if owner exists, otherwise NULL
-   */
-  Licq::Owner* fetchOwner(const Licq::UserId& userId, bool writeLock = false)
-  { return fetchOwner(userId.protocolId(), writeLock); }
+  Licq::Owner* fetchOwner(const Licq::UserId& userId, bool writeLock = false);
 
   // From Licq::UserManager
   void addOwner(const Licq::UserId& userId);
-  void RemoveOwner(unsigned long);
+  bool removeOwner(const Licq::UserId& userId);
   bool userExists(const Licq::UserId& userId);
-  Licq::UserId ownerUserId(unsigned long ppid);
-  bool isOwner(const Licq::UserId& userId);
   void notifyUserUpdated(const Licq::UserId& userId, unsigned long subSignal);
   bool addUser(const Licq::UserId& userId, bool permanent = true,
       bool addToServer = true, unsigned short groupId = 0);
@@ -170,10 +154,10 @@ public:
   bool groupExists(int groupId);
   int AddGroup(const std::string& name);
   void RemoveGroup(int groupId);
-  bool RenameGroup(int groupId, const std::string& name, unsigned long skipProtocolId = 0);
+  bool RenameGroup(int groupId, const std::string& name, const Licq::UserId& skipOwnerId = Licq::UserId());
   void ModifyGroupSorting(int groupId, int newIndex);
-  void setGroupServerId(int groupId, unsigned long protocolId, unsigned long serverId);
-  int getGroupFromServerId(unsigned long protocolId, unsigned long serverId);
+  void setGroupServerId(int groupId, const Licq::UserId& ownerId, unsigned long serverId);
+  int getGroupFromServerId(const Licq::UserId& ownerId, unsigned long serverId);
   int GetGroupFromName(const std::string& name);
   std::string GetGroupNameFromGroup(int groupId);
   void setUserInGroup(const Licq::UserId& userId, int groupId,

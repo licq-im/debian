@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -93,6 +93,7 @@ extern "C"
 
 #include "dialogs/authdlg.h"
 #include "dialogs/logwindow.h"
+#include "dialogs/ownereditdlg.h"
 
 #include "dockicons/dockicon.h"
 #include "dockicons/systemtrayicon.h"
@@ -120,7 +121,6 @@ extern "C"
 #include "systemmenu.h"
 #include "usermenu.h"
 
-using namespace std;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::LicqGui */
 using Licq::SarManager;
@@ -129,6 +129,8 @@ using Licq::gLog;
 using Licq::gSarManager;
 using Licq::gPluginManager;
 using Licq::gProtocolManager;
+using std::list;
+using std::map;
 
 #if defined(USE_SCRNSAVER)
 static XErrorHandler old_handler = 0;
@@ -327,21 +329,23 @@ void LicqGui::loadFloatiesConfig()
   if (!guiConf.loadFile())
     return;
 
-  std::string s;
   char key[16];
   int nFloaties = 0, xPosF, yPosF, wValF;
   guiConf.setSection("floaties");
   guiConf.get("Num", nFloaties, 0);
   for (int i = 0; i < nFloaties; i++)
   {
-    sprintf(key, "Floaty%d.Ppid", i);
-    unsigned long ppid;
-    guiConf.get(key, ppid, LICQ_PPID);
-    sprintf(key, "Floaty%d.Uin", i);
-    guiConf.get(key, s, "");
-    if (s.empty())
+    std::string ppidStr, ownerIdStr, userIdStr;
+    sprintf(key, "Floaty%d.Protocol", i);
+    guiConf.get(key, ppidStr);
+    sprintf(key, "Floaty%d.Owner", i);
+    guiConf.get(key, ownerIdStr);
+    sprintf(key, "Floaty%d.User", i);
+    guiConf.get(key, userIdStr);
+    unsigned long protocolId = Licq::protocolId_fromString(ppidStr);
+    if (protocolId == 0 || ownerIdStr.empty() || userIdStr.empty())
       continue;
-    Licq::UserId userId(s, ppid);
+    Licq::UserId userId(Licq::UserId(protocolId, ownerIdStr), userIdStr);
 
     sprintf(key, "Floaty%d.X", i);
     guiConf.get(key, xPosF, 0);
@@ -350,8 +354,7 @@ void LicqGui::loadFloatiesConfig()
     sprintf(key, "Floaty%d.W", i);
     guiConf.get(key, wValF, 80);
 
-    if (userId.isValid())
-      createFloaty(userId, xPosF, yPosF, wValF);
+    createFloaty(userId, xPosF, yPosF, wValF);
   }
 }
 
@@ -384,9 +387,11 @@ void LicqGui::saveConfig()
   for (int i = 0; i < FloatyView::floaties.size(); i++)
   {
     FloatyView* iter = FloatyView::floaties.at(i);
-    sprintf(key, "Floaty%d.Ppid", i);
-    guiConf.set(key, iter->userId().protocolId());
-    sprintf(key, "Floaty%d.Uin", i);
+    sprintf(key, "Floaty%d.Protocol", i);
+    guiConf.set(key, Licq::protocolId_toString(iter->userId().protocolId()));
+    sprintf(key, "Floaty%d.Owner", i);
+    guiConf.set(key, iter->userId().ownerId().accountId());
+    sprintf(key, "Floaty%d.User", i);
     guiConf.set(key, iter->userId().accountId());
     sprintf(key, "Floaty%d.X", i);
     guiConf.set(key, (iter->x() > 0 ? iter->x() : 0));
@@ -571,6 +576,7 @@ void LicqGui::changeStatus(unsigned status, bool invisible, const QString& autoM
 void LicqGui::changeStatus(unsigned status, const Licq::UserId& userId, bool invisible, const QString& autoMessage)
 {
   unsigned oldStatus;
+  bool needpwd;
 
   {
     Licq::OwnerReadGuard o(userId);
@@ -578,6 +584,7 @@ void LicqGui::changeStatus(unsigned status, const Licq::UserId& userId, bool inv
       return;
 
     oldStatus = o->status();
+    needpwd = o->password().empty();
   }
 
   if (status == User::InvisibleStatus)
@@ -608,6 +615,13 @@ void LicqGui::changeStatus(unsigned status, const Licq::UserId& userId, bool inv
       if (myMainWindow->systemMenu()->getInvisibleStatus(userId))
         status |= User::InvisibleStatus;
     }
+  }
+
+  if (needpwd)
+  {
+    // Show dialog to ask for password, it will set status when complete
+    new OwnerEditDlg(userId, status, autoMessage);
+    return;
   }
 
   gProtocolManager.setStatus(userId, status,
@@ -853,6 +867,24 @@ void LicqGui::sendChatRequest(const Licq::UserId& userId)
     return;
 }
 
+Licq::UserId LicqGui::userIdFromMimeData(const QMimeData& mimeData)
+{
+  QString text = mimeData.text();
+
+  if (text.length() <= 4)
+    return Licq::UserId();
+
+  Licq::OwnerListGuard ownerList;
+  BOOST_FOREACH(Licq::Owner* owner, **ownerList)
+  {
+    unsigned long ppid = owner->protocolId();
+    if (text.startsWith(Licq::protocolId_toString(ppid).c_str()))
+      return Licq::UserId(owner->id(), text.mid(4).toLocal8Bit().constData());
+  }
+
+  return Licq::UserId();
+}
+
 bool LicqGui::userDropEvent(const Licq::UserId& userId, const QMimeData& mimeData)
 {
   if (mimeData.hasUrls())
@@ -896,28 +928,11 @@ bool LicqGui::userDropEvent(const Licq::UserId& userId, const QMimeData& mimeDat
   {
     // Text might be a user id
 
-    QString text = mimeData.text();
+    Licq::UserId dropUserId = userIdFromMimeData(mimeData);
 
-    unsigned long dropPpid = 0;
-
+    if (dropUserId.isValid())
     {
-      Licq::OwnerListGuard ownerList;
-      BOOST_FOREACH(Licq::Owner* owner, **ownerList)
-      {
-        unsigned long ppid = owner->protocolId();
-        if (text.startsWith(Licq::protocolId_toString(ppid).c_str()))
-        {
-          dropPpid = ppid;
-          break;
-        }
-      }
-    }
-
-    if (dropPpid != 0 && text.length() > 4)
-    {
-      QString dropId = text.mid(4);
-      Licq::UserId dropUserId(dropId.toLatin1().constData(), dropPpid);
-      if (!dropUserId.isValid() || userId == dropUserId)
+      if (userId == dropUserId)
         return false;
 
       UserSendEvent* sendContact = dynamic_cast<UserSendEvent*>(showEventDialog(ContactEvent, userId));
@@ -933,7 +948,7 @@ bool LicqGui::userDropEvent(const Licq::UserId& userId, const QMimeData& mimeDat
       if (!sendMsg)
         return false;
 
-      sendMsg->setText(text);
+      sendMsg->setText(mimeData.text());
       sendMsg->show();
     }
   }
@@ -1280,7 +1295,7 @@ void LicqGui::userUpdated(const Licq::UserId& userId, unsigned long subSignal, i
         unsigned short popCheck = 99;
 
         {
-          Licq::OwnerReadGuard o(ppid);
+          Licq::OwnerReadGuard o(userId.ownerId());
           if (o.isLocked())
           {
             unsigned status = o->status();

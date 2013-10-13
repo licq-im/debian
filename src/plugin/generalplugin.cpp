@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,99 +18,85 @@
  */
 
 #include "generalplugin.h"
+#include "generalplugininstance.h"
 
+#include <licq/plugin/generalpluginfactory.h>
 #include <licq/thread/mutexlocker.h>
 
-#include <cstring>
+#include <boost/make_shared.hpp>
 
-using namespace Licq;
-using namespace std;
+using namespace LicqDaemon;
 
-
-GeneralPlugin::Private::Private() :
-    mySignalMask(0)
-{
-  // Empty
-}
-
-
-GeneralPlugin::GeneralPlugin(Params& p)
-  : Plugin(p),
-    myPrivate(new Private())
+GeneralPlugin::GeneralPlugin(
+    DynamicLibrary::Ptr lib,
+    boost::shared_ptr<Licq::GeneralPluginFactory> factory,
+    PluginThread::Ptr thread)
+  : Plugin(lib),
+    myFactory(factory),
+    myThread(thread)
 {
   // Empty
 }
 
 GeneralPlugin::~GeneralPlugin()
 {
-  delete myPrivate;
+  // Empty
 }
 
-void GeneralPlugin::pushSignal(PluginSignal* signal)
+boost::shared_ptr<GeneralPluginInstance> GeneralPlugin::createInstance(
+    int id, void (*callback)(const PluginInstance&))
 {
-  LICQ_D();
-  MutexLocker locker(d->mySignalsMutex);
-  d->mySignals.push(signal);
-  notify(PipeSignal);
+  assert(myThread);
+
+  GeneralPluginInstance::Ptr instance =
+      boost::make_shared<GeneralPluginInstance>(
+          id, boost::dynamic_pointer_cast<GeneralPlugin>(shared_from_this()),
+          myThread);
+  myThread.reset();
+
+  if (instance->create(callback))
+    registerInstance(instance);
+  else
+    instance.reset();
+
+  return instance;
 }
 
-PluginSignal* GeneralPlugin::popSignal()
+boost::shared_ptr<Licq::GeneralPluginFactory>
+GeneralPlugin::generalFactory()
 {
-  LICQ_D();
-  MutexLocker locker(d->mySignalsMutex);
-  if (!d->mySignals.empty())
-  {
-    PluginSignal* signal = d->mySignals.front();
-    d->mySignals.pop();
-    return signal;
-  }
-  return NULL;
+  return myFactory;
 }
 
-void GeneralPlugin::pushEvent(Event* event)
+std::string GeneralPlugin::description() const
 {
-  LICQ_D();
-  MutexLocker locker(d->myEventsMutex);
-  d->myEvents.push(event);
-  notify(PipeEvent);
+  return myFactory->description();
 }
 
-Event* GeneralPlugin::popEvent()
+std::string GeneralPlugin::usage() const
 {
-  LICQ_D();
-  MutexLocker locker(d->myEventsMutex);
-  if (!d->myEvents.empty())
-  {
-    Event* event = d->myEvents.front();
-    d->myEvents.pop();
-    return event;
-  }
-  return NULL;
+  return myFactory->usage();
 }
 
-bool GeneralPlugin::isEnabled() const
+std::string GeneralPlugin::configFile() const
 {
-  return true;
+  return myFactory->configFile();
 }
 
-bool GeneralPlugin::wantSignal(unsigned long signalType) const
+Licq::GeneralPluginInstance::Ptr GeneralPlugin::instance() const
 {
-  LICQ_D_CONST();
-  return (signalType & d->mySignalMask);
+  Licq::MutexLocker locker(myMutex);
+  assert(myInstances.size() == 1);
+  return boost::dynamic_pointer_cast<Licq::GeneralPluginInstance>(
+      myInstances.front().lock());
 }
 
-void GeneralPlugin::setSignalMask(unsigned long signalMask)
+boost::shared_ptr<Licq::PluginFactory> GeneralPlugin::factory()
 {
-  LICQ_D();
-  d->mySignalMask = signalMask;
+  return myFactory;
 }
 
-void GeneralPlugin::enable()
+boost::shared_ptr<const Licq::PluginFactory> GeneralPlugin::factory() const
 {
-  notify(PipeEnable);
-}
-
-void GeneralPlugin::disable()
-{
-  notify(PipeDisable);
+  return myFactory;
 }

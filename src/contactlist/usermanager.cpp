@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -96,6 +96,9 @@ void UserManager::shutdown()
 
 void UserManager::addOwner(const UserId& userId)
 {
+  if (!userId.isOwner())
+    return;
+
   myOwnerListMutex.lockWrite();
 
   // Make sure owner isn't already in configuration
@@ -105,10 +108,21 @@ void UserManager::addOwner(const UserId& userId)
     return;
   }
 
+  for (OwnerMap::const_iterator i = myOwners.begin(); i != myOwners.end(); ++i)
+  {
+    if (i->first.protocolId() == userId.protocolId() &&
+        (i->second->protocolCapabilities() & Licq::ProtocolPlugin::CanMultipleOwners) == 0)
+    {
+      // We already have another owner for this protocol, and multiple owners isn't supported
+      myOwnerListMutex.unlockWrite();
+      return;
+    }
+  }
+
   Owner* o = createOwner(userId);
 
   myConfiguredOwners.insert(userId);
-  myOwners[userId.protocolId()] = o;
+  myOwners[userId] = o;
 
   myOwnerListMutex.unlockWrite();
 
@@ -137,6 +151,9 @@ bool UserManager::Load()
   licqConf.setSection("owners");
   licqConf.get("NumOfOwners", nOwners, 0);
 
+  // Make a map of owners to easier migrate server ids for groups
+  std::map<unsigned long, std::string> oldOwners;
+
   myOwnerListMutex.lockWrite();
   for (unsigned short i = 1; i <= nOwners; i++)
   {
@@ -144,10 +161,11 @@ bool UserManager::Load()
     string accountId, ppidStr;
     sprintf(sOwnerIDKey, "Owner%d.Id", i);
     licqConf.get(sOwnerIDKey, accountId);
-    sprintf(sOwnerPPIDKey, "Owner%d.PPID", i);
+    sprintf(sOwnerPPIDKey, "Owner%d.Protocol", i);
     licqConf.get(sOwnerPPIDKey, ppidStr);
     unsigned long protocolId = Licq::protocolId_fromString(ppidStr);
-    myConfiguredOwners.insert(UserId(accountId, protocolId));
+    myConfiguredOwners.insert(UserId(protocolId, accountId));
+    oldOwners[protocolId] = accountId;
   }
   myOwnerListMutex.unlockWrite();
 
@@ -162,27 +180,12 @@ bool UserManager::Load()
     char key[40];
     string groupName;
     int groupId, sortIndex;
-    unsigned icqGroupId = 0;
     sprintf(key, "Group%d.name", i);
     licqConf.get(key, groupName);
-
+    sprintf(key, "Group%d.Sorting", i);
+    licqConf.get(key, sortIndex, i-1);
     sprintf(key, "Group%d.id", i);
     licqConf.get(key, groupId, 0);
-
-    sprintf(key, "Group%d.Sorting", i);
-    bool newConfig = licqConf.get(key, sortIndex, i-1);
-
-    sprintf(key, "Group%d.IcqServerId", i);
-    licqConf.get(key, icqGroupId, 0);
-
-    // Sorting and IcqServerId did not exist in older versions.
-    // If they are missing, assume that we are reading an old configuration
-    // where id parameter is ICQ server side group id.
-    if (!newConfig)
-    {
-      icqGroupId = groupId;
-      groupId = i;
-    }
 
     Group* newGroup = new Group(groupId, groupName);
     newGroup->setSortIndex(sortIndex);
@@ -192,16 +195,34 @@ bool UserManager::Load()
     licqConf.getKeyList(serverIdKeys, key);
     BOOST_FOREACH(const string& serverIdKey, serverIdKeys)
     {
-      unsigned long protocolId = Licq::protocolId_fromString(serverIdKey.substr(serverIdKey.size()-4));
       unsigned long serverId;
       licqConf.get(serverIdKey, serverId, 0);
-      newGroup->setServerId(protocolId, serverId);
-    }
 
-    // ServerId per protocol didn't exist in 1.3.x and older.
-    // This will preserve ICQ group ids when reading old config.
-    if (serverIdKeys.empty() && icqGroupId != 0)
-      newGroup->setServerId(LICQ_PPID, icqGroupId);
+      string id = serverIdKey.substr(strlen(key));
+      unsigned long protocolId = Licq::protocolId_fromString(id.substr(0, 4));
+      string accountId;
+      if (id.size() <= 4)
+      {
+        // Old (pre 1.8.0) config with only protocol id
+        // Get first (and hopefully only) owner
+        std::map<unsigned long, std::string>::const_iterator iter = oldOwners.find(protocolId);
+        if (iter != oldOwners.end())
+        {
+          accountId = iter->second;
+
+          // Update configuration with full owner id in key
+          licqConf.unset(serverIdKey);
+          licqConf.set(serverIdKey + accountId, serverId);
+        }
+      }
+      else
+      {
+        accountId = id.substr(4);
+      }
+
+      if (!accountId.empty())
+        newGroup->setServerId(Licq::UserId(protocolId, accountId), serverId);
+    }
 
     myGroups[groupId] = newGroup;
   }
@@ -211,6 +232,7 @@ bool UserManager::Load()
   licqConf.setSection("network");
   licqConf.get("DefaultUserEncoding", myDefaultEncoding, "");
 
+  licqConf.writeFile();
   gDaemon.releaseLicqConf();
 
   return true;
@@ -226,63 +248,26 @@ void UserManager::loadUserList(const UserId& ownerId)
 
   myUserListMutex.lockWrite();
 
-  if (usersConf.setSection(ownerId.accountId() + "." + ppidStr, false))
+  usersConf.setSection(ownerId.accountId() + "." + ppidStr);
+  int numUsers;
+  usersConf.get("NumUsers", numUsers);
+  gLog.info(tr("Loading %i users for %s"), numUsers, ownerId.toString().c_str());
+
+  for (int i = 1; i <= numUsers; ++i)
   {
-    int numUsers;
-    usersConf.get("NumUsers", numUsers);
-    gLog.info(tr("Loading %i users for %s"), numUsers, ownerId.toString().c_str());
-
-    for (int i = 1; i <= numUsers; ++i)
+    char key[20];
+    sprintf(key, "User%i", i);
+    string accountId;
+    usersConf.get(key, accountId);
+    if (accountId.empty() || accountId == ownerId.accountId())
     {
-      char key[20];
-      sprintf(key, "User%i", i);
-      string accountId;
-      usersConf.get(key, accountId);
-      if (accountId.empty())
-      {
-        gLog.warning(tr("Skipping user %i, invalid key"), i);
-        continue;
-      }
-      UserId userId(accountId, ownerId.protocolId());
-      User* u = createUser(userId);
-      u->myPrivate->addToContactList();
-      myUsers[userId] = u;
+      gLog.warning(tr("Skipping user %i, invalid key"), i);
+      continue;
     }
-  }
-  else
-  {
-    // Owner specific section is missing, migrate users from old section (pre Licq 1.7.0)
-    usersConf.setSection("users");
-    int numUsers;
-    usersConf.get("NumOfUsers", numUsers);
-
-    for (int i = 1; i <= numUsers; ++i)
-    {
-      char key[20];
-      sprintf(key, "User%i", i);
-      string userFile;
-      usersConf.get(key, userFile);
-
-      size_t sz = userFile.rfind('.');
-      if (sz == string::npos)
-      {
-        gLog.error(tr("Skipping user %i, invalid key"), i);
-        continue;
-      }
-
-      if (userFile.substr(sz+1) != ppidStr)
-        // Not a user for this protocol
-        continue;
-
-      string accountId = userFile.substr(0, sz);
-      UserId userId(accountId, ownerId.protocolId());
-      User* u = createUser(userId);
-      u->myPrivate->addToContactList();
-      myUsers[userId] = u;
-    }
-
-    // Write new section so we don't have to migrate more than once
-    saveUserList(ownerId);
+    UserId userId(ownerId, accountId);
+    User* u = createUser(userId);
+    u->myPrivate->addToContactList();
+    myUsers[userId] = u;
   }
   myUserListMutex.unlockWrite();
 }
@@ -297,7 +282,7 @@ void UserManager::loadProtocol(unsigned long protocolId)
 
     // Load owner
     Owner* o = createOwner(ownerId);
-    myOwners[ownerId.protocolId()] = o;
+    myOwners[ownerId] = o;
 
     // Notify plugins that the owner has been added
     gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
@@ -306,8 +291,9 @@ void UserManager::loadProtocol(unsigned long protocolId)
     // Load all users for owner
     loadUserList(ownerId);
 
-    // We currently only support one owner per protocol
-    break;
+    if ((o->protocolCapabilities() & Licq::ProtocolPlugin::CanMultipleOwners) == 0)
+      // This protocol only supports one owner per protocol, don't load any more
+      break;
   }
   myOwnerListMutex.unlockWrite();
 
@@ -338,13 +324,18 @@ void UserManager::unloadProtocol(unsigned long protocolId)
 
   // Delete owner object for this protocol
   myOwnerListMutex.lockWrite();
-  OwnerMap::iterator i = myOwners.find(protocolId);
-  if (i != myOwners.end())
+  for (OwnerMap::iterator i = myOwners.begin(); i != myOwners.end(); )
   {
+    if (i->first.protocolId() != protocolId)
+    {
+      ++i;
+      continue;
+    }
+
     Owner* o = i->second;
     UserId ownerId = o->id();
     o->lockWrite();
-    myOwners.erase(i);
+    myOwners.erase(i++);
     o->unlockWrite();
     delete o;
 
@@ -374,14 +365,23 @@ void UserManager::saveOwnerList()
     {
       ++count;
 
-      char key[14];
-      sprintf(key, "Owner%d.Id", count);
+      char key[64];
+      snprintf(key, sizeof(key), "Owner%d.Id", count);
       licqConf.set(key, ownerId.accountId());
 
-      sprintf(key, "Owner%d.PPID", count);
+      snprintf(key, sizeof(key), "Owner%d.Protocol", count);
       licqConf.set(key, Licq::protocolId_toString(ownerId.protocolId()));
     }
   }
+
+  // Don't leave old higher numbered owners in config
+  char key[14];
+  do
+  {
+    ++count;
+    sprintf(key, "Owner%d.", count);
+  }
+  while (licqConf.unset(string(key) + "Id") | licqConf.unset(string(key) + "Protocol"));
 
   licqConf.writeFile();
   gDaemon.releaseLicqConf();
@@ -399,38 +399,56 @@ void UserManager::saveUserList(const UserId& ownerId)
   int count = 0;
   for (UserMap::const_iterator i = myUsers.begin(); i != myUsers.end(); ++i)
   {
+    if (i->first.ownerId() != ownerId)
+      continue;
+
     i->second->lockRead();
     bool temporary = i->second->NotInList();
-    string accountId = i->second->accountId();
-    unsigned long ppid = i->second->protocolId();
     i->second->unlockRead();
 
     // Only save users for this owner that's been permanently added
-    if (temporary || ppid != ownerId.protocolId())
+    if (temporary)
       continue;
     ++count;
 
     char key[20];
     sprintf(key, "User%i", count);
-    usersConf.set(key, accountId);
+    usersConf.set(key, i->first.accountId());
   }
   usersConf.set("NumUsers", count);
+
+  // Don't leave old higher numbered users in config
+  char key[20];
+  do
+  {
+    ++count;
+    sprintf(key, "User%i", count);
+  }
+  while (usersConf.unset(key));
+
   usersConf.writeFile();
 }
 
 bool UserManager::allowUnloadProtocol(unsigned long protocolId)
 {
-  Licq::OwnerReadGuard owner(protocolId);
-  if (owner.isLocked())
+  myOwnerListMutex.lockRead();
+  for (OwnerMap::const_iterator i = myOwners.begin(); i != myOwners.end(); ++i)
   {
+    if (i->first.protocolId() != protocolId)
+      continue;
+
     // If owner is online, don't allow unloading the protocol
-    if (owner->status() != Owner::OfflineStatus)
+    i->second->lockRead();
+    bool isOnline = i->second->isOnline();
+    i->second->unlockRead();
+    if (isOnline)
     {
+      myOwnerListMutex.unlockRead();
       gLog.warning(tr("Protocol must be offline to be unloaded"));
       return false;
     }
   }
-
+  myOwnerListMutex.unlockRead();
   return true;
 }
 
@@ -440,7 +458,7 @@ bool UserManager::addUser(const UserId& uid,
   if (!uid.isValid())
     return false;
 
-  if (isOwner(uid))
+  if (uid.isOwner())
     return false;
 
   myUserListMutex.lockWrite();
@@ -489,11 +507,7 @@ bool UserManager::addUser(const UserId& uid,
   user->unlockWrite();
 
   if (permanent)
-  {
-    UserId ownerId = ownerUserId(uid.protocolId());
-    if (ownerId.isValid())
-      saveUserList(ownerId);
-  }
+    saveUserList(uid.ownerId());
 
   myUserListMutex.unlockWrite();
 
@@ -521,7 +535,7 @@ void UserManager::removeUser(const UserId& userId)
 {
   {
     // Only allow removing a user if the protocol is available
-    OwnerReadGuard owner(userId.protocolId());
+    OwnerReadGuard owner(userId.ownerId());
     if (!owner.isLocked() || !owner->isOnline())
       return;
   }
@@ -551,9 +565,7 @@ void UserManager::removeLocalUser(const UserId& userId)
   {
     u->myPrivate->removeFiles();
 
-    UserId ownerId = ownerUserId(userId.protocolId());
-    if (ownerId.isValid())
-      saveUserList(ownerId);
+    saveUserList(userId.ownerId());
   }
   myUserListMutex.unlockWrite();
   u->unlockWrite();
@@ -569,16 +581,16 @@ void UserManager::writeToUserHistory(Licq::User* user, const string& text)
   user->myPrivate->writeToHistory(text);
 }
 
-void UserManager::RemoveOwner(unsigned long ppid)
+bool UserManager::removeOwner(const Licq::UserId& userId)
 {
   // List should only be locked when not holding any user lock to avoid
   // deadlock, so we cannot call FetchOwner here.
   myOwnerListMutex.lockWrite();
-  OwnerMap::iterator iter = myOwners.find(ppid);
+  OwnerMap::iterator iter = myOwners.find(userId);
   if (iter == myOwners.end())
   {
     myOwnerListMutex.unlockWrite();
-    return;
+    return false;
   }
 
   Owner* o = iter->second;
@@ -589,21 +601,41 @@ void UserManager::RemoveOwner(unsigned long ppid)
   {
     myOwnerListMutex.unlockWrite();
     o->unlockWrite();
-    return;
+    return false;
   }
 
   myOwners.erase(iter);
   o->myPrivate->removeFiles();
-  UserId id = o->id();
-  myConfiguredOwners.erase(id);
+  myConfiguredOwners.erase(userId);
   myOwnerListMutex.unlockWrite();
   o->unlockWrite();
   delete o;
 
   saveOwnerList();
 
+  myGroupListMutex.lockWrite();
+  for (GroupMap::iterator group = myGroups.begin(); group != myGroups.end(); ++group)
+  {
+    group->second->lockRead();
+    group->second->unsetServerId(userId);
+    group->second->unlockRead();
+  }
+  SaveGroups();
+  myGroupListMutex.unlockWrite();
+
+  // Remove user list section from users.conf
+  Licq::IniFile usersConf("users.conf");
+  usersConf.loadFile();
+  string ppidStr = Licq::protocolId_toString(userId.protocolId());
+  usersConf.removeSection(userId.accountId() + "." + ppidStr);
+  usersConf.writeFile();
+
+  gPluginManager.shutdownProtocolInstance(userId);
+
   gPluginManager.pushPluginSignal(new PluginSignal(PluginSignal::SignalList,
-      PluginSignal::ListOwnerRemoved, id));
+      PluginSignal::ListOwnerRemoved, userId));
+
+  return true;
 }
 
 Licq::User* UserManager::fetchUser(const UserId& userId,
@@ -617,12 +649,11 @@ Licq::User* UserManager::fetchUser(const UserId& userId,
   if (!userId.isValid())
     return NULL;
 
-  // Check for an owner first
-  myOwnerListMutex.lockRead();
-  OwnerMap::iterator iter_o = myOwners.find(userId.protocolId());
-  if (iter_o != myOwners.end())
+  if (userId.isOwner())
   {
-    if (iter_o->second->id() == userId)
+    myOwnerListMutex.lockRead();
+    OwnerMap::const_iterator iter_o = myOwners.find(userId);
+    if (iter_o != myOwners.end())
     {
       user = iter_o->second;
       if (writeLock)
@@ -630,11 +661,9 @@ Licq::User* UserManager::fetchUser(const UserId& userId,
       else
         user->lockRead();
     }
-  }
-  myOwnerListMutex.unlockRead();
-
-  if (user != NULL)
+    myOwnerListMutex.unlockRead();
     return user;
+  }
 
   if (addUser)
     myUserListMutex.lockWrite();
@@ -683,52 +712,29 @@ bool UserManager::userExists(const UserId& userId)
 {
   bool exists = false;
 
-  myOwnerListMutex.lockRead();
-  OwnerMap::iterator iter_o = myOwners.find(userId.protocolId());
-  if (iter_o != myOwners.end())
+  if (userId.isOwner())
   {
-    if (iter_o->second->id() == userId)
+    myOwnerListMutex.lockRead();
+    OwnerMap::const_iterator iter_o = myOwners.find(userId);
+    if (iter_o != myOwners.end())
       exists = true;
+    myOwnerListMutex.unlockRead();
   }
-  myOwnerListMutex.unlockRead();
-  if (exists)
-    return true;
-
-  myUserListMutex.lockRead();
-  UserMap::const_iterator iter = myUsers.find(userId);
-  if (iter != myUsers.end())
-    exists = true;
-  myUserListMutex.unlockRead();
-  return exists;
-}
-
-UserId UserManager::ownerUserId(unsigned long ppid)
-{
-  Licq::OwnerReadGuard owner(ppid);
-  if (!owner.isLocked())
-    return UserId();
-
-  return owner->id();
-}
-
-bool UserManager::isOwner(const UserId& userId)
-{
-  bool exists = false;
-
-  myOwnerListMutex.lockRead();
-  OwnerMap::iterator iter_o = myOwners.find(userId.protocolId());
-  if (iter_o != myOwners.end())
+  else
   {
-    if (iter_o->second->id() == userId)
+    myUserListMutex.lockRead();
+    UserMap::const_iterator iter = myUsers.find(userId);
+    if (iter != myUsers.end())
       exists = true;
+    myUserListMutex.unlockRead();
   }
-  myOwnerListMutex.unlockRead();
-
   return exists;
 }
 
 User* UserManager::createUser(const UserId& userId, bool temporary)
 {
+  assert(!userId.isOwner());
+
   User* u = gPluginManager.createProtocolUser(userId, temporary);
 
   if (u == NULL)
@@ -740,6 +746,8 @@ User* UserManager::createUser(const UserId& userId, bool temporary)
 
 Owner* UserManager::createOwner(const UserId& ownerId)
 {
+  assert(ownerId.isOwner());
+
   Owner* o = gPluginManager.createProtocolOwner(ownerId);
 
   if (o == NULL)
@@ -891,7 +899,7 @@ void UserManager::RemoveGroup(int groupId)
 
     // Group object is no long reachable so include protocol specific server id and name in signal
     gPluginManager.pushProtocolSignal(new Licq::ProtoRemoveGroupSignal(
-        i->second->id(), groupId, group->serverId(i->first), group->name()));
+        i->first, groupId, group->serverId(i->first), group->name()));
   }
   myOwnerListMutex.unlockRead();
 
@@ -948,7 +956,7 @@ void UserManager::ModifyGroupSorting(int groupId, int newIndex)
       PluginSignal::ListGroupsReordered));
 }
 
-bool UserManager::RenameGroup(int groupId, const string& name, unsigned long skipProtocolId)
+bool UserManager::RenameGroup(int groupId, const string& name, const Licq::UserId& skipOwnerId)
 {
   int foundGroupId = GetGroupFromName(name);
 
@@ -981,7 +989,7 @@ bool UserManager::RenameGroup(int groupId, const string& name, unsigned long ski
   for (OwnerMap::const_iterator i = myOwners.begin(); i != myOwners.end(); ++i)
   {
     // Don't notify the protocol that called us
-    if (i->first == skipProtocolId)
+    if (i->first == skipOwnerId)
       continue;
 
     i->second->lockRead();
@@ -990,7 +998,7 @@ bool UserManager::RenameGroup(int groupId, const string& name, unsigned long ski
     if (!isOnline)
       continue;
 
-    gPluginManager.pushProtocolSignal(new Licq::ProtoRenameGroupSignal(i->second->id(), groupId));
+    gPluginManager.pushProtocolSignal(new Licq::ProtoRenameGroupSignal(i->first, groupId));
   }
   myOwnerListMutex.unlockRead();
 
@@ -1022,11 +1030,25 @@ void UserManager::SaveGroups()
     ++i;
   }
 
+  // Don't leave old higher numbered groups in config
+  while (true)
+  {
+    char key[32];
+    sprintf(key, "Group%d.", i);
+    list<string> groupKeys;
+    licqConf.getKeyList(groupKeys, key);
+    if (groupKeys.empty())
+      break;
+    BOOST_FOREACH(const string& key, groupKeys)
+      licqConf.unset(key);
+    ++i;
+  }
+
   licqConf.writeFile();
   gDaemon.releaseLicqConf();
 }
 
-int UserManager::getGroupFromServerId(unsigned long protocolId, unsigned long serverId)
+int UserManager::getGroupFromServerId(const Licq::UserId& ownerId, unsigned long serverId)
 {
   myGroupListMutex.lockRead();
   GroupMap::const_iterator iter;
@@ -1034,7 +1056,7 @@ int UserManager::getGroupFromServerId(unsigned long protocolId, unsigned long se
   for (iter = myGroups.begin(); iter != myGroups.end(); ++iter)
   {
     iter->second->lockRead();
-    if (iter->second->serverId(protocolId) == serverId)
+    if (iter->second->serverId(ownerId) == serverId)
       groupId = iter->first;
     iter->second->unlockRead();
   }
@@ -1077,14 +1099,14 @@ std::string UserManager::GetGroupNameFromGroup(int groupId)
   return name;
 }
 
-void UserManager::setGroupServerId(int groupId, unsigned long protocolId,
+void UserManager::setGroupServerId(int groupId, const Licq::UserId& ownerId,
     unsigned long serverId)
 {
   Group* group = fetchGroup(groupId, true);
   if (group == NULL)
     return;
 
-  group->setServerId(protocolId, serverId);
+  group->setServerId(ownerId, serverId);
   group->unlockWrite();
 
   myGroupListMutex.lockRead();
@@ -1092,12 +1114,12 @@ void UserManager::setGroupServerId(int groupId, unsigned long protocolId,
   myGroupListMutex.unlockRead();
 }
 
-Licq::Owner* UserManager::fetchOwner(unsigned long protocolId, bool writeLock)
+Licq::Owner* UserManager::fetchOwner(const UserId& userId, bool writeLock)
 {
   Owner* o = NULL;
 
   myOwnerListMutex.lockRead();
-  OwnerMap::iterator iter = myOwners.find(protocolId);
+  OwnerMap::const_iterator iter = myOwners.find(userId);
   if (iter != myOwners.end())
   {
     o = iter->second;
@@ -1208,7 +1230,7 @@ void UserManager::setUserInGroup(const UserId& userId, int groupId,
   {
     bool ownerIsOnline = false;
     {
-      OwnerReadGuard owner(userId.protocolId());
+      OwnerReadGuard owner(userId.ownerId());
       ownerIsOnline = (owner.isLocked() && owner->isOnline());
     }
 
@@ -1249,20 +1271,8 @@ OwnerReadGuard::OwnerReadGuard(const UserId& userId)
   // Empty
 }
 
-OwnerReadGuard::OwnerReadGuard(unsigned long protocolId)
-  : ReadMutexGuard<Owner>(LicqDaemon::gUserManager.fetchOwner(protocolId, false), true)
-{
-  // Empty
-}
-
 OwnerWriteGuard::OwnerWriteGuard(const UserId& userId)
   : WriteMutexGuard<Owner>(LicqDaemon::gUserManager.fetchOwner(userId, true), true)
-{
-  // Empty
-}
-
-OwnerWriteGuard::OwnerWriteGuard(unsigned long protocolId)
-  : WriteMutexGuard<Owner>(LicqDaemon::gUserManager.fetchOwner(protocolId, true), true)
 {
   // Empty
 }
@@ -1289,17 +1299,27 @@ UserListGuard::UserListGuard(unsigned long protocolId)
       myUserList.push_back(i->second);
 }
 
+UserListGuard::UserListGuard(const Licq::UserId& ownerId)
+{
+  const UserMap& userMap = LicqDaemon::gUserManager.lockUserList();
+
+  for (UserMap::const_iterator i = userMap.begin(); i != userMap.end(); ++i)
+    if (!ownerId.isValid() || i->first.ownerId() == ownerId)
+      myUserList.push_back(i->second);
+}
+
 UserListGuard::~UserListGuard()
 {
   LicqDaemon::gUserManager.unlockUserList();
 }
 
-OwnerListGuard::OwnerListGuard()
+OwnerListGuard::OwnerListGuard(unsigned long protocolId)
 {
   const OwnerMap& ownerMap = LicqDaemon::gUserManager.lockOwnerList();
 
   for (OwnerMap::const_iterator i = ownerMap.begin(); i != ownerMap.end(); ++i)
-    myOwnerList.push_back(i->second);
+    if (protocolId == 0 || i->first.protocolId() == protocolId)
+      myOwnerList.push_back(i->second);
 }
 
 OwnerListGuard::~OwnerListGuard()

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2007-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,6 +58,7 @@
 
 #include "licqgui.h"
 #include "mainwin.h"
+#include "signalmanager.h"
 
 using Licq::User;
 using namespace LicqQtGui;
@@ -79,11 +80,9 @@ SystemMenu::SystemMenu(QWidget* parent)
   myUserAdmMenu = new QMenu(tr("User &Functions"), this);
   myUserAdmMenu->addAction(tr("&Add User..."), this, SLOT(showAddUserDlg()));
   myAddGroupAction = myUserAdmMenu->addAction(tr("A&dd Group..."), this, SLOT(showAddGroupDlg()));
-  myUserSearchAction = myUserAdmMenu->addAction(tr("S&earch for User..."), this, SLOT(showSearchUserDlg()));
   myUserAutorizeAction = myUserAdmMenu->addAction(tr("A&uthorize User..."), this, SLOT(showAuthUserDlg()));
   myUserReqAutorizeAction = myUserAdmMenu->addAction(tr("Re&quest Authorization..."), this, SLOT(showReqAuthDlg()));
-  myIcqRandomChatAction = myUserAdmMenu->addAction(tr("ICQ Ra&ndom Chat..."), this, SLOT(showRandomChatSearchDlg()));
-  myUserAdmMenu->addSeparator();
+  myUserAdmActionSeparator = myUserAdmMenu->addSeparator();
   myUserPopupAllAction = myUserAdmMenu->addAction(tr("&Popup All Messages..."), gLicqGui, SLOT(showAllEvents()));
   myEditGroupsAction = myUserAdmMenu->addAction(tr("Edit &Groups..."), this, SLOT(showEditGrpDlg()));
   myUserAdmMenu->addSeparator();
@@ -92,26 +91,11 @@ SystemMenu::SystemMenu(QWidget* parent)
   myRedrawContactListAction = myUserAdmMenu->addAction(tr("&Redraw User Window"), gGuiContactList, SLOT(reloadAll()));
   myUserAdmMenu->addAction(tr("&Save All Users"), this, SLOT(saveAllUsers()));
 
-  // Sub menu Follow Me
-  myFollowMeMenu = new QMenu(tr("ICQ Phone \"Follow Me\""), this);
-  myFollowMeActions = new QActionGroup(this);
-  connect(myFollowMeActions, SIGNAL(triggered(QAction*)), SLOT(setFollowMeStatus(QAction*)));
-#define ADD_PFM(text, data) \
-    a = myFollowMeActions->addAction(text); \
-    a->setCheckable(true); \
-    a->setData(static_cast<unsigned int>(data)); \
-    myFollowMeMenu->addAction(a);
-  ADD_PFM(tr("Don't Show"), Licq::IcqPluginInactive);
-  ADD_PFM(tr("Available"), Licq::IcqPluginActive);
-  ADD_PFM(tr("Busy"), Licq::IcqPluginBusy);
-#undef ADD_PFM
-
   // Sub menu Status
   myStatusMenu = new QMenu(tr("&Status"), this);
   myStatusActions = new QActionGroup(this);
   connect(myStatusActions, SIGNAL(triggered(QAction*)), SLOT(setMainStatus(QAction*)));
   myStatusSeparator = myStatusMenu->addSeparator();
-  myIcqFollowMeAction = myStatusMenu->addMenu(myFollowMeMenu);
   myIcqFollowMeSeparator = myStatusMenu->addSeparator();
 #define ADD_MAINSTATUS(var, status) \
     var = myStatusActions->addAction(User::statusToString(status).c_str()); \
@@ -201,25 +185,24 @@ SystemMenu::SystemMenu(QWidget* parent)
   connect(Config::Shortcuts::instance(), SIGNAL(shortcutsChanged()), SLOT(updateShortcuts()));
 
   connect(this, SIGNAL(aboutToShow()), SLOT(aboutToShowMenu()));
-  connect(myFollowMeMenu, SIGNAL(aboutToShow()), SLOT(aboutToShowFollowMeMenu()));
 
   // Sub menus are hidden until we got at least two owners
   myStatusSeparator->setVisible(false);
 
-  // Hide ICQ specific menus until we actually get an ICQ owner
-  setIcqEntriesVisible(false);
+  connect(gGuiSignalManager, SIGNAL(ownerAdded(const Licq::UserId&)),
+      SLOT(addOwner(const Licq::UserId&)));
+  connect(gGuiSignalManager, SIGNAL(ownerRemoved(const Licq::UserId&)),
+      SLOT(removeOwner(const Licq::UserId&)));
+
+  {
+    Licq::OwnerListGuard ownerList;
+    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+      addOwner(owner->id());
+  }
 }
 
 SystemMenu::~SystemMenu()
 {
-}
-
-void SystemMenu::setIcqEntriesVisible(bool visible)
-{
-  myHasIcqOwner = visible;
-  myIcqFollowMeAction->setVisible(visible);
-  myIcqFollowMeSeparator->setVisible(visible);
-  myIcqRandomChatAction->setVisible(visible);
 }
 
 void SystemMenu::updateIcons()
@@ -228,7 +211,6 @@ void SystemMenu::updateIcons()
 
   myKeyManagerAction->setIcon(iconman->getIcon(IconManager::GpgKeyIcon));
 
-  myUserSearchAction->setIcon(iconman->getIcon(IconManager::SearchIcon));
   myUserAutorizeAction->setIcon(iconman->getIcon(IconManager::AuthorizeMessageIcon));
   myUserReqAutorizeAction->setIcon(iconman->getIcon(IconManager::ReqAuthorizeMessageIcon));
 
@@ -319,6 +301,12 @@ void SystemMenu::addOwner(const Licq::UserId& userId)
   QMenu* ownerStatus = newOwner->getStatusMenu();
   myOwnerAdmMenu->addMenu(ownerAdmin);
   myStatusMenu->insertMenu(myStatusSeparator, ownerStatus);
+  if (ppid == ICQ_PPID)
+  {
+    myStatusMenu->insertMenu(myIcqFollowMeSeparator, newOwner->getIcqFollowMeMenu());
+    myUserAdmMenu->insertAction(myUserAdmActionSeparator, newOwner->getIcqUserSearchAction());
+    myUserAdmMenu->insertAction(myUserAdmActionSeparator, newOwner->getIcqRandomChatAction());
+  }
 
   if (myOwnerData.size() < 1)
   {
@@ -343,9 +331,6 @@ void SystemMenu::addOwner(const Licq::UserId& userId)
       myOwnerAdmMenu->removeAction(a);
   }
 
-  if (ppid == LICQ_PPID)
-    setIcqEntriesVisible(true);
-
   myOwnerData.insert(userId, newOwner);
 }
 
@@ -356,10 +341,6 @@ void SystemMenu::removeOwner(const Licq::UserId& userId)
     return;
 
   delete data;
-
-  unsigned long ppid = userId.protocolId();
-  if (ppid == LICQ_PPID)
-    setIcqEntriesVisible(false);
 
   if (myOwnerData.size() == 1)
   {
@@ -391,19 +372,6 @@ void SystemMenu::aboutToShowMenu()
   myShowEmptyGroupsAction->setChecked(Config::ContactList::instance()->showEmptyGroups());
 }
 
-void SystemMenu::aboutToShowFollowMeMenu()
-{
-  Licq::IcqOwnerReadGuard o;
-  if (!o.isLocked())
-    return;
-
-  int status = o->phoneFollowMeStatus();
-
-  foreach (QAction* a, myFollowMeActions->actions())
-    if (a->data().toInt() == status)
-      a->setChecked(true);
-}
-
 void SystemMenu::aboutToShowGroupMenu()
 {
   int gid = Config::ContactList::instance()->groupId();
@@ -418,13 +386,6 @@ void SystemMenu::setCurrentGroup(QAction* action)
   int id = action->data().toInt();
 
   Config::ContactList::instance()->setGroup(id);
-}
-
-void SystemMenu::setFollowMeStatus(QAction* action)
-{
-  int id = action->data().toUInt();
-
-  gLicqDaemon->icqSetPhoneFollowMeStatus(id);
 }
 
 void SystemMenu::setMainStatus(QAction* action)
@@ -456,16 +417,42 @@ void SystemMenu::toggleMainInvisibleStatus()
 
 void SystemMenu::updateAllUsers()
 {
-  gLicqDaemon->UpdateAllUsers();
+  Licq::OwnerListGuard ownerList;
+  BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+  {
+    const Licq::UserId& ownerId(owner->id());
+
+    if (ownerId.protocolId() == ICQ_PPID)
+    {
+      Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+          Licq::gPluginManager.getProtocolInstance(ownerId));
+      if (icq != NULL)
+        icq->updateAllUsersInGroup(ownerId, 0);
+    }
+  }
 }
 
 void SystemMenu::updateAllUsersInGroup()
 {
   int groupId = Config::ContactList::instance()->groupId();
 
-  if (groupId < ContactListModel::SystemGroupOffset)
-    gLicqDaemon->updateAllUsersInGroup(groupId);
   // TODO: Not implemented for system groups
+  if (groupId >= ContactListModel::SystemGroupOffset)
+    return;
+
+  Licq::OwnerListGuard ownerList;
+  BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
+  {
+    const Licq::UserId& ownerId(owner->id());
+
+    if (ownerId.protocolId() == ICQ_PPID)
+    {
+      Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+          Licq::gPluginManager.getProtocolInstance(ownerId));
+      if (icq != NULL)
+        icq->updateAllUsersInGroup(ownerId, groupId);
+    }
+  }
 }
 
 void SystemMenu::saveAllUsers()
@@ -488,11 +475,6 @@ void SystemMenu::showAddGroupDlg()
   new AddGroupDlg();
 }
 
-void SystemMenu::showSearchUserDlg()
-{
-  new SearchUserDlg();
-}
-
 void SystemMenu::showAuthUserDlg()
 {
   new AuthDlg(AuthDlg::GrantAuth);
@@ -506,11 +488,6 @@ void SystemMenu::showReqAuthDlg()
 void SystemMenu::showEditGrpDlg()
 {
   new EditGrpDlg();
-}
-
-void SystemMenu::showRandomChatSearchDlg()
-{
-  new RandomChatDlg();
 }
 
 void SystemMenu::showSettingsDlg()
@@ -532,14 +509,16 @@ OwnerData::OwnerData(const Licq::UserId& userId, const QString& protoName,
   unsigned long myPpid = userId.protocolId();
   myUseAwayMessage = ((sendFunctions & Licq::ProtocolPlugin::CanHoldStatusMsg) != 0);
 
+  QString ownerCaption = QString("%1 (%2)").arg(protoName).arg(userId.accountId().c_str());
+
   // System sub menu
-  myOwnerAdmMenu = new QMenu(protoName);
+  myOwnerAdmMenu = new QMenu(ownerCaption);
   myOwnerAdmInfoAction = myOwnerAdmMenu->addAction(tr("&Info..."), this, SLOT(viewInfo()));
   myOwnerAdmHistoryAction = myOwnerAdmMenu->addAction(tr("View &History..."), this, SLOT(viewHistory()));
   myOwnerAdmSettingsAction = myOwnerAdmMenu->addAction(tr("&Settings..."), this, SLOT(showSettingsDlg()));
 
   // Status sub menu
-  myStatusMenu = new QMenu(protoName);
+  myStatusMenu = new QMenu(ownerCaption);
   myStatusActions = new QActionGroup(this);
   connect(myStatusActions, SIGNAL(triggered(QAction*)), SLOT(setStatus(QAction*)));
  #define ADD_STATUS(var, status, cond) \
@@ -575,6 +554,39 @@ OwnerData::OwnerData(const Licq::UserId& userId, const QString& protoName,
   }
 #undef ADD_STATUS
 
+  if (myUserId.protocolId() == ICQ_PPID)
+  {
+    // Sub menu Follow Me
+    myIcqFollowMeMenu = new QMenu(tr("ICQ Phone \"Follow Me\""));
+    myIcqFollowMeActions = new QActionGroup(this);
+    connect(myIcqFollowMeActions, SIGNAL(triggered(QAction*)), SLOT(setIcqFollowMeStatus(QAction*)));
+    QAction* a;
+#define ADD_PFM(text, data) \
+    a = myIcqFollowMeActions->addAction(text); \
+    a->setCheckable(true); \
+    a->setData(static_cast<unsigned int>(data)); \
+    myIcqFollowMeMenu->addAction(a);
+    ADD_PFM(tr("Don't Show"), Licq::IcqPluginInactive);
+    ADD_PFM(tr("Available"), Licq::IcqPluginActive);
+    ADD_PFM(tr("Busy"), Licq::IcqPluginBusy);
+#undef ADD_PFM
+
+    connect(myIcqFollowMeMenu, SIGNAL(aboutToShow()), SLOT(aboutToShowIcqFollowMeMenu()));
+
+    myIcqUserSearchAction = new QAction(tr("ICQ User S&earch..."), this);
+    connect(myIcqUserSearchAction, SIGNAL(triggered()), SLOT(showIcqUserSearchDlg()));
+
+    myIcqRandomChatAction = new QAction(tr("ICQ Ra&ndom Chat..."), this);
+    connect(myIcqRandomChatAction, SIGNAL(triggered()), SLOT(showIcqRandomChatSearchDlg()));
+  }
+  else
+  {
+    myIcqFollowMeMenu = NULL;
+    myIcqFollowMeActions = NULL;
+    myIcqUserSearchAction = NULL;
+    myIcqRandomChatAction = NULL;
+  }
+
   connect(myStatusMenu, SIGNAL(aboutToShow()), SLOT(aboutToShowStatusMenu()));
 
   updateIcons();
@@ -582,6 +594,8 @@ OwnerData::OwnerData(const Licq::UserId& userId, const QString& protoName,
 
 OwnerData::~OwnerData()
 {
+  if (myIcqFollowMeMenu != NULL)
+    delete myIcqFollowMeMenu;
   delete myOwnerAdmMenu;
   delete myStatusMenu;
 }
@@ -606,6 +620,9 @@ void OwnerData::updateIcons()
   SET_ICON(myStatusOfflineAction, User::OfflineStatus);
   SET_ICON(myStatusInvisibleAction, User::InvisibleStatus);
 #undef SET_ICON
+
+  if (myIcqUserSearchAction != NULL)
+    myIcqUserSearchAction->setIcon(iconman->getIcon(IconManager::SearchIcon));
 }
 
 void OwnerData::aboutToShowStatusMenu()
@@ -626,6 +643,19 @@ void OwnerData::aboutToShowStatusMenu()
 
   if (myStatusInvisibleAction != NULL && status != User::OfflineStatus)
     myStatusInvisibleAction->setChecked(o->isInvisible());
+}
+
+void OwnerData::aboutToShowIcqFollowMeMenu()
+{
+  Licq::IcqOwnerReadGuard o(myUserId);
+  if (!o.isLocked())
+    return;
+
+  int status = o->phoneFollowMeStatus();
+
+  foreach (QAction* a, myIcqFollowMeActions->actions())
+    if (a->data().toInt() == status)
+      a->setChecked(true);
 }
 
 void OwnerData::viewInfo()
@@ -661,4 +691,25 @@ void OwnerData::setStatus(QAction* action)
 void OwnerData::toggleInvisibleStatus()
 {
   gLicqGui->changeStatus(User::InvisibleStatus, myUserId, myStatusInvisibleAction->isChecked());
+}
+
+void OwnerData::setIcqFollowMeStatus(QAction* action)
+{
+  int id = action->data().toUInt();
+
+  Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+      Licq::gPluginManager.getProtocolInstance(myUserId));
+  if (!icq)
+    return;
+  icq->icqSetPhoneFollowMeStatus(myUserId, id);
+}
+
+void OwnerData::showIcqUserSearchDlg()
+{
+  new SearchUserDlg(myUserId);
+}
+
+void OwnerData::showIcqRandomChatSearchDlg()
+{
+  new RandomChatDlg(myUserId);
 }

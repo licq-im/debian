@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,61 +18,105 @@
  */
 
 #include "protocolplugin.h"
+#include "protocolplugininstance.h"
 
+#include <licq/plugin/protocolpluginfactory.h>
 #include <licq/thread/mutexlocker.h>
 
-using namespace Licq;
-using namespace std;
+#include <boost/make_shared.hpp>
 
+using namespace LicqDaemon;
 
-ProtocolPlugin::Private::Private()
-{
-  // Empty
-}
-
-
-ProtocolPlugin::ProtocolPlugin(Params& p)
-  : Plugin(p),
-    myPrivate(new Private())
+ProtocolPlugin::ProtocolPlugin(
+    DynamicLibrary::Ptr lib,
+    boost::shared_ptr<Licq::ProtocolPluginFactory> factory,
+    PluginThread::Ptr thread)
+  : Plugin(lib),
+    myFactory(factory),
+    myMainThread(thread)
 {
   // Empty
 }
 
 ProtocolPlugin::~ProtocolPlugin()
 {
-  delete myPrivate;
+  // Empty
 }
 
-void ProtocolPlugin::pushSignal(ProtocolSignal* signal)
+boost::shared_ptr<ProtocolPluginInstance>
+ProtocolPlugin::createInstance(int id, const Licq::UserId& ownerId,
+                               void (*callback)(const PluginInstance&))
 {
-  LICQ_D();
-  MutexLocker locker(d->mySignalsMutex);
-  d->mySignals.push(signal);
-  notify(PipeSignal);
+  PluginThread::Ptr thread;
+  if (myMainThread)
+    thread.swap(myMainThread);
+  else
+    thread = boost::make_shared<PluginThread>();
+
+  ProtocolPluginInstance::Ptr instance =
+      boost::make_shared<ProtocolPluginInstance>(
+          id, ownerId,
+          boost::dynamic_pointer_cast<ProtocolPlugin>(shared_from_this()),
+          thread);
+
+  if (instance->create(callback))
+    registerInstance(instance);
+  else
+    instance.reset();
+
+  return instance;
 }
 
-ProtocolSignal* ProtocolPlugin::popSignal()
+boost::shared_ptr<Licq::ProtocolPluginFactory>
+ProtocolPlugin::protocolFactory()
 {
-  LICQ_D();
-  MutexLocker locker(d->mySignalsMutex);
-  if (!d->mySignals.empty())
+  return myFactory;
+}
+
+unsigned long ProtocolPlugin::protocolId() const
+{
+  return myFactory->protocolId();
+}
+
+unsigned long ProtocolPlugin::capabilities() const
+{
+  return myFactory->capabilities();
+}
+
+Licq::ProtocolPlugin::Instances ProtocolPlugin::instances() const
+{
+  Instances list;
+
+  Licq::MutexLocker locker(myMutex);
+
+  for (std::vector< boost::weak_ptr<PluginInstance> >::const_iterator it =
+           myInstances.begin(); it != myInstances.end(); ++it)
   {
-    ProtocolSignal* signal = d->mySignals.front();
-    d->mySignals.pop();
-    return signal;
+    ProtocolPluginInstance::Ptr instance =
+        boost::dynamic_pointer_cast<ProtocolPluginInstance>(it->lock());
+    if (instance)
+      list.push_back(instance);
   }
-  return NULL;
+
+  return list;
 }
 
-User* ProtocolPlugin::createUser(const UserId& /* id */, bool /* temporary */)
+Licq::User* ProtocolPlugin::createUser(const Licq::UserId& id, bool temporary)
 {
-  // Only UserManager is allowed to create instances of Licq::User so either
-  // we need to call a UserManager function to create a default user from here
-  // or we just return NULL back to the UserManager to make it create it itself
-  return NULL;
+  return myFactory->createUser(id, temporary);
 }
 
-Owner* ProtocolPlugin::createOwner(const UserId& /* id */)
+Licq::Owner* ProtocolPlugin::createOwner(const Licq::UserId& id)
 {
-  return NULL;
+  return myFactory->createOwner(id);
+}
+
+boost::shared_ptr<Licq::PluginFactory> ProtocolPlugin::factory()
+{
+  return myFactory;
+}
+
+boost::shared_ptr<const Licq::PluginFactory> ProtocolPlugin::factory() const
+{
+  return myFactory;
 }

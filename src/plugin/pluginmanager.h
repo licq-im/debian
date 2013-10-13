@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,24 +21,17 @@
 #define LICQDAEMON_PLUGINMANAGER_H
 
 #include <licq/plugin/pluginmanager.h>
-
-#include <boost/noncopyable.hpp>
-#include <boost/shared_ptr.hpp>
-#include <queue>
-
-#include <licq/plugin/generalplugin.h>
-#include <licq/plugin/protocolplugin.h>
 #include <licq/thread/mutex.h>
 
 #include "../utils/dynamiclibrary.h"
+#include "generalplugin.h"
+#include "generalplugininstance.h"
 #include "pluginthread.h"
+#include "protocolplugin.h"
+#include "protocolplugininstance.h"
 
-namespace Licq
-{
-class Owner;
-class User;
-class UserId;
-}
+#include <map>
+#include <queue>
 
 namespace LicqDaemon
 {
@@ -53,10 +46,10 @@ public:
 
   void setGuiThread(PluginThread::Ptr guiThread) { myGuiThread = guiThread; }
 
-  Licq::GeneralPlugin::Ptr loadGeneralPlugin(
+  GeneralPlugin::Ptr loadGeneralPlugin(
       const std::string& name, int argc, char** argv, bool keep = true);
-  Licq::ProtocolPlugin::Ptr loadProtocolPlugin(
-      const std::string& name, bool keep = true, bool icq = false);
+  ProtocolPlugin::Ptr loadProtocolPlugin(
+      const std::string& name, bool keep = true);
 
   /// Start all plugins that have been loaded
   void startAllPlugins();
@@ -64,8 +57,11 @@ public:
   /// Send shutdown signal to all the plugins
   void shutdownAllPlugins();
 
+  /// Shutdown specific protocol instance
+  void shutdownProtocolInstance(const Licq::UserId& ownerId);
+
   /// Notify the manager that a plugin has exited
-  void pluginHasExited(unsigned short id);
+  void pluginHasExited(int id);
 
   /**
    * Remove a plugin that has exited
@@ -109,7 +105,8 @@ public:
   void getAvailableProtocolPlugins(Licq::StringList& plugins,
                                    bool includeLoaded = true) const;
   Licq::ProtocolPlugin::Ptr getProtocolPlugin(unsigned long protocolId) const;
-
+  Licq::ProtocolPluginInstance::Ptr getProtocolInstance(
+      const Licq::UserId& ownerId) const;
   bool startGeneralPlugin(const std::string& name, int argc, char** argv);
   bool startProtocolPlugin(const std::string& name);
   void unloadGeneralPlugin(Licq::GeneralPlugin::Ptr plugin);
@@ -119,33 +116,38 @@ public:
   void pushProtocolSignal(Licq::ProtocolSignal* signal);
 
 private:
-  /// Helper function to delete a general plugin and close library in the correct order
-  static void deleteGeneralPlugin(Licq::GeneralPlugin* plugin);
-
-  /// Helper function to delete a protocol plugin and close library in the correct order
-  static void deleteProtocolPlugin(Licq::ProtocolPlugin* plugin);
+  void getAvailablePlugins(Licq::StringList& plugins,
+                           const std::string& prefix) const;
 
   DynamicLibrary::Ptr loadPlugin(PluginThread::Ptr pluginThread,
                                  const std::string& name,
                                  const std::string& prefix);
+  bool verifyPluginMagic(const std::string& name, char magic[4]);
+  bool verifyPluginVersion(const std::string& name, int version);
+  int getNewPluginId();
 
-  void startPlugin(Licq::GeneralPlugin::Ptr plugin);
-  void startPlugin(Licq::ProtocolPlugin::Ptr plugin);
+  void startInstance(GeneralPluginInstance::Ptr instance);
+  void startInstance(ProtocolPluginInstance::Ptr instance);
 
-  void getAvailablePlugins(Licq::StringList& plugins,
-                           const std::string& prefix) const;
+  bool reapGeneralInstance(int exitId);
+  bool reapProtocolInstance(int exitId);
 
-  unsigned short myNextPluginId;
+  int myNextPluginId;
   PluginThread::Ptr myGuiThread;
+  bool myIsProtocolsStarted;
 
-  Licq::GeneralPluginsList myGeneralPlugins;
   mutable Licq::Mutex myGeneralPluginsMutex;
+  std::list<GeneralPlugin::Ptr> myGeneralPlugins;
+  std::list<GeneralPluginInstance::Ptr> myGeneralInstances;
 
-  Licq::ProtocolPluginsList myProtocolPlugins;
   mutable Licq::Mutex myProtocolPluginsMutex;
+  std::list<ProtocolPlugin::Ptr> myProtocolPlugins;
+  typedef std::map<Licq::UserId, ProtocolPluginInstance::Ptr>
+  ProtocolOwnerInstances;
+  ProtocolOwnerInstances myProtocolInstances;
 
   Licq::Mutex myExitListMutex;
-  std::queue<unsigned short> myExitList;
+  std::queue<int> myExitList;
 };
 
 extern PluginManager gPluginManager;

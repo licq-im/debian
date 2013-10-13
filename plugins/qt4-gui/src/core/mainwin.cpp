@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,6 @@
 #include "config.h"
 
 #include <boost/foreach.hpp>
-#include <list>
-#include <map>
 #include <cctype>
 
 #ifdef USE_KDE
@@ -92,7 +90,6 @@
 #include "dialogs/ownermanagerdlg.h"
 #include "dialogs/showawaymsgdlg.h"
 #include "dialogs/statsdlg.h"
-#include "dialogs/userselectdlg.h"
 
 #include "helpers/support.h"
 
@@ -109,13 +106,6 @@
 #include "systemmenu.h"
 #include "usermenu.h"
 
-#ifdef USE_KDE
-// TODO
-// #include "licqkimiface.h"
-// #include "dcopclient.h"
-#endif
-
-using namespace std;
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::MainWindow */
 
@@ -138,11 +128,6 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       SIGNAL(currentListChanged()), SLOT(updateCurrentGroup()));
 
   myCaption = "Licq";
-  {
-    Licq::OwnerReadGuard o(LICQ_PPID);
-    if (o.isLocked())
-      myCaption += QString(" (%1)").arg(QString::fromUtf8(o->getAlias().c_str()));
-  }
   setWindowTitle(myCaption);
   setWindowIconText(myCaption);
 
@@ -219,7 +204,7 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       SLOT(slot_updatedList(unsigned long)));
   connect(gGuiSignalManager, SIGNAL(updatedUser(const Licq::UserId&, unsigned long, int, unsigned long)),
       SLOT(slot_updatedUser(const Licq::UserId&, unsigned long, int)));
-  connect(gGuiSignalManager, SIGNAL(updatedStatus(unsigned long)),
+  connect(gGuiSignalManager, SIGNAL(updatedStatus(const Licq::UserId&)),
       SLOT(updateStatus()));
   connect(gGuiSignalManager, SIGNAL(ownerAdded(const Licq::UserId&)),
       SLOT(updateStatus()));
@@ -227,14 +212,6 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
       SLOT(updateStatus()));
   connect(gGuiSignalManager, SIGNAL(logon()),
       SLOT(slot_logon()));
-  connect(gGuiSignalManager, SIGNAL(protocolPluginLoaded(unsigned long)),
-      SLOT(slot_protocolPlugin(unsigned long)));
-  connect(gGuiSignalManager, SIGNAL(protocolPluginUnloaded(unsigned long)),
-      SLOT(slot_pluginUnloaded(unsigned long)));
-  connect(gGuiSignalManager, SIGNAL(ownerAdded(const Licq::UserId&)),
-      mySystemMenu, SLOT(addOwner(const Licq::UserId&)));
-  connect(gGuiSignalManager, SIGNAL(ownerRemoved(const Licq::UserId&)),
-      mySystemMenu, SLOT(removeOwner(const Licq::UserId&)));
   connect(gGuiSignalManager, SIGNAL(ui_showuserlist()), SLOT(unhide()));
   connect(gGuiSignalManager, SIGNAL(ui_hideuserlist()), SLOT(hide()));
 
@@ -264,55 +241,8 @@ MainWindow::MainWindow(bool bStartHidden, QWidget* parent)
   // verify we exist
   if (Licq::gUserManager.NumOwners() == 0)
     OwnerManagerDlg::showOwnerManagerDlg();
-  else
-  {
-    // Do we need to get a password
-    bool needpwd = false;
-    {
-      Licq::OwnerReadGuard o(LICQ_PPID);
-      if (o.isLocked() && o->password().empty())
-        needpwd = true;
-    }
-    if (needpwd)
-      new UserSelectDlg();
-  }
 
-#ifdef USE_KDE
-  /* TODO
-  kdeIMInterface = new LicqKIMIface(KApplication::dcopClient()->appId(), this);
-  connect(kdeIMInterface,
-      SIGNAL(sendMessage(const Licq::UserId&, unsigned long, const QString&)),
-      gLicqGui, SLOT(sendMsg(const Licq::UserId&, unsigned long, const QString&)));
-  connect(kdeIMInterface,
-      SIGNAL(sendFileTransfer(const Licq::UserId&, unsigned long,
-          const QString&, const QString&)),
-      gLicqGui, SLOT(sendFileTransfer(const Licq::UserId&, unsigned long,
-          const QString&, const QString&)));
-  connect(kdeIMInterface,
-      SIGNAL(sendChatRequest(const Licq::UserId&, unsigned long)),
-      gLicqGui, SLOT(sendChatRequest(const Licq::UserId&, unsigned long)));
-  connect(kdeIMInterface,
-      SIGNAL(addUser(const Licq::UserId&)),
-      SLOT(addUser(const Licq::UserId&)));
-  */
-#endif
-
-  list<unsigned long> protocolIds;
-  {
-    Licq::OwnerListGuard ownerList;
-    BOOST_FOREACH(const Licq::Owner* owner, **ownerList)
-    {
-      unsigned long protocolId = owner->protocolId();
-#ifdef USE_KDE
-      // TODO
-      // kdeIMInterface->addProtocol(protocol->getName(), protocolId);
-#endif
-      protocolIds.push_back(protocolId);
-    }
-  }
-
-  BOOST_FOREACH(unsigned long protocolId, protocolIds)
-    slot_protocolPlugin(protocolId);
+  updateStatus();
 
   // Check if MainWin should be sticky
   if (Config::General::instance()->mainwinSticky())
@@ -644,37 +574,11 @@ void MainWindow::slot_updatedUser(const Licq::UserId& userId, unsigned long subS
       // Fall through
     }
     case Licq::PluginSignal::UserStatus:
-#ifdef USE_KDE
-      // TODO
-      // kdeIMInterface->userStatusChanged(id, ppid);
-#endif
     case Licq::PluginSignal::UserBasic: // for alias
     case Licq::PluginSignal::UserSettings: // for online notify
     case Licq::PluginSignal::UserSecurity:
     case Licq::PluginSignal::UserTyping:
     {
-      if (Licq::gUserManager.isOwner(userId))
-      {
-        if (subSignal == Licq::PluginSignal::UserStatus ||
-            subSignal == Licq::PluginSignal::UserSettings)
-          break;
-
-        myCaption = "Licq (|)";
-        Licq::UserReadGuard u(userId);
-        if (u.isLocked())
-          myCaption.replace("|", QString::fromUtf8(u->getAlias().c_str()));
-        else
-          myCaption.replace("|", tr("Error! No owner set"));
-
-        QString caption = myCaption;
-        if (windowTitle()[0] == '*')
-          caption.prepend("* ");
-
-        setWindowTitle(caption);
-        setWindowIconText(caption);
-        break;
-      }
-
       Licq::UserReadGuard u(userId);
       if (!u.isLocked())
       {
@@ -1058,26 +962,6 @@ void MainWindow::slot_logon()
   updateStatus();
 }
 
-void MainWindow::slot_protocolPlugin(unsigned long nPPID)
-{
-  Licq::UserId userId = Licq::gUserManager.ownerUserId(nPPID);
-  if (userId.isValid())
-    mySystemMenu->addOwner(userId);
-
-  updateStatus();
-
-#ifdef USE_KDE
-  // TODO
-  // let KDE IM interface know about the new protocol
-  // kdeIMInterface->addProtocol(QString(pName), nPPID);
-#endif
-}
-
-void MainWindow::slot_updateContactList()
-{
-  gLicqDaemon->icqUpdateContactList();
-}
-
 void MainWindow::showAboutBox()
 {
   new AboutDlg(this);
@@ -1105,18 +989,6 @@ void MainWindow::setMiniMode(bool miniMode)
 
   if (myUserView != NULL)
     myUserView->setVisible(!miniMode);
-}
-
-void MainWindow::slot_pluginUnloaded(unsigned long _nPPID)
-{
-  Licq::UserId userId = Licq::gUserManager.ownerUserId(_nPPID);
-  if (userId.isValid())
-    mySystemMenu->removeOwner(userId);
-
-#ifdef USE_KDE
-  // TODO
-  // kdeIMInterface->removeProtocol(_nPPID);
-#endif
 }
 
 void MainWindow::showHints()

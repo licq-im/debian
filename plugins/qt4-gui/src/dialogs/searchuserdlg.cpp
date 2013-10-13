@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,7 +37,8 @@
 #include <licq/contactlist/usermanager.h>
 #include <licq/event.h>
 #include <licq/icq/icq.h>
-#include <licq/icq/codes.h>
+#include <licq/icq/icqdata.h>
+#include <licq/plugin/pluginmanager.h>
 
 #include "contactlist/contactlist.h"
 
@@ -54,13 +55,21 @@
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::SearchUserDlg */
 
-SearchUserDlg::SearchUserDlg()
-  : ppid(LICQ_PPID),
+SearchUserDlg::SearchUserDlg(const Licq::UserId& ownerId)
+  : myOwnerId(ownerId),
     searchTag(0)
 {
   Support::setWidgetProps(this, "SearchUserDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
   setWindowTitle(tr("Licq - User Search"));
+
+  Licq::IcqData::Ptr icq = plugin_internal_cast<Licq::IcqData>(
+      Licq::gPluginManager.getProtocolPlugin(ICQ_PPID));
+  if (!icq)
+  {
+    close();
+    return;
+  }
 
   connect(gGuiSignalManager, SIGNAL(searchResult(const Licq::Event*)),
       SLOT(searchResult(const Licq::Event*)));
@@ -91,12 +100,12 @@ SearchUserDlg::SearchUserDlg()
     << tr("Male");
 
   QStringList languages;
-  for (int i = 0; i < NUM_LANGUAGES; i++)
-    languages << GetLanguageByIndex(i)->szName;
+  for (unsigned i = 0; i < Licq::NUM_LANGUAGES; i++)
+    languages << icq->getLanguageByIndex(i)->szName;
 
   QStringList countries;
-  for (int i = 0; i < NUM_COUNTRIES; i++)
-    countries << GetCountryByIndex(i)->szName;
+  for (unsigned i = 0; i < Licq::NUM_COUNTRIES; i++)
+    countries << icq->getCountryByIndex(i)->szName;
 
   int row = 0;
   int column = 0;
@@ -231,6 +240,13 @@ void SearchUserDlg::startSearch()
   unsigned short mins[7] = {0, 18, 23, 30, 40, 50, 60};
   unsigned short maxs[7] = {0, 22, 29, 39, 49, 59, 120};
 
+  Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+      Licq::gPluginManager.getProtocolInstance(myOwnerId));
+  if (!icq)
+    return;
+  Licq::IcqData::Ptr icqdata = plugin_internal_cast<Licq::IcqData>(
+      Licq::gPluginManager.getProtocolPlugin(ICQ_PPID));
+
   foundView->clear();
   for (int i = 0; i < foundView->columnCount(); i++)
     foundView->resizeColumnToContents(i);
@@ -244,7 +260,7 @@ void SearchUserDlg::startSearch()
 
   if (edtUin->text().trimmed().isEmpty())
   {
-    searchTag = gLicqDaemon->icqSearchWhitePages(
+    searchTag = icq->icqSearchWhitePages(myOwnerId,
         edtFirst->text().toUtf8().constData(),
         edtLast->text().toUtf8().constData(),
         edtNick->text().toUtf8().constData(),
@@ -252,10 +268,10 @@ void SearchUserDlg::startSearch()
         mins[cmbAge->currentIndex()],
         maxs[cmbAge->currentIndex()],
         cmbGender->currentIndex(),
-        GetLanguageByIndex(cmbLanguage->currentIndex())->nCode,
+        icqdata->getCategoryByIndex(Licq::IcqCatTypeLanguage, cmbLanguage->currentIndex())->nCode,
         edtCity->text().toUtf8().constData(),
         edtState->text().toUtf8().constData(),
-        GetCountryByIndex(cmbCountry->currentIndex())->nCode,
+        icqdata->getCountryByIndex(cmbCountry->currentIndex())->nCode,
         edtCoName->text().toUtf8().constData(),
         edtCoDept->text().toUtf8().constData(),
         edtCoPos->text().toUtf8().constData(),
@@ -263,7 +279,10 @@ void SearchUserDlg::startSearch()
         chkOnlineOnly->isChecked());
   }
   else
-    searchTag = gLicqDaemon->icqSearchByUin(edtUin->text().trimmed().toULong());
+  {
+    Licq::UserId userId(myOwnerId, edtUin->text().trimmed().toUtf8().constData());
+    searchTag = icq->icqSearchByUin(userId);
+  }
 
   lblSearch->setText(tr("Searching (this can take awhile)..."));
 }

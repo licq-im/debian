@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -23,9 +23,8 @@
 #ifndef LICQJABBER_PLUGIN_H
 #define LICQJABBER_PLUGIN_H
 
-#include <licq/plugin/protocolplugin.h>
-
-#include "config.h"
+#include <licq/plugin/protocolpluginhelper.h>
+#include <licq/mainloop.h>
 
 #include <gloox/gloox.h>
 
@@ -42,6 +41,7 @@ class ProtoRenameGroupSignal;
 class ProtoRenameUserSignal;
 class ProtoRequestAuthSignal;
 class ProtoRequestInfo;
+class ProtoRequestPicture;
 class ProtoTypingNotificationSignal;
 class ProtoUpdateInfoSignal;
 class ProtoSendMessageSignal;
@@ -53,54 +53,44 @@ namespace LicqJabber
 {
 
 class Client;
-class Config;
-class Handler;
 
-class Plugin : public Licq::ProtocolPlugin
+class Plugin : public Licq::ProtocolPluginHelper, public Licq::MainLoopCallback
 {
 public:
-  Plugin(Params& p);
+  Plugin();
   ~Plugin();
 
-  // From Licq::ProtocolPlugin
-  std::string name() const;
-  std::string version() const;
-  std::string configFile() const;
-  unsigned long protocolId() const;
-  unsigned long capabilities() const;
-  std::string defaultServerHost() const;
-  int defaultServerPort() const;
+  // From Licq::PluginInterface
+  int run();
+  
+  // From Licq::MainLoopCallback
+  void rawFileEvent(int fd, int revents);
 
 private:
-  // From Licq::ProtocolPlugin
-  bool init(int, char**);
-  int run();
-  void destructor();
+  void processSignal(const Licq::ProtocolSignal* signal);
 
-  void processPipe(int pipe);
-  void processSignal(Licq::ProtocolSignal* signal);
-  void getUserGroups(const Licq::UserId& userId, gloox::StringList& retGroupNames);
-
-  void doLogon(Licq::ProtoLogonSignal* signal);
-  void doChangeStatus(Licq::ProtoChangeStatusSignal* signal);
+  void doLogon(const Licq::ProtoLogonSignal* signal);
+  void doChangeStatus(const Licq::ProtoChangeStatusSignal* signal);
   void doLogoff();
-  void doSendMessage(Licq::ProtoSendMessageSignal* signal);
-  void doNotifyTyping(Licq::ProtoTypingNotificationSignal* signal);
-  void doGetInfo(Licq::ProtoRequestInfo* signal);
-  void doUpdateInfo(Licq::ProtoUpdateInfoSignal* signal);
-  void doAddUser(Licq::ProtoAddUserSignal* signal);
-  void doChangeUserGroups(Licq::ProtoChangeUserGroupsSignal* signal);
-  void doRemoveUser(Licq::ProtoRemoveUserSignal* signal);
-  void doRenameUser(Licq::ProtoRenameUserSignal* signal);
-  void doGrantAuth(Licq::ProtoGrantAuthSignal* signal);
-  void doRefuseAuth(Licq::ProtoRefuseAuthSignal* signal);
-  void doRequestAuth(Licq::ProtoRequestAuthSignal* signal);
-  void doRenameGroup(Licq::ProtoRenameGroupSignal* s);
+  void doSendMessage(const Licq::ProtoSendMessageSignal* signal);
+  void doNotifyTyping(const Licq::ProtoTypingNotificationSignal* signal);
+  void doGetInfo(const Licq::ProtoRequestInfo* signal);
+  void doUpdateInfo(const Licq::ProtoUpdateInfoSignal* signal);
+  void doGetPicture(const Licq::ProtoRequestPicture* signal);
+  void doAddUser(const Licq::ProtoAddUserSignal* signal);
+  void doChangeUserGroups(const Licq::ProtoChangeUserGroupsSignal* signal);
+  void doRemoveUser(const Licq::ProtoRemoveUserSignal* signal);
+  void doRenameUser(const Licq::ProtoRenameUserSignal* signal);
+  void doGrantAuth(const Licq::ProtoGrantAuthSignal* signal);
+  void doRefuseAuth(const Licq::ProtoRefuseAuthSignal* signal);
+  void doRequestAuth(const Licq::ProtoRequestAuthSignal* signal);
+  void doRenameGroup(const Licq::ProtoRenameGroupSignal* signal);
 
-  Config myConfig;
-  Handler* myHandler;
-  bool myDoRun;
+  void getUserGroups(const Licq::UserId& userId,
+                     gloox::StringList& retGroupNames);
+
   Client* myClient;
+  Licq::MainLoop myMainLoop;
 };
 
 } // namespace LicqJabber

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ namespace LicqQtGui
 class InfoField;
 class MLEdit;
 class MLView;
+class SkinnableLabel;
 class SpecialSpinBox;
 class TimeZoneEdit;
 class UserDlg;
@@ -178,13 +179,6 @@ private slots:
    * Clear owner picture
    */
   void clearPicture();
-
-#ifdef USE_KABC
-  /**
-   * Open dialog to browse for KDE address book entry
-   */
-  void browseKabc();
-#endif
 
 private:
   /**
@@ -378,28 +372,6 @@ private:
    */
   void loadPageCounters(const Licq::User* user);
 
-#ifdef USE_KABC
-  /**
-   * Setup the KDE adressbook page.
-   *
-   * @param parent Parent dialog
-   * @return a widget with the KDE adressbook
-   */
-  QWidget* createPageKabc(QWidget* parent);
-
-  /**
-   * Load user data for KDE adressbook page
-   *
-   * @param user User to get data from
-   */
-  void loadPageKabc(const Licq::User* user);
-
-  /**
-   * Save user data for KDE adressbook page
-   */
-  void savePageKabc();
-#endif
-
   Licq::UserId myUserId;
   QString myId;
   unsigned long myPpid;
@@ -416,6 +388,8 @@ private:
   InfoField* nfoAlias;
   InfoField* nfoIp;
   InfoField* nfoUin;
+  SkinnableLabel* myProtocolLabel;
+  InfoField* nfoOwner;
   InfoField* nfoCity;
   InfoField* nfoState;
   InfoField* nfoZipCode;
@@ -489,7 +463,7 @@ private:
   InfoField* nfoActive;
   QPushButton* myPhoneAddButton;
   QPushButton* myPhoneClearButton;
-  Licq::ICQUserPhoneBook* m_PhoneBook;
+  Licq::IcqPhoneBookVector myIcqPhoneBook;
 
   // Picture
   QVBoxLayout* myPagePictureLayout;
@@ -508,16 +482,6 @@ private:
   InfoField* nfoLastCheckedAR;
   InfoField* nfoOnlineSince;
   InfoField* nfoRegDate;
-
-#ifdef USE_KABC
-  // KDE AddressBook
-  QVBoxLayout* myPageKabcLayout;
-  QGroupBox* myKabcBox;
-  InfoField* nfoKABCName;
-  InfoField* nfoKABCEmail;
-  QPushButton* myKabcBrowseButton;
-  QString m_kabcID;
-#endif
 };
 
 } // namespace UserPages

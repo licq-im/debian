@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2004-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,22 +24,24 @@
 #include <cstring>
 #include <string>
 
+#include <licq/crypto.h>
 #include <licq/daemon.h>
-#include <licq/md5.h>
 
 #include "msn_constants.h"
 #include "pluginversion.h"
 
-using namespace std;
 using namespace LicqMsn;
+using std::string;
 
 static inline bool is_base64(unsigned char c)
 {
   return (isalnum(c) || (c == '+') || (c == '/'));
 }
 
-string MSN_Base64Encode(const char* szIn, unsigned int nLen)
+static string MSN_Base64Encode(const string& strIn)
 {
+  const unsigned char* szIn = (const unsigned char*)(strIn.c_str());
+  size_t nLen = strIn.size();
   string ret;
   int i = 0;
   int j = 0;
@@ -48,7 +50,7 @@ string MSN_Base64Encode(const char* szIn, unsigned int nLen)
 
   while (nLen--)
   {
-    char_array_3[i++] = static_cast<unsigned char>(*(szIn++));
+    char_array_3[i++] = *(szIn++);
     if (i == 3)
     {
       char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
@@ -128,7 +130,6 @@ string MSN_Base64Decode(string const& strIn)
 }
 
 unsigned short CMSNPacket::s_nSequence = 0;
-pthread_mutex_t CMSNPacket::s_xMutex = PTHREAD_MUTEX_INITIALIZER;
 
 CMSNPacket::CMSNPacket(bool _bPing)
 {
@@ -136,12 +137,10 @@ CMSNPacket::CMSNPacket(bool _bPing)
   m_szCommand = 0;
   m_nSize = 0;
   m_bPing = _bPing;
-  
-  pthread_mutex_lock(&s_xMutex);
+
   if (s_nSequence > 9999)
    s_nSequence = 0;
   m_nSequence = s_nSequence++;
-  pthread_mutex_unlock(&s_xMutex);
 }
 
 void CMSNPacket::InitBuffer()
@@ -156,7 +155,7 @@ void CMSNPacket::InitBuffer()
     m_nSize += snprintf(buf, 32, "%s %hu ", m_szCommand, m_nSequence) + 2; //don't forget \r\n
   
   m_pBuffer = new CMSNBuffer(m_nSize);
-  m_pBuffer->Pack(buf, strlen(buf));
+  m_pBuffer->packRaw(buf, strlen(buf));
 }
 
 char* CMSNPacket::CreateGUID()
@@ -190,19 +189,19 @@ void CMSNPayloadPacket::InitBuffer()
   m_nSize += m_nPayloadSize;
   
   m_pBuffer = new CMSNBuffer(m_nSize);
-  m_pBuffer->Pack(buf, strlen(buf));
+  m_pBuffer->packRaw(buf, strlen(buf));
 }
 
-CMSNP2PPacket::CMSNP2PPacket(const char *szTo, unsigned long nSessionId,
+CMSNP2PPacket::CMSNP2PPacket(const string& toEmail, unsigned long nSessionId,
 			     unsigned long nBaseId,unsigned long nDataOffsetHI,
 			     unsigned long nDataOffsetLO,
 			     unsigned long nDataSizeHI, unsigned long nDataSizeLO,
 			     unsigned long nLen, unsigned long nFlag,
 			     unsigned long nAckId, unsigned long nAckUniqueId,
 			     unsigned long nAckDataHI,unsigned long nAckDataLO)
-  : CMSNPayloadPacket('A')
+  : CMSNPayloadPacket('A'),
+    myToEmail(toEmail)
 {
-  m_szToEmail = (szTo ? strdup(szTo) : strdup(""));
   m_szCallGUID = 0;
   m_nSessionId = nSessionId;
   m_nBaseId = nBaseId;
@@ -220,8 +219,7 @@ CMSNP2PPacket::CMSNP2PPacket(const char *szTo, unsigned long nSessionId,
 
 CMSNP2PPacket::~CMSNP2PPacket()
 {
-  if (m_szToEmail)
-    free(m_szToEmail);
+  /* Empty */
 }
 
 void CMSNP2PPacket::InitBuffer()
@@ -234,7 +232,7 @@ void CMSNP2PPacket::InitBuffer()
            "MIME-Version: 1.0\r\n"
            "Content-Type: application/x-msnmsgrp2p\r\n"
            "P2P-Dest: %s\r\n"
-           "\r\n", m_szToEmail);
+           "\r\n", myToEmail.c_str());
 
   m_nPayloadSize += 4 + 48 + strlen(szMsgBuf);
 
@@ -244,8 +242,8 @@ void CMSNP2PPacket::InitBuffer()
   m_nSize += m_nPayloadSize;
 
   m_pBuffer = new CMSNBuffer(m_nSize);
-  m_pBuffer->Pack(buf, strlen(buf));
-  m_pBuffer->Pack(szMsgBuf, strlen(szMsgBuf));
+  m_pBuffer->packRaw(buf, strlen(buf));
+  m_pBuffer->packRaw(szMsgBuf, strlen(szMsgBuf));
 
   // Binary header - 48 bytes
   m_pBuffer->packUInt32LE(m_nSessionId);
@@ -268,38 +266,34 @@ CPS_MSNVersion::CPS_MSNVersion() : CMSNPacket()
   char szParams[] = "MSNP9 MSNP8 CVR0";
   m_nSize += strlen(szParams);
   InitBuffer();
- 
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNClientVersion::CPS_MSNClientVersion(char *szUserName) : CMSNPacket()
+CPS_MSNClientVersion::CPS_MSNClientVersion(const string& username) : CMSNPacket()
 {
   m_szCommand = strdup("CVR");
   //TODO customize locale en_US = 0x0409
   char szParams[] = "0x0409 winnt 6.0 i386 MSNMSGR 6.0.0602 MSMSGS ";
-  m_nSize += strlen(szParams) + strlen(szUserName);
+  m_nSize += strlen(szParams) + username.size();
   InitBuffer();
-  
-  m_szUserName = strdup(szUserName);
-  
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack(m_szUserName, strlen(m_szUserName));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNUser::CPS_MSNUser(char *szUserName) : CMSNPacket()
+CPS_MSNUser::CPS_MSNUser(const string& username) : CMSNPacket()
 {
   m_szCommand = strdup("USR");
   char szParams[] = "TWN I ";
-  m_nSize += strlen(szParams) + strlen(szUserName);
+  m_nSize += strlen(szParams) + username.size();
   InitBuffer();
-  
-  m_szUserName = strdup(szUserName);
-  
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack(m_szUserName, strlen(m_szUserName));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
 CPS_MSNSendTicket::CPS_MSNSendTicket(const string& ticket)
@@ -310,9 +304,9 @@ CPS_MSNSendTicket::CPS_MSNSendTicket(const string& ticket)
   m_nSize += params.size() + ticket.size();
   InitBuffer();
 
-  m_pBuffer->pack(params);
-  m_pBuffer->pack(ticket);
-  m_pBuffer->Pack("\r\n", 2);
+  m_pBuffer->packRaw(params);
+  m_pBuffer->packRaw(ticket);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
 CPS_MSNChangeStatus::CPS_MSNChangeStatus(string& status) : CMSNPacket()
@@ -321,9 +315,9 @@ CPS_MSNChangeStatus::CPS_MSNChangeStatus(string& status) : CMSNPacket()
   char szParams[] = " 268435500";
   m_nSize += strlen(szParams) + 3;
   InitBuffer();
-  m_pBuffer->Pack(status.c_str(), status.size());
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack("\r\n", 2);
+  m_pBuffer->packRaw(status.c_str(), status.size());
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
 CPS_MSNLogoff::CPS_MSNLogoff() : CMSNPacket(true)
@@ -331,8 +325,8 @@ CPS_MSNLogoff::CPS_MSNLogoff() : CMSNPacket(true)
   m_szCommand = strdup("OUT");
   m_nSize += 0;
   InitBuffer();
-  
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
 CPS_MSNSync::CPS_MSNSync(unsigned long nVersion) : CMSNPacket()
@@ -342,32 +336,24 @@ CPS_MSNSync::CPS_MSNSync(unsigned long nVersion) : CMSNPacket()
   int nSize = sprintf(szParams, "%lu", nVersion);
   m_nSize += nSize;
   InitBuffer();
-  
-  m_pBuffer->Pack(szParams, nSize);
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(szParams, nSize);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNChallenge::CPS_MSNChallenge(const char *szHash) : CMSNPacket()
+CPS_MSNChallenge::CPS_MSNChallenge(const std::string& hash) : CMSNPacket()
 {
   m_szCommand = strdup("QRY");
   const char *szParams = "msmsgs@msnmsgr.com 32";
   m_nSize += strlen(szParams) + 32; //payload
   InitBuffer();
   
-  char szSource[65];
-  unsigned char szDigest[16];
-  char szHexOut[33];
-  snprintf(szSource, 64, "%sQ1P7W2E4J9R8U3S5", szHash);
-  szSource[64] = '\0';
-  Licq::md5((const uint8_t*)szSource, strlen(szSource), szDigest);
+  const string toHash = (hash + "Q1P7W2E4J9R8U3S5").substr(0, 64);
+  const string hexDigest = Licq::Md5::hashToHexString(toHash);
 
-  for (int i = 0; i < 16; i++)
-  {
-    sprintf(&szHexOut[i*2], "%02x", szDigest[i]);
-  }
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack("\r\n", 2);
-  m_pBuffer->Pack(szHexOut, 32);
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw("\r\n", 2);
+  m_pBuffer->packRaw(hexDigest);
 }
 
 CPS_MSNSetPrivacy::CPS_MSNSetPrivacy() : CMSNPacket()
@@ -377,94 +363,79 @@ CPS_MSNSetPrivacy::CPS_MSNSetPrivacy() : CMSNPacket()
   char szParams[] = "N";
   m_nSize += strlen(szParams);
   InitBuffer();
-  
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNAddUser::CPS_MSNAddUser(const char *szUser, const char *szList)
+CPS_MSNAddUser::CPS_MSNAddUser(const string& username, const char* list)
   : CMSNPacket()
 {
   m_szCommand = strdup("ADD");
-  m_nSize += strlen(szList) + (strlen(szUser) * 2) + 2;
+  m_nSize += strlen(list) + (username.size() * 2) + 2;
   InitBuffer();
-  
-  m_szUser = strdup(szUser);
-  m_szList = strdup(szList);
-  
-  m_pBuffer->Pack(m_szList, strlen(m_szList));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(list, strlen(list));
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNRemoveUser::CPS_MSNRemoveUser(const char *szUser, const char *szList)
+CPS_MSNRemoveUser::CPS_MSNRemoveUser(const string& username, const char* list)
   : CMSNPacket()
 {
   m_szCommand = strdup("REM");
-  m_nSize += strlen(szList) + strlen(szUser) + 1;
+  m_nSize += strlen(list) + username.size() + 1;
   InitBuffer();
-  
-  m_szUser = strdup(szUser);
-  m_szList = strdup(szList);
-  
-  m_pBuffer->Pack(m_szList, strlen(m_szList));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(list, strlen(list));
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNRenameUser::CPS_MSNRenameUser(const char *szUser, const char *szNewNick)
+CPS_MSNRenameUser::CPS_MSNRenameUser(const string& username, const string& newNick)
   : CMSNPacket()
 {
   m_szCommand = strdup("REA");
-  m_szUser = strdup(szUser);
-  m_szNewNick = strdup(szNewNick);
-  m_nSize += strlen(m_szUser) + strlen(m_szNewNick) + 1;
+  m_nSize += username.size() + newNick.size() + 1;
   InitBuffer();
 
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szNewNick, strlen(m_szNewNick));
-  m_pBuffer->Pack("\r\n", 2);
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(newNick);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSN_SBStart::CPS_MSN_SBStart(const char *szCookie, const char *szUser)
+CPS_MSN_SBStart::CPS_MSN_SBStart(const string& cookie, const string& username)
   : CMSNPacket()
 {
   m_szCommand = strdup("USR");
-  m_nSize += strlen(szCookie) + strlen(szUser) + 1;
+  m_nSize += cookie.size() + username.size() + 1;
   InitBuffer();
-  
-  m_szUser = strdup(szUser);
-  m_szCookie = strdup(szCookie);
-  
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szCookie, strlen(m_szCookie));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(cookie);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSN_SBAnswer::CPS_MSN_SBAnswer(const char *szSession, const char *szCookie,
-  const char *szUser)
+CPS_MSN_SBAnswer::CPS_MSN_SBAnswer(const string& session, const string& cookie,
+    const string& username)
   : CMSNPacket()
 {
   m_szCommand = strdup("ANS");
-  m_nSize += strlen(szSession) + strlen(szCookie) + strlen(szUser) + 2;
+  m_nSize += session.size() + cookie.size() + username.size() + 2;
   InitBuffer();
-  
-  m_szUser = strdup(szUser);
-  m_szSession = strdup(szSession);
-  m_szCookie = strdup(szCookie);
-  
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szCookie, strlen(m_szCookie));
-  m_pBuffer->Pack(" ", 1);
-  m_pBuffer->Pack(m_szSession, strlen(m_szSession));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(cookie);
+  m_pBuffer->packRaw(" ", 1);
+  m_pBuffer->packRaw(session);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
 CPS_MSNMessage::CPS_MSNMessage(const char *szMsg)
@@ -479,9 +450,9 @@ CPS_MSNMessage::CPS_MSNMessage(const char *szMsg)
   CMSNPayloadPacket::InitBuffer();
   
   m_szMsg = strdup(szMsg);
-  
-  m_pBuffer->Pack(szParams, strlen(szParams));
-  m_pBuffer->Pack(m_szMsg, strlen(m_szMsg));
+
+  m_pBuffer->packRaw(szParams, strlen(szParams));
+  m_pBuffer->packRaw(m_szMsg, strlen(m_szMsg));
 }
 
 CPS_MsnClientCaps::CPS_MsnClientCaps()
@@ -494,7 +465,7 @@ CPS_MsnClientCaps::CPS_MsnClientCaps()
   m_nPayloadSize = params.size();
 
   CMSNPayloadPacket::InitBuffer();
-  m_pBuffer->pack(params);
+  m_pBuffer->packRaw(params);
 }
 
 CPS_MSNPing::CPS_MSNPing() : CMSNPacket(true)
@@ -502,8 +473,8 @@ CPS_MSNPing::CPS_MSNPing() : CMSNPacket(true)
   m_szCommand = strdup("PNG");
   m_nSize += 0;
   InitBuffer();
-  
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
 CPS_MSNXfr::CPS_MSNXfr() : CMSNPacket()
@@ -511,23 +482,21 @@ CPS_MSNXfr::CPS_MSNXfr() : CMSNPacket()
   m_szCommand = strdup("XFR");
   m_nSize += 2;
   InitBuffer();
-  
-  m_pBuffer->Pack("SB\r\n", 4);
+
+  m_pBuffer->packRaw("SB\r\n", 4);
 }
 
-CPS_MSNCall::CPS_MSNCall(const char *szUser) : CMSNPacket()
+CPS_MSNCall::CPS_MSNCall(const string& username) : CMSNPacket()
 {
   m_szCommand = strdup("CAL");
-  m_nSize += strlen(szUser);
+  m_nSize += username.size();
   InitBuffer();
-  
-  m_szUser = strdup(szUser);
-  
-  m_pBuffer->Pack(m_szUser, strlen(m_szUser));
-  m_pBuffer->Pack("\r\n", 2);
+
+  m_pBuffer->packRaw(username);
+  m_pBuffer->packRaw("\r\n", 2);
 }
 
-CPS_MSNTypingNotification::CPS_MSNTypingNotification(const char *szEmail)
+CPS_MSNTypingNotification::CPS_MSNTypingNotification(const string& email)
   : CMSNPayloadPacket('N')
 {
   m_szCommand = strdup("MSG");
@@ -535,13 +504,12 @@ CPS_MSNTypingNotification::CPS_MSNTypingNotification(const char *szEmail)
     "Content-Type: text/x-msmsgscontrol\r\n"
     "TypingUser: ";
   char szParams2[] = "\r\n\r\n\r\n";    
-  m_nPayloadSize = strlen(szParams1) + strlen(szParams2) +
-    strlen(szEmail);
+  m_nPayloadSize = strlen(szParams1) + strlen(szParams2) + email.size();
   CMSNPayloadPacket::InitBuffer();  
 
-  m_pBuffer->Pack(szParams1, strlen(szParams1));
-  m_pBuffer->Pack(szEmail, strlen(szEmail));
-  m_pBuffer->Pack(szParams2, strlen(szParams2));
+  m_pBuffer->packRaw(szParams1, strlen(szParams1));
+  m_pBuffer->packRaw(email);
+  m_pBuffer->packRaw(szParams2, strlen(szParams2));
 }
 
 CPS_MSNCancelInvite::CPS_MSNCancelInvite(const string& cookie, const string& code)
@@ -562,16 +530,15 @@ CPS_MSNCancelInvite::CPS_MSNCancelInvite(const string& cookie, const string& cod
 
   m_nPayloadSize = strlen(payload);
   CMSNPayloadPacket::InitBuffer();
-  m_pBuffer->Pack(payload, m_nPayloadSize);
+  m_pBuffer->packRaw(payload, m_nPayloadSize);
 }
 
-CPS_MSNInvitation::CPS_MSNInvitation(const char* szToEmail,
-    const char* szFromEmail, const char* szMSNObject)
-  : CMSNP2PPacket(szToEmail)
+CPS_MSNInvitation::CPS_MSNInvitation(const string& toEmail, const string& fromEmail, const string& msnObject)
+  : CMSNP2PPacket(toEmail)
 {
   char *szBranchGUID = CreateGUID();
   m_szCallGUID = CreateGUID();
-  string strMSNObject64 = MSN_Base64Encode(szMSNObject, strlen(szMSNObject));
+  string strMSNObject64 = MSN_Base64Encode(msnObject);
 
   char szBodyBuf[512];
   char szHeaderBuf[512];
@@ -597,7 +564,7 @@ CPS_MSNInvitation::CPS_MSNInvitation(const char* szToEmail,
 	   "Max-Forwards: 0\r\n"
 	   "Content-Type: application/x-msnmsgr-sessionreqbody\r\n"
 	   "Content-Length: %lu\r\n"
-	   "\r\n", szToEmail, szToEmail, szFromEmail, szBranchGUID,
+	   "\r\n", toEmail.c_str(), toEmail.c_str(), fromEmail.c_str(), szBranchGUID,
 	   m_szCallGUID, static_cast<unsigned long>(strlen(szBodyBuf)+1));
 
   string strMsg = szHeaderBuf;
@@ -613,16 +580,16 @@ CPS_MSNInvitation::CPS_MSNInvitation(const char* szToEmail,
   m_nPayloadSize = strMsg.size();
   CMSNP2PPacket::InitBuffer();
 
-  m_pBuffer->pack(strMsg);
+  m_pBuffer->packRaw(strMsg);
 
   // Footer
   m_pBuffer->packUInt32LE(0);
 }
 
-CPS_MSNP2PBye::CPS_MSNP2PBye(const char *_szToEmail, const char* _szFromEmail,
-    const char* _szCallId, unsigned long _nBaseId, unsigned long _nAckId,
+CPS_MSNP2PBye::CPS_MSNP2PBye(const string& toEmail, const string& fromEmail,
+    const string& callId, unsigned long _nBaseId, unsigned long _nAckId,
     unsigned long /* _nDataSizeHI */, unsigned long /* _nDataSizeLO */)
-  : CMSNP2PPacket(_szToEmail, 0, _nBaseId, 0, 0, 0, 4, 0, 0, _nAckId, 0, 0, 0)
+  : CMSNP2PPacket(toEmail, 0, _nBaseId, 0, 0, 0, 4, 0, 0, _nAckId, 0, 0, 0)
 		     //SizeHI, _nDataSizeLO)
 {
   char *szBranchGUID = CreateGUID();
@@ -640,8 +607,8 @@ CPS_MSNP2PBye::CPS_MSNP2PBye(const char *_szToEmail, const char* _szFromEmail,
 	   "Content-Type: application/x-msnmsgr-sessionclosebody\r\n"
 	   "Content-Length: 3\r\n"
 	   "\r\n"
-	   "\r\n", _szToEmail, _szToEmail, _szFromEmail, szBranchGUID,
-	   _szCallId);
+	   "\r\n",
+      toEmail.c_str(), toEmail.c_str(), fromEmail.c_str(), szBranchGUID, callId.c_str());
 
   string strMsg = szMsgBuf;
   strMsg += '\0';
@@ -654,22 +621,20 @@ CPS_MSNP2PBye::CPS_MSNP2PBye(const char *_szToEmail, const char* _szFromEmail,
   m_nPayloadSize = strMsg.size();
   CMSNP2PPacket::InitBuffer();
 
-  m_pBuffer->pack(strMsg);
+  m_pBuffer->packRaw(strMsg);
 
   // Footer
   m_pBuffer->packUInt32LE(0);
 }
 
-CPS_MSNP2PAck::CPS_MSNP2PAck(const char *_szToEmail, unsigned long _nSessionId,
+CPS_MSNP2PAck::CPS_MSNP2PAck(const string& toEmail, unsigned long _nSessionId,
 			     unsigned long _nBaseId, unsigned long _nAckId,
 			     unsigned long _nAckBaseId,
 			     unsigned long _nDataSizeHI,
 			     unsigned long _nDataSizeLO)
-  : CMSNP2PPacket(_szToEmail, _nSessionId, _nBaseId, 0, 0, _nDataSizeHI, _nDataSizeLO,  0, 0x02,
+  : CMSNP2PPacket(toEmail, _nSessionId, _nBaseId, 0, 0, _nDataSizeHI, _nDataSizeLO,  0, 0x02,
 		  _nAckId, _nAckBaseId, _nDataSizeHI, _nDataSizeLO)
 {
-//  m_szToEmail = strdup(_szToEmail);
-
   // No data...
   CMSNP2PPacket::InitBuffer();
 

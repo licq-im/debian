@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2011, 2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,41 +20,59 @@
 #ifndef LICQDAEMON_PROTOCOLPLUGIN_H
 #define LICQDAEMON_PROTOCOLPLUGIN_H
 
-#include <licq/plugin/protocolplugin.h>
 #include "plugin.h"
+#include "pluginthread.h"
 
-#include <queue>
-
-#include <licq/plugin/protocolbase.h>
-#include <licq/thread/mutex.h>
+#include <licq/plugin/protocolplugin.h>
 
 namespace Licq
 {
+class Owner;
+class ProtocolPluginFactory;
+class ProtocolSignal;
+class User;
+class UserId;
+}
 
-/**
- * Temporary class used to hold initalization data for ProtocolPlugin constructor
- */
-class ProtocolPlugin::Params : public Plugin::Params
+namespace LicqDaemon
+{
+
+class ProtocolPluginInstance;
+
+class ProtocolPlugin : public Plugin, public Licq::ProtocolPlugin
 {
 public:
-  Params(int id, LicqDaemon::DynamicLibrary::Ptr lib,
-      LicqDaemon::PluginThread::Ptr thread) :
-    Plugin::Params(id, lib, thread)
-  { /* Empty */ }
-};
+  typedef boost::shared_ptr<ProtocolPlugin> Ptr;
 
-class ProtocolPlugin::Private
-{
-public:
-  Private();
+  ProtocolPlugin(DynamicLibrary::Ptr lib,
+                 boost::shared_ptr<Licq::ProtocolPluginFactory> factory,
+                 PluginThread::Ptr thread);
+  ~ProtocolPlugin();
+
+  boost::shared_ptr<ProtocolPluginInstance> createInstance(
+      int id, const Licq::UserId& ownerId,
+      void (*callback)(const PluginInstance&));
+
+  boost::shared_ptr<Licq::ProtocolPluginFactory> protocolFactory();
+
+  // From Licq::ProtocolPlugin
+  unsigned long protocolId() const;
+  unsigned long capabilities() const;
+  Instances instances() const;
+
+  Licq::User* createUser(const Licq::UserId& id, bool temporary);
+  Licq::Owner* createOwner(const Licq::UserId& id);
+
+protected:
+  // From Plugin
+  boost::shared_ptr<Licq::PluginFactory> factory();
+  boost::shared_ptr<const Licq::PluginFactory> factory() const;
 
 private:
-  std::queue<Licq::ProtocolSignal*> mySignals;
-  Licq::Mutex mySignalsMutex;
-
-  friend class ProtocolPlugin;
+  boost::shared_ptr<Licq::ProtocolPluginFactory> myFactory;
+  PluginThread::Ptr myMainThread;
 };
 
-} // namespace Licq
+} // namespace LicqDaemon
 
 #endif

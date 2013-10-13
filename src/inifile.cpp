@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,9 +31,9 @@
 
 #include "gettext.h"
 
-using namespace std;
 using Licq::IniFile;
-
+using std::list;
+using std::string;
 
 IniFile::IniFile(const string& filename)
   : myConfigData("\n"),
@@ -681,4 +681,25 @@ bool IniFile::setHex(const string& key, const string& data)
     strData += hexChars[*i & 0x0F];
   }
   return set(key, strData);
+}
+
+bool IniFile::unset(const std::string& key)
+{
+  if (mySectionStart == string::npos)
+    return false;
+
+  string::size_type start = myConfigData.find('\n' + key + '=', mySectionStart-1);
+  if (start == string::npos && start >= mySectionEnd)
+    // Parameter doesn't exist
+    return false;
+
+  string::size_type end = myConfigData.find('\n', start+1);
+  string::size_type len = (end == string::npos ? string::npos : end - start);
+  myConfigData.erase(start, len);
+  mySectionEnd -= len;
+
+  // Data has changed
+  myIsModified = true;
+
+  return true;
 }

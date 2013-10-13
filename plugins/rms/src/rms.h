@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,19 +20,17 @@
 #ifndef LICQRMS_H
 #define LICQRMS_H
 
-#include <licq/plugin/generalplugin.h>
+#include <licq/plugin/generalpluginhelper.h>
 
 #include <list>
 
 #include <licq/logging/pluginlogsink.h>
+#include <licq/mainloop.h>
 #include <licq/socket.h>
-#include <licq/socketmanager.h>
 #include <licq/userid.h>
 
 namespace Licq
 {
-class Event;
-class PluginSignal;
 class UserEvent;
 }
 
@@ -42,42 +40,47 @@ const unsigned short MAX_TEXT_LENGTH = 1024 * 8;
 typedef std::list<class CRMSClient*> ClientList;
 typedef std::list<unsigned long> TagList;
 
-class CLicqRMS : public Licq::GeneralPlugin
+class CLicqRMS : public Licq::GeneralPluginHelper, public Licq::MainLoopCallback
 {
 public:
-  CLicqRMS(Params& p);
+  CLicqRMS(const std::string& configFile);
   ~CLicqRMS();
   void Shutdown();
 
-  // From Licq::GeneralPlugin
-  std::string name() const;
-  std::string version() const;
-  std::string description() const;
-  std::string usage() const;
-  std::string configFile() const;
+  // From Licq::PluginInterface
+  bool init(int argc, char** argv);
+  int run();
+
+  // From Licq::GeneralPluginInterface
   bool isEnabled() const;
 
 protected:
-  // From Licq::GeneralPlugin
-  bool init(int argc, char** argv);
-  int run();
-  void destructor();
+  // From Licq::MainLoopCallback
+  void rawFileEvent(int fd, int revents);
+  void socketEvent(Licq::INetSocket* inetSocket, int revents);
 
-  bool m_bExit, m_bEnabled;
+  void deleteClient(CRMSClient* client);
+  void setupLogSink();
+
+  bool m_bEnabled;
 
   unsigned int myPort;
-  unsigned long myAuthProtocol;
+  Licq::UserId myAuthOwnerId;
   std::string myAuthUser;
   std::string myAuthPassword;
 
   Licq::TCPSocket* server;
   ClientList clients;
   Licq::PluginLogSink::Ptr myLogSink;
+  Licq::MainLoop myMainLoop;
+
+private:
+  const std::string myConfigFile;
 
 public:
   void ProcessPipe();
-  void ProcessSignal(Licq::PluginSignal* s);
-  void ProcessEvent(Licq::Event* e);
+  void ProcessSignal(const Licq::PluginSignal* s);
+  void ProcessEvent(const Licq::Event* e);
   void ProcessServer();
   void ProcessLog();
 
@@ -86,15 +89,13 @@ friend class CRMSClient;
 };
 
 
-class CRMSClient
+class CRMSClient : public Licq::MainLoopCallback
 {
 public:
   CRMSClient(Licq::TCPSocket*);
   ~CRMSClient();
 
   int Activity();
-
-  static Licq::SocketManager sockman;
 
   int Process_QUIT();
   int Process_TERM();
@@ -116,6 +117,9 @@ public:
   int Process_NOTIFY();
 
 protected:
+  // From Licq::MainLoopCallback
+  void socketEvent(Licq::INetSocket* inetSocket, int revents);
+
   Licq::TCPSocket sock;
   FILE *fs;
   TagList tags;
@@ -128,18 +132,16 @@ protected:
   unsigned int myLogLevelsBitmask;
   bool m_bNotify;
 
-  unsigned long m_nUin;
   Licq::UserId myUserId;
   std::string myText;
   std::string myLine;
 
   int StateMachine();
   int ProcessCommand();
-  bool ProcessEvent(Licq::Event* e);
+  bool ProcessEvent(const Licq::Event* e);
   bool AddLineToText();
-  unsigned long getProtocol(const std::string& data);
   void ParseUser(const std::string& data);
-  int changeStatus(unsigned long, const char *);
+  int changeStatus(const Licq::UserId& ownerId, const std::string& strStatus);
 
   int Process_MESSAGE_text();
   int Process_URL_url();

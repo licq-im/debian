@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,10 +24,12 @@
 #include <cstdio>
 #include <string>
 
+#include <licq/mainloop.h>
+
 namespace LicqDaemon
 {
 
-class Fifo : private boost::noncopyable
+class Fifo : public Licq::MainLoopCallback, private boost::noncopyable
 {
 public:
   Fifo();
@@ -37,7 +39,7 @@ public:
    * Initialize fifo
    * Only called once at startup
    */
-  void initialize();
+  void initialize(Licq::MainLoop& mainLoop);
 
   /**
    * Shut down fifo
@@ -45,18 +47,12 @@ public:
    */
   void shutdown();
 
-  /**
-   * Process data received on fifo socket
-   * Called by MonitorSockets_tep
-   */
-  void process();
-
-  // These are used directly by MonitorSockets_tep
-  int fifo_fd;
-  FILE* fifo_fs;
-
 private:
+  // From Licq::MainLoopCallback
+  void rawFileEvent(int fd, int revents);
 
+  int fifo_fd;
+  std::string myInputBuffer;
 };
 
 extern Fifo gFifo;

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2011 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2007-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,8 +30,8 @@
 
 #include "conf.h"
 
-using namespace std;
 using Licq::gUserManager;
+using std::string;
 
 Iface::Iface()
 {
@@ -70,7 +70,7 @@ Iface::~Iface()
   pango_layout_unref_aosd(trd.lay);
 }
 
-void Iface::processSignal(Licq::PluginSignal* sig)
+void Iface::processSignal(const Licq::PluginSignal* sig)
 {
   string msg = "";
   bool control = true;
@@ -173,7 +173,7 @@ void Iface::updateTextRenderData()
         (width > conf->wrapWidth ? conf->wrapWidth : width) * PANGO_SCALE);
 }
 
-bool Iface::filterSignal(Licq::PluginSignal* sig, unsigned long ppid)
+bool Iface::filterSignal(const Licq::PluginSignal* sig, unsigned long ppid)
 {
   switch (sig->subSignal())
   {
@@ -193,7 +193,7 @@ bool Iface::filterSignal(Licq::PluginSignal* sig, unsigned long ppid)
 
   // TODO status check
 
-  if (gUserManager.isOwner(sig->userId()))
+  if (sig->userId().isOwner())
   {
     if (isMessage && conf->showMessage != GROUP_TYPE_NONE)
       return false;

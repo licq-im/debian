@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -175,6 +175,24 @@ public:
    * @return Path to user picture
    */
   const std::string& pictureFileName() const    { return myPictureFileName; }
+
+  /**
+   * Read the user's picture and store the data in @a pictureData
+   * @return True if the picture could be read
+   */
+  bool readPictureData(std::string& pictureData) const;
+
+  /**
+   * Write @a pictureData to the user's picture file
+   * @return True if the picture could be written
+   */
+  bool writePictureData(const std::string& pictureData) const;
+
+  /**
+   * Removes the user's picture file
+   * @return True if the picture could be removed
+   */
+  bool deletePictureData() const;
 
   // Licq Info
   bool GetAwaitingAuth() const                  { return m_bAwaitingAuth; }
@@ -472,8 +490,6 @@ public:
   void EventPush(UserEvent *);
   int GetHistory(HistoryList& history) const;
   static void ClearHistory(HistoryList& h);
-  const std::string& historyName() const;
-  const std::string& historyFile() const;
 
   /**
    * Get user groups this user is member of
@@ -623,11 +639,11 @@ public:
   bool OfflineOnDisconnect() { return m_bOfflineOnDisconnect; }
 
   bool isUser() const
-  { return !myIsOwner; }
+  { return !myId.isOwner(); }
 
 protected:
   /// Constructor
-  User(const UserId& id, bool temporary = false, bool isOwner = false);
+  User(const UserId& id, bool temporary = false);
 
   /// Destructor
   virtual ~User();
@@ -653,7 +669,6 @@ protected:
   void SetRegisteredTime(time_t t)  { m_nRegisteredTime = t; }
 
   const UserId myId;
-  const bool myIsOwner;
   unsigned long myProtocolCapabilities;
 
   time_t m_nTouched;

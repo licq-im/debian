@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,12 +24,13 @@
 #include <list>
 #include <string>
 
+#include "../userid.h"
+
 namespace Licq
 {
 class Group;
 class Owner;
 class User;
-class UserId;
 
 typedef std::list<User*> UserList;
 typedef std::list<Owner*> OwnerList;
@@ -40,7 +41,14 @@ class UserManager : private boost::noncopyable
 public:
   virtual void addOwner(const UserId& userId) = 0;
 
-  virtual void RemoveOwner(unsigned long) = 0;
+  /**
+   * Remove an owner
+   * Note: Will fail if owner is not offline
+   *
+   * @param userId Id of owner to remove
+   * @return True if owner was removed
+   */
+  virtual bool removeOwner(const UserId& userId) = 0;
 
   /**
    * Check if a user id is in the list
@@ -49,22 +57,6 @@ public:
    * @return True if user id is in list, otherwise false
    */
   virtual bool userExists(const UserId& userId) = 0;
-
-  /**
-   * Get user id for an owner
-   *
-   * @param ppid Protocol id
-   * @return User id of owner or empty string if no such owner exists
-   */
-  virtual UserId ownerUserId(unsigned long ppid) = 0;
-
-  /**
-   * Check if user is an owner
-   *
-   * @param userId Id of user to check
-   * @return True if user id is valid and user is an owner
-   */
-  virtual bool isOwner(const UserId& userId) = 0;
 
   /**
    * Notify plugins about changes for a user
@@ -132,7 +124,7 @@ public:
    * @param skipProtocolId Id of protocol to not notify
    * @return True if group was successfully renamed
    */
-  virtual bool RenameGroup(int groupId, const std::string& name, unsigned long skipProtocolId = 0) = 0;
+  virtual bool RenameGroup(int groupId, const std::string& name, const UserId& skipOwnerId = UserId()) = 0;
 
   /**
    * Get number of user groups
@@ -155,19 +147,19 @@ public:
    * Change ICQ server group id for a user group
    *
    * @param groupId Id of group to change
-   * @param protocolId Protocol to change server id for
+   * @param ownerId Owner to change server id for
    * @param serverId New server id for group
    */
-  virtual void setGroupServerId(int groupId, unsigned long protocolId, unsigned long serverId) = 0;
+  virtual void setGroupServerId(int groupId, const UserId& ownerId, unsigned long serverId) = 0;
 
   /**
    * Get local group id from server group id
    *
-   * @param protocolId Protocol server id is valid for
+   * @param ownerId Owner server id is valid for
    * @param serverId Server group id to find local group for
    * @return Id for group or 0 if not found
    */
-  virtual int getGroupFromServerId(unsigned long protocolId, unsigned long serverId) = 0;
+  virtual int getGroupFromServerId(const UserId& ownerId, unsigned long serverId) = 0;
 
   /**
    * Find id for group with a given name
@@ -258,6 +250,14 @@ public:
   UserListGuard(unsigned long protocolId = 0);
 
   /**
+   * Constructor
+   * Will read-lock the user list in user manager
+   *
+   * @param ownerId Owner to get users for
+   */
+  UserListGuard(const UserId& ownerId);
+
+  /**
    * Destructor, will release lock on user list
    */
   ~UserListGuard();
@@ -293,8 +293,10 @@ public:
   /**
    * Constructor
    * Will read-lock the owner list in user manager
+   *
+   * @param protocolId Protocol id to get owners for or zero to get all
    */
-  OwnerListGuard();
+  OwnerListGuard(unsigned long protocolId = 0);
 
   /**
    * Destructor, will release lock on group list

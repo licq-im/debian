@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,10 +26,15 @@
 
 #include "generalplugin.h"
 #include "protocolplugin.h"
-
+#include "protocolplugininstance.h"
 
 namespace Licq
 {
+class Event;
+class PluginSignal;
+class ProtocolSignal;
+class USerId;
+
 typedef std::list<std::string> StringList;
 
 /// A list of pointers to GeneralPlugin instances.
@@ -99,6 +104,16 @@ public:
    */
   virtual
   ProtocolPlugin::Ptr getProtocolPlugin(unsigned long protocolId) const = 0;
+
+  /**
+   * Get the protocol instance that is used for the given owner id.
+   *
+   * @param ownerId Owner to get protocol instance for.
+   * @return Pointer to the ProtocolPlugin (if found) or an empty pointer if
+   *         owner is invalid.
+   */
+  virtual ProtocolPluginInstance::Ptr
+  getProtocolInstance(const UserId& ownerId) const = 0;
 
   /**
    * Load and start the general plugin @a name.

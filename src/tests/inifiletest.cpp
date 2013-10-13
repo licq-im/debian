@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq Developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,9 @@
 #include <gtest/gtest.h>
 #include <string>
 
-using namespace std;
 using Licq::IniFile;
+using std::list;
+using std::string;
 
 namespace LicqTest {
 
@@ -181,6 +182,30 @@ TEST(IniFile, set)
   // Modify a parameter in the middle
   EXPECT_TRUE(ini.set("param1", true));
   EXPECT_EQ("[FirstSection]\nparam1=1\nparam2=2\n[Section2]\nparam1=1\n", ini.getRawConfiguration());
+}
+
+TEST(IniFile, unset)
+{
+  IniFile ini("/tmp/testini.conf");
+
+  ini.loadRawConfiguration("[Section]\nparam1=1\nparam2=2\nparam3=3\n");
+  EXPECT_TRUE(ini.setSection("Section", true));
+
+  // Remove non-existing parameter
+  EXPECT_FALSE(ini.unset("param"));
+  EXPECT_EQ("[Section]\nparam1=1\nparam2=2\nparam3=3\n", ini.getRawConfiguration());
+
+  // Remove middle parameter
+  EXPECT_TRUE(ini.unset("param2"));
+  EXPECT_EQ("[Section]\nparam1=1\nparam3=3\n", ini.getRawConfiguration());
+
+  // Remove last parameter
+  EXPECT_TRUE(ini.unset("param3"));
+  EXPECT_EQ("[Section]\nparam1=1\n", ini.getRawConfiguration());
+
+  // Remove only parameter
+  EXPECT_TRUE(ini.unset("param1"));
+  EXPECT_EQ("[Section]\n", ini.getRawConfiguration());
 }
 
 TEST(IniFile, getSections)

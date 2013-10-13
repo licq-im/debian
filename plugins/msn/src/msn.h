@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2004-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,14 +20,13 @@
 #ifndef LICQMSN_MSN_H
 #define LICQMSN_MSN_H
 
-#include <licq/plugin/protocolplugin.h>
+#include <licq/plugin/protocolpluginhelper.h>
 
 #include <list>
-#include <pthread.h>
 #include <string>
 #include <vector>
 
-#include <licq/socketmanager.h>
+#include <licq/mainloop.h>
 #include <licq/userid.h>
 
 #include "msnbuffer.h"
@@ -36,6 +35,9 @@
 namespace Licq
 {
 class Event;
+class INetSocket;
+class TCPSocket;
+class User;
 }
 
 namespace LicqMsn
@@ -63,7 +65,7 @@ class CMSNDataEvent;
 struct SBuffer
 {
   CMSNBuffer *m_pBuf;
-  std::string m_strUser;
+  Licq::UserId myUserId;
   bool m_bStored;
 };
 
@@ -81,59 +83,58 @@ struct SStartMessage
 
 typedef std::list<SStartMessage*> StartList;
 
-class CMSN : public Licq::ProtocolPlugin
+struct TypingTimeout
+{
+  int timeoutId;
+  Licq::UserId userId;
+  unsigned long convoId;
+};
+
+typedef std::list<TypingTimeout> TypingTimeoutList;
+
+class CMSN : public Licq::ProtocolPluginHelper, public Licq::MainLoopCallback
 {
 public:
-  CMSN(Params& p);
+  CMSN();
   ~CMSN();
 
-  // From Licq::ProtocolPlugin
-  std::string name() const;
-  std::string version() const;
-  unsigned long protocolId() const;
-  unsigned long capabilities() const;
+  // From Licq::PluginInterface
+  int run();
+
   std::string defaultServerHost() const;
   int defaultServerPort() const;
 
-  void MSNPing();
-  bool Connected() { return m_nServerSocket != -1; }
-  bool CanSendPing() { return m_bCanPing; }
-  void Logon(unsigned status, std::string host = std::string(), int port = 0);
+  bool Connected() { return myServerSocket != NULL; }
+  void Logon(const Licq::UserId& ownerId, unsigned status, std::string host = std::string(), int port = 0);
   void MSNLogoff(bool = false);
-  unsigned status() const { return myStatus; }
 
-  bool WaitingPingReply()          { return m_bWaitingPingReply; }
-  void SetWaitingPingReply(bool b) { m_bWaitingPingReply = b; }
-
-  pthread_mutex_t mutex_ServerSocket; // Ugly, but whatever.
-
-protected:
-  // From Licq::ProtocolPlugin
-  bool init(int, char**);
-  int run();
-  void destructor();
-  Licq::User* createUser(const Licq::UserId& id, bool temporary = false);
-  Licq::Owner* createOwner(const Licq::UserId& id);
+  void closeSocket(Licq::TCPSocket* sock, bool clearUser = true);
 
 private:
-  void ProcessSignal(Licq::ProtocolSignal* s);
+  // From Licq::MainLoopCallback
+  void rawFileEvent(int fd, int revents);
+  void socketEvent(Licq::INetSocket* inetSocket, int revents);
+  void timeoutEvent(int id);
+
+  void ProcessSignal(const Licq::ProtocolSignal* s);
   void ProcessPipe();
   void ProcessServerPacket(CMSNBuffer *);
-  void ProcessNexusPacket(CMSNBuffer &);
   void ProcessSSLServerPacket(CMSNBuffer &);
-  void ProcessSBPacket(char *, CMSNBuffer *, int);
+  void ProcessSBPacket(const Licq::UserId& socketUserId, CMSNBuffer*,
+      Licq::TCPSocket* sock);
 
   // Network functions
+  void sendServerPing();
   void SendPacket(CMSNPacket *);
-  void Send_SB_Packet(const Licq::UserId& userId, CMSNPacket* p, int nSocket = -1,
+  void Send_SB_Packet(const Licq::UserId& userId, CMSNPacket* p, Licq::TCPSocket* sock,
       bool bDelete = true);
   void MSNAuthenticate(const std::string& host = "loginnet.passport.com",
       const std::string& path = "/login2.srf");
   bool MSNSBConnectStart(const std::string& server, const std::string& cookie);
   bool MSNSBConnectAnswer(const std::string& server, const std::string& sessionId,
-      const std::string& cookie, const std::string& user);
+      const std::string& cookie, const Licq::UserId& userId);
 
-  void MSNSendInvitation(const char* _szUser, CMSNPacket* _pPacket);
+  void MSNSendInvitation(const Licq::UserId& userId, CMSNPacket* _pPacket);
   void MSNSendMessage(unsigned long eventId, const Licq::UserId& userId, const std::string& message,
       pthread_t _tPlugin, unsigned long _nCID);
   void MSNSendTypingNotification(const Licq::UserId& userId, unsigned long convoId);
@@ -150,17 +151,17 @@ private:
   // Internal functions
   int HashValue(int n) { return n % 211; }
   void StorePacket(SBuffer *, int);
-  void RemovePacket(const std::string& user, int socketId, int size = 0);
-  SBuffer *RetrievePacket(const std::string& user, int socketId);
+  void RemovePacket(const Licq::UserId& userId, int socketId, int size = 0);
+  SBuffer* RetrievePacket(const Licq::UserId& userId, int socketId);
   Licq::Event* RetrieveEvent(unsigned long);
-  void HandlePacket(int, CMSNBuffer &, const char *);
+  void HandlePacket(Licq::TCPSocket* sock, CMSNBuffer&, const Licq::UserId& userId);
   unsigned long SocketToCID(int);
   static std::string Decode(const std::string& strIn);
   static std::string Encode(const std::string& strIn);
   void WaitDataEvent(CMSNDataEvent *);
   bool RemoveDataEvent(CMSNDataEvent *);
-  CMSNDataEvent* FetchDataEvent(const std::string& user, int socketId);
-  CMSNDataEvent* FetchStartDataEvent(const std::string& user);
+  CMSNDataEvent* FetchDataEvent(const Licq::UserId& userId, Licq::TCPSocket* sock);
+  CMSNDataEvent* FetchStartDataEvent(const Licq::UserId& userId);
 
   /**
    * Kill a conversation and all users associated with it
@@ -168,15 +169,44 @@ private:
    *
    * @param sock Socket to clear conversations for
    */
-  void killConversation(int sock);
+  void killConversation(Licq::TCPSocket* sock);
+
+  /**
+   * Get a unique id for scheudling a timeout callback
+   */
+  int getNextTimeoutId();
+
+  /**
+   * Update typing status for a user
+   *
+   * @param u User object
+   * @param typing New typing status
+   * @param cid Conversation id
+   */
+  void setIsTyping(Licq::User* u, bool typing, unsigned long cid);
+
+  /**
+   * Update our typing status towards a user
+   *
+   * @param u User object
+   * @param typing New typing status
+   * @param cid Conversation id
+   */
+  void sendIsTyping(const Licq::UserId& userId, bool typing, unsigned long cid);
+
+  /**
+   * Handle timeouts for typing notifications
+   *
+   * @param id Timeout id from mainloop
+   */
+  void typingTimeout(int id);
 
   // Variables
-  bool m_bExit;
-  int m_nServerSocket;
-  int m_nNexusSocket;
-  int m_nSSLSocket;
+  Licq::UserId myOwnerId;
+  Licq::MainLoop myMainLoop;
+  Licq::TCPSocket* myServerSocket;
+  Licq::TCPSocket* mySslSocket;
   CMSNBuffer *m_pPacketBuf,
-             *m_pNexusBuff,
              *m_pSSLPacket;
   std::vector<BufferList> m_vlPacketBucket;
   std::list<Licq::Event*> m_pEvents;
@@ -184,20 +214,16 @@ private:
   StartList m_lStart;
   bool m_bWaitingPingReply,
        m_bCanPing;
-  
+  TypingTimeoutList myUserTypingTimeouts;
+  TypingTimeoutList myOwnerTypingTimeouts;
+  int myNextTimeoutId;
+
   // Server variables
   unsigned myStatus;
   unsigned long m_nSessionStart;
   std::string m_strMSPAuth,
          m_strSID,
          m_strKV;
-         
-  pthread_t m_tMSNPing;
-  pthread_mutex_t mutex_StartList,
-                  mutex_MSNEventList,
-                  mutex_Bucket;
-    
-  char *m_szUserName;
   std::string myCookie;
   std::string myPassword;
 
@@ -205,7 +231,5 @@ private:
 };
 
 } // namespace LicqMsn
-
-extern Licq::SocketManager gSocketMan;
 
 #endif

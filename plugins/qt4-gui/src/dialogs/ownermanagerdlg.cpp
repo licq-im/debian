@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2004-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2004-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,6 +40,7 @@
 #include "contactlist/contactlist.h"
 
 #include "core/gui-defines.h"
+#include "core/licqgui.h"
 #include "core/messagebox.h"
 #include "core/signalmanager.h"
 
@@ -47,7 +48,6 @@
 #include "userdlg/userdlg.h"
 
 #include "ownereditdlg.h"
-#include "registeruser.h"
 
 using namespace LicqQtGui;
 /* TRANSLATOR LicqQtGui::OwnerManagerDlg */
@@ -64,7 +64,6 @@ void OwnerManagerDlg::showOwnerManagerDlg()
 
 OwnerManagerDlg::OwnerManagerDlg(QWidget* parent)
   : QDialog(parent),
-    registerUserDlg(NULL),
     myPendingAdd(false),
     myPendingRegister(false)
 {
@@ -113,7 +112,7 @@ OwnerManagerDlg::OwnerManagerDlg(QWidget* parent)
       SLOT(protocolLoaded(unsigned long)));
   connect(gGuiSignalManager, SIGNAL(protocolPluginUnloaded(unsigned long)),
       SLOT(updateList()));
-  connect(gGuiSignalManager, SIGNAL(updatedStatus(unsigned long)),
+  connect(gGuiSignalManager, SIGNAL(updatedStatus(const Licq::UserId&)),
       SLOT(updateList()));
 
   // Add the protocals and owners to the list
@@ -122,8 +121,8 @@ OwnerManagerDlg::OwnerManagerDlg(QWidget* parent)
   // Show information to the user
   if (Licq::gUserManager.NumOwners() == 0)
   {
-    InformUser(this, tr("From the Account Manager dialog you can add your accounts or register a new account.\n"
-        "Note that only one account per protocol is supported in Licq."));
+    InformUser(this, tr("From the Account Manager dialog you can add your "
+                        "accounts or register a new account."));
   }
 
   show();
@@ -153,18 +152,17 @@ void OwnerManagerDlg::updateList()
         .arg(protocol->version().c_str()));
     protoItem->setData(0, Qt::UserRole, (unsigned int)ppid);
 
-    // Currently only one owner per protocol
-    Licq::UserId ownerId = Licq::gUserManager.ownerUserId(ppid);
-    if (ownerId.isValid())
+    Licq::OwnerListGuard ownerList(ppid);
+    BOOST_FOREACH(const Licq::Owner* o, **ownerList)
     {
-      Licq::OwnerReadGuard owner(ownerId);
+      Licq::OwnerReadGuard owner(o);
 
       QTreeWidgetItem* ownerItem = new QTreeWidgetItem(protoItem);
-      ownerItem->setIcon(0, iconman->iconForStatus(owner->status(), ownerId));
+      ownerItem->setIcon(0, iconman->iconForStatus(owner->status(), owner->id()));
       ownerItem->setText(0, QString("%1 (%2)")
-          .arg(QString::fromUtf8(ownerId.accountId().c_str()))
+          .arg(QString::fromUtf8(owner->id().accountId().c_str()))
           .arg(owner->statusString(true, false).c_str()));
-      ownerItem->setData(0, Qt::UserRole, QVariant::fromValue(ownerId));
+      ownerItem->setData(0, Qt::UserRole, QVariant::fromValue(owner->id()));
       ownerItem->setData(0, Qt::UserRole+1, owner->status());
     }
   }
@@ -174,14 +172,14 @@ void OwnerManagerDlg::updateList()
   BOOST_FOREACH(std::string protocol, unloadedProtocols)
   {
     // Guess protocol id based on name (default is same as ICQ)
-    unsigned long ppid = LICQ_PPID;
+    unsigned long ppid = ICQ_PPID;
     if (protocol == "msn")
       ppid = MSN_PPID;
     else if (protocol == "jabber")
       ppid = JABBER_PPID;
 
     QTreeWidgetItem* protoItem = new QTreeWidgetItem(myOwnerView);
-    protoItem->setIcon(0, iconman->iconForStatus(Licq::User::OfflineStatus, Licq::UserId("1", ppid)));
+    protoItem->setIcon(0, iconman->iconForProtocol(ppid, Licq::User::OfflineStatus));
     protoItem->setText(0, QString(tr("%1 (Not loaded)").arg(protocol.c_str())));
     protoItem->setData(0, Qt::UserRole, protocol.c_str());
   }
@@ -210,16 +208,21 @@ void OwnerManagerDlg::listSelectionChanged()
   {
     case QVariant::String: // data is name of unloaded protocol
       myAddButton->setEnabled(true);
-      myRegisterButton->setEnabled(data.toString() == "icq");
+      myRegisterButton->setEnabled(data.toString() == "icq" || data.toString() == "msn");
       myModifyButton->setEnabled(false);
       myRemoveButton->setEnabled(false);
       break;
     case QVariant::UInt: // data is id of loaded protocol
-      myAddButton->setEnabled(!hasChildren);
-      myRegisterButton->setEnabled(!hasChildren && data.toUInt() == LICQ_PPID);
+    {
+      unsigned long protocolId = data.toUInt();
+      Licq::ProtocolPlugin::Ptr plugin = Licq::gPluginManager.getProtocolPlugin(protocolId);
+      bool mayAdd = (!hasChildren || (plugin->capabilities() & Licq::ProtocolPlugin::CanMultipleOwners));
+      myAddButton->setEnabled(mayAdd);
+      myRegisterButton->setEnabled(mayAdd && (protocolId == ICQ_PPID || protocolId == MSN_PPID));
       myModifyButton->setEnabled(false);
       myRemoveButton->setEnabled(!hasChildren);
       break;
+    }
     default: // data is id of owner
       myAddButton->setEnabled(false);
       myRegisterButton->setEnabled(false);
@@ -291,37 +294,17 @@ void OwnerManagerDlg::registerPressed()
   }
 }
 
-void OwnerManagerDlg::registerOwner(unsigned long /* protocolId */)
+void OwnerManagerDlg::registerOwner(unsigned long protocolId)
 {
-  Licq::UserId oldOwnerId = Licq::gUserManager.ownerUserId(LICQ_PPID);
-  if (oldOwnerId.isValid())
+  switch (protocolId)
   {
-    QString buf = tr("You are currently registered as\n"
-        "UIN (User ID): %1\n"
-        "Base Directory: %2\n"
-        "Rerun licq with the -b option to select a new\n"
-        "base directory and then register a new user.")
-        .arg(oldOwnerId.accountId().c_str()).arg(Licq::gDaemon.baseDir().c_str());
-    InformUser(this, buf);
-    return;
+    case ICQ_PPID:
+      gLicqGui->viewUrl("https://www.icq.com/join");
+      break;
+    case MSN_PPID:
+      gLicqGui->viewUrl("https://signup.live.com/signup.aspx");
+      break;
   }
-
-  if (registerUserDlg != 0)
-    registerUserDlg->raise();
-  else
-  {
-    registerUserDlg = new RegisterUserDlg(this);
-    connect(registerUserDlg, SIGNAL(signal_done(bool, const Licq::UserId&)),
-        SLOT(registerDone(bool, const Licq::UserId&)));
-  }
-}
-
-void OwnerManagerDlg::registerDone(bool success, const Licq::UserId& userId)
-{
-  registerUserDlg = 0;
-
-  if (success)
-    UserDlg::showDialog(userId);
 }
 
 void OwnerManagerDlg::modify()
@@ -374,6 +357,6 @@ void OwnerManagerDlg::remove()
       return;
 
     Licq::UserId ownerId = data.value<Licq::UserId>();
-    Licq::gUserManager.RemoveOwner(ownerId.protocolId());
+    Licq::gUserManager.removeOwner(ownerId);
   }
 }

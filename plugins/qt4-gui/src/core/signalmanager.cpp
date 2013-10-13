@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,6 @@
 #include <unistd.h>
 
 #include <QApplication>
-#include <QSocketNotifier>
 
 #include <licq/logging/log.h>
 #include <licq/contactlist/usermanager.h>
@@ -42,26 +41,29 @@ using namespace LicqQtGui;
 SignalManager* LicqQtGui::gGuiSignalManager = NULL;
 
 SignalManager::SignalManager()
-  : myPipe(gQtGuiPlugin->getReadPipe())
 {
   assert(gGuiSignalManager == NULL);
   gGuiSignalManager = this;
 
-  gQtGuiPlugin->setSignalMask(Licq::PluginSignal::SignalAll);
-
-  sn = new QSocketNotifier(myPipe, QSocketNotifier::Read);
-  connect(sn, SIGNAL(activated(int)), SLOT(process()));
-  sn->setEnabled(true);
+  connect(gQtGuiPlugin,
+      SIGNAL(pluginSignal(boost::shared_ptr<const Licq::PluginSignal>)),
+      this, SLOT(processSignal(boost::shared_ptr<const Licq::PluginSignal>)),
+      Qt::QueuedConnection);
+  connect(gQtGuiPlugin,
+      SIGNAL(pluginEvent(boost::shared_ptr<const Licq::Event>)),
+      this, SLOT(processEvent(boost::shared_ptr<const Licq::Event>)),
+      Qt::QueuedConnection);
+  connect(gQtGuiPlugin, SIGNAL(pluginShutdown()), this, SLOT(shutdown()),
+      Qt::QueuedConnection);
 }
 
 SignalManager::~SignalManager()
 {
-  delete sn;
-
   gGuiSignalManager = NULL;
 }
 
-void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
+void SignalManager::processSignal(
+    boost::shared_ptr<const Licq::PluginSignal> sig)
 {
   const Licq::UserId& userId = sig->userId();
   unsigned long ppid = userId.protocolId();
@@ -85,8 +87,8 @@ void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
     case Licq::PluginSignal::SignalUser:
       emit updatedUser(userId, sig->subSignal(), sig->argument(), sig->cid());
 
-      if (Licq::gUserManager.isOwner(userId) && sig->subSignal() == Licq::PluginSignal::UserStatus)
-        emit updatedStatus(ppid);
+      if (userId.isOwner() && sig->subSignal() == Licq::PluginSignal::UserStatus)
+        emit updatedStatus(userId);
       break;
 
     case Licq::PluginSignal::SignalLogon:
@@ -95,7 +97,7 @@ void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
 
     case Licq::PluginSignal::SignalLogoff:
       if (sig->subSignal() == Licq::PluginSignal::LogoffPassword)
-        new OwnerEditDlg(ppid);
+        new OwnerEditDlg(userId);
 
       emit logoff();
       break;
@@ -164,53 +166,18 @@ void SignalManager::ProcessSignal(Licq::PluginSignal* sig)
           sig->signal());
       break;
   }
-
-  delete sig;
 }
 
-void SignalManager::ProcessEvent(Licq::Event* ev)
+void SignalManager::processEvent(boost::shared_ptr<const Licq::Event> ev)
 {
   if (ev->command() == Licq::Event::CommandSearch)
-    emit searchResult(ev);
+    emit searchResult(ev.get());
   else
-    emit doneUserFcn(ev);
-  delete ev;
+    emit doneUserFcn(ev.get());
 }
 
-void SignalManager::process()
+void SignalManager::shutdown()
 {
-  char buf[16];
-
-  read(myPipe, buf, 1);
-
-  switch (buf[0])
-  {
-    case Licq::GeneralPlugin::PipeSignal:
-    {
-      Licq::PluginSignal* s = gQtGuiPlugin->popSignal();
-      ProcessSignal(s);
-      break;
-    }
-
-    case Licq::GeneralPlugin::PipeEvent:
-    {
-      Licq::Event* e = gQtGuiPlugin->popEvent();
-      ProcessEvent(e);
-      break;
-    }
-
-    case Licq::GeneralPlugin::PipeShutdown:
-    {
-      gLog.info("Exiting main window (qt gui)");
-      qApp->quit();
-      break;
-    }
-
-    case Licq::GeneralPlugin::PipeDisable:
-    case Licq::GeneralPlugin::PipeEnable:
-      break;
-
-    default:
-      gLog.warning("Unknown notification type from daemon: %c", buf[0]);
-  }
+  gLog.info("Exiting main window (qt gui)");
+  qApp->quit();
 }

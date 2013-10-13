@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #include <licq/contactlist/user.h>
 #include <licq/event.h>
 #include <licq/icq/icq.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/protocolmanager.h>
 #include <licq/protocolsignal.h>
 #include <licq/translator.h>
@@ -182,7 +183,7 @@ void MMSendDlg::SendNext()
 
       bool needsSplitting = false;
       // If we send through server (= have message limit), and we've crossed the limit
-      if ((wholeMessageRaw.length() - wholeMessagePos) > CICQDaemon::MaxMessageSize)
+      if ((wholeMessageRaw.length() - wholeMessagePos) > Licq::IcqProtocol::MaxMessageSize)
       {
         needsSplitting = true;
       }
@@ -199,10 +200,11 @@ void MMSendDlg::SendNext()
           // really know how spaces are represented in its encoding), so
           // we take the maximum length, then convert back to a Unicode string
           // and then search for Unicode whitespaces.
-          messageRaw = Licq::gTranslator.returnToUnix(wholeMessageRaw.mid(wholeMessagePos, CICQDaemon::MaxMessageSize).data()).c_str();
+          messageRaw = Licq::gTranslator.returnToUnix(wholeMessageRaw.mid(wholeMessagePos,
+              Licq::IcqProtocol::MaxMessageSize).data()).c_str();
           message = QString::fromUtf8(messageRaw);
 
-          if ((wholeMessageRaw.length() - wholeMessagePos) > CICQDaemon::MaxMessageSize)
+          if ((wholeMessageRaw.length() - wholeMessagePos) > Licq::IcqProtocol::MaxMessageSize)
           {
             // We try to find the optimal place to cut
             // (according to our narrow-minded Latin1 idea of optimal :)
@@ -248,6 +250,11 @@ void MMSendDlg::SendNext()
     }
     case Licq::UserEvent::TypeContactList:
     {
+      Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+          Licq::gPluginManager.getProtocolInstance(userId.ownerId()));
+      if (!icq)
+        return;
+
       {
         Licq::UserReadGuard u(userId);
         if (!u.isLocked())
@@ -256,7 +263,7 @@ void MMSendDlg::SendNext()
             .arg(QString::fromUtf8(u->getAlias().c_str())));
       }
 
-      icqEventTag = gLicqDaemon->icqSendContactList(userId, *myUsers);
+      icqEventTag = icq->icqSendContactList(userId, *myUsers);
       break;
     }
   }

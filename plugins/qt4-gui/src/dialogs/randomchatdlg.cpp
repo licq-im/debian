@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include <licq/event.h>
 #include <licq/icq/icq.h>
 #include <licq/icq/user.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/protocolmanager.h>
 
 #include "core/gui-defines.h"
@@ -71,8 +72,9 @@ void RandomChatDlg::fillGroupsList(QListWidget* list, bool addNone, unsigned def
 #undef ADD_RCG
 }
 
-RandomChatDlg::RandomChatDlg(QWidget* parent)
+RandomChatDlg::RandomChatDlg(const Licq::UserId& ownerId, QWidget* parent)
   : QDialog(parent),
+    myOwnerId(ownerId),
     myTag(0)
 {
   Support::setWidgetProps(this, "RandomChatDialog");
@@ -101,16 +103,21 @@ RandomChatDlg::RandomChatDlg(QWidget* parent)
 RandomChatDlg::~RandomChatDlg()
 {
   if (myTag != 0)
-    Licq::gProtocolManager.cancelEvent(Licq::UserId("0000", LICQ_PPID), myTag);
+    Licq::gProtocolManager.cancelEvent(Licq::UserId(myOwnerId, "0000"), myTag);
 }
 
 void RandomChatDlg::okPressed()
 {
+  Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+      Licq::gPluginManager.getProtocolInstance(myOwnerId));
+  if (!icq)
+    return;
+
   myOkButton->setEnabled(false);
   connect(gGuiSignalManager, SIGNAL(doneUserFcn(const Licq::Event*)),
       SLOT(userEventDone(const Licq::Event*)));
   unsigned chatGroup = myGroupsList->currentItem()->data(Qt::UserRole).toInt();
-  myTag = gLicqDaemon->randomChatSearch(chatGroup);
+  myTag = icq->randomChatSearch(myOwnerId, chatGroup);
   setWindowTitle(tr("Searching for Random Chat Partner..."));
 }
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,6 +59,7 @@
 #include <licq/daemon.h>
 #include <licq/event.h>
 #include <licq/icq/icq.h>
+#include <licq/plugin/pluginmanager.h>
 #include <licq/plugin/protocolplugin.h>
 #include <licq/pluginsignal.h>
 #include <licq/protocolmanager.h>
@@ -95,12 +96,16 @@
 #include "selectemoticon.h"
 #include "usereventtabdlg.h"
 
-using namespace std;
+using namespace LicqQtGui;
+/* TRANSLATOR LicqQtGui::UserSendEvent */
 using Licq::StringList;
 using Licq::gProtocolManager;
 using Licq::gConvoManager;
-using namespace LicqQtGui;
-/* TRANSLATOR LicqQtGui::UserSendEvent */
+using std::list;
+using std::make_pair;
+using std::pair;
+using std::string;
+using std::vector;
 
 typedef pair<const Licq::UserEvent*, Licq::UserId> messagePair;
 
@@ -256,11 +261,11 @@ UserSendEvent::UserSendEvent(int type, const Licq::UserId& userId, QWidget* pare
           historyCount++;
         }
 
-        bool bUseHTML = !isdigit(u->accountId()[1]);
+        bool bUseHTML = u->protocolId() == ICQ_PPID && !isdigit(u->accountId()[0]);
         QString contactName = QString::fromUtf8(u->getAlias().c_str());
         QString ownerName;
         {
-          Licq::OwnerReadGuard o(u->protocolId());
+          Licq::OwnerReadGuard o(u->id().ownerId());
           if (o.isLocked())
             ownerName = QString::fromUtf8(o->getAlias().c_str());
           else
@@ -934,11 +939,18 @@ void UserSendEvent::changeEventType(int type)
 
 void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
 {
-  QString accountId = myUsers.front().accountId().c_str();
+  const Licq::UserId& frontUserId(myUsers.front());
 
   unsigned long icqEventTag = 0;
   mySendServerCheck->setChecked((flags & Licq::ProtocolSignal::SendDirect) == 0);
   myUrgentCheck->setChecked(flags & Licq::ProtocolSignal::SendUrgent);
+
+  Licq::IcqProtocol::Ptr icq;
+  if (frontUserId.protocolId() == ICQ_PPID)
+  {
+    icq = plugin_internal_cast<Licq::IcqProtocol>(
+        Licq::gPluginManager.getProtocolInstance(frontUserId.ownerId()));
+  }
 
   switch (e->userEvent()->eventType())
   {
@@ -946,7 +958,7 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
     {
       bool userOffline = true;
       {
-        Licq::UserReadGuard u(myUsers.front());
+        Licq::UserReadGuard u(frontUserId);
         if (u.isLocked())
           userOffline = !u->isOnline();
       }
@@ -957,7 +969,7 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
 
       bool needsSplitting = false;
       // If we send through myServer (= have message limit), and we've crossed the limit
-      unsigned short maxSize = userOffline ? CICQDaemon::MaxOfflineMessageSize : CICQDaemon::MaxMessageSize;
+      unsigned short maxSize = userOffline ? Licq::IcqProtocol::MaxOfflineMessageSize : Licq::IcqProtocol::MaxMessageSize;
       if ((wholeMessageRaw.length() - wholeMessagePos) > maxSize)
         needsSplitting = true;
 
@@ -998,7 +1010,7 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
           messageRaw = ue->message().c_str();
         }
 
-        icqEventTag = gProtocolManager.sendMessage(myUsers.front(), messageRaw.data(),
+        icqEventTag = gProtocolManager.sendMessage(frontUserId, messageRaw.data(),
             flags, &myIcqColor);
 
         myEventTag.push_back(icqEventTag);
@@ -1015,7 +1027,7 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
     {
       const Licq::EventUrl* ue = dynamic_cast<const Licq::EventUrl*>(e->userEvent());
 
-      icqEventTag = gProtocolManager.sendUrl(myUsers.front(), ue->url(),
+      icqEventTag = gProtocolManager.sendUrl(frontUserId, ue->url(),
           ue->description(), flags, &myIcqColor);
 
       break;
@@ -1023,6 +1035,9 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
 
     case Licq::UserEvent::TypeContactList:
     {
+      if (icq == NULL)
+        break;
+
       const Licq::EventContactList* ue = dynamic_cast<const Licq::EventContactList*>(e->userEvent());
       const Licq::EventContactList::ContactList& clist = ue->Contacts();
       StringList users;
@@ -1034,25 +1049,18 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
       if (users.empty())
         break;
 
-      icqEventTag = gLicqDaemon->icqSendContactList(myUsers.front(),
-          users, flags, &myIcqColor);
-
+      icqEventTag = icq->icqSendContactList(frontUserId, users, flags, &myIcqColor);
       break;
     }
 
     case Licq::UserEvent::TypeChat:
     {
+      if (icq == NULL)
+        break;
+
       const Licq::EventChat* ue = dynamic_cast<const Licq::EventChat*>(e->userEvent());
-
-      if (ue->clients().empty())
-        //TODO in the daemon
-        icqEventTag = gLicqDaemon->icqChatRequest(myUsers.front(),
-            ue->reason(), flags);
-      else
-        //TODO in the daemon
-        icqEventTag = gLicqDaemon->icqMultiPartyChatRequest(myUsers.front(),
-            ue->reason(), ue->clients(), ue->Port(), flags);
-
+      icqEventTag = icq->icqChatRequest(frontUserId,
+          ue->reason(), flags, ue->clients(), ue->Port());
       break;
     }
 
@@ -1062,7 +1070,7 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
       list<string> filelist(ue->FileList());
 
       //TODO in the daemon
-      icqEventTag = gProtocolManager.fileTransferPropose(myUsers.front(),
+      icqEventTag = gProtocolManager.fileTransferPropose(frontUserId,
           ue->filename(), ue->fileDescription(), filelist, flags);
 
       break;
@@ -1070,11 +1078,11 @@ void UserSendEvent::retrySend(const Licq::Event* e, unsigned flags)
 
     case Licq::UserEvent::TypeSms:
     {
-      const Licq::EventSms* ue = dynamic_cast<const Licq::EventSms*>(e->userEvent());
+      if (icq == NULL)
+        break;
 
-      //TODO in the daemon
-      icqEventTag = gLicqDaemon->icqSendSms(myUsers.front(),
-          ue->number(), ue->message());
+      const Licq::EventSms* ue = dynamic_cast<const Licq::EventSms*>(e->userEvent());
+      icqEventTag = icq->icqSendSms(frontUserId, ue->number(), ue->message());
       break;
     }
 
@@ -1151,6 +1159,8 @@ void UserSendEvent::userUpdated(const Licq::UserId& userId, unsigned long subSig
 
 void UserSendEvent::send()
 {
+  const Licq::UserId& frontUserId(myUsers.front());
+
   if (myType == MessageEvent || myType == SmsEvent)
   {
     // don't let the user send empty messages
@@ -1184,7 +1194,7 @@ void UserSendEvent::send()
   bool secure = false;;
   bool offline = true;
   {
-    Licq::UserReadGuard u(myUsers.front());
+    Licq::UserReadGuard u(frontUserId);
     if (u.isLocked())
     {
       secure = u->Secure() || u->AutoSecure();
@@ -1199,7 +1209,7 @@ void UserSendEvent::send()
             "Send anyway?")))
       return;
 
-    Licq::UserWriteGuard u(myUsers.front());
+    Licq::UserWriteGuard u(frontUserId);
     if (u.isLocked())
       u->SetAutoSecure(false);
   }
@@ -1211,7 +1221,7 @@ void UserSendEvent::send()
 
   if (myType != ContactEvent)
     connect(myMessageEdit, SIGNAL(textChanged()), SLOT(messageTextChanged()));
-  gProtocolManager.sendTypingNotification(myUsers.front(), false, myConvoId);
+  gProtocolManager.sendTypingNotification(frontUserId, false, myConvoId);
 
   StringList contacts;
   Licq::UserId userId;
@@ -1250,7 +1260,7 @@ void UserSendEvent::send()
 
     bool needsSplitting = false;
     // If we send through server (= have message limit), and we've crossed the limit
-    unsigned short maxSize = offline ? CICQDaemon::MaxOfflineMessageSize : CICQDaemon::MaxMessageSize;
+    unsigned short maxSize = offline ? Licq::IcqProtocol::MaxOfflineMessageSize : Licq::IcqProtocol::MaxMessageSize;
     if (mySendServerCheck->isChecked() && ((wholeMessageRaw.length() - wholeMessagePos) > maxSize))
       needsSplitting = true;
 
@@ -1291,7 +1301,7 @@ void UserSendEvent::send()
       }
 
       unsigned long icqEventTag = gProtocolManager.sendMessage(
-          myUsers.front(),
+          frontUserId,
           messageRaw.data(),
           flags,
           &myIcqColor,
@@ -1306,11 +1316,17 @@ void UserSendEvent::send()
   {
     unsigned long icqEventTag = 0;
 
+    Licq::IcqProtocol::Ptr icq;
+    if (frontUserId.protocolId() == ICQ_PPID)
+    {
+      icq = plugin_internal_cast<Licq::IcqProtocol>(
+          Licq::gPluginManager.getProtocolInstance(frontUserId.ownerId()));
+    }
+
     switch (myType)
     {
       case UrlEvent:
-        icqEventTag = gProtocolManager.sendUrl(
-            myUsers.front(),
+        icqEventTag = gProtocolManager.sendUrl(frontUserId,
             myUrlEdit->text().toUtf8().constData(),
             myMessageEdit->toPlainText().toUtf8().data(),
             flags,
@@ -1318,34 +1334,26 @@ void UserSendEvent::send()
         break;
 
       case ContactEvent:
-        //TODO Fix this for new protocol plugin
-        icqEventTag = gLicqDaemon->icqSendContactList(
-            myUsers.front(),
+        if (icq == NULL)
+          return;
+        icqEventTag = icq->icqSendContactList(frontUserId,
             contacts,
             flags,
             &myIcqColor);
         break;
 
       case ChatEvent:
-        if (myChatPort == 0)
-          //TODO in daemon
-          icqEventTag = gLicqDaemon->icqChatRequest(
-              myUsers.front(),
-              myMessageEdit->toPlainText().toUtf8().data(),
-              flags);
-        else
-          icqEventTag = gLicqDaemon->icqMultiPartyChatRequest(
-              myUsers.front(),
-              myMessageEdit->toPlainText().toUtf8().data(),
-              myChatClients.toUtf8().data(),
-              myChatPort,
-              flags);
+        if (icq == NULL)
+          return;
+        icqEventTag = icq->icqChatRequest(frontUserId,
+            myMessageEdit->toPlainText().toUtf8().data(), flags,
+            myChatClients.toUtf8().data(), myChatPort);
         break;
 
       case FileEvent:
         //TODO in daemon
         icqEventTag = gProtocolManager.fileTransferPropose(
-            myUsers.front(),
+            frontUserId,
             QFile::encodeName(myFileEdit->text()).data(),
             myMessageEdit->toPlainText().toUtf8().data(),
             myFileList,
@@ -1353,7 +1361,9 @@ void UserSendEvent::send()
         break;
 
       case SmsEvent:
-        icqEventTag = gLicqDaemon->icqSendSms(myUsers.front(),
+        if (icq == NULL)
+          return;
+        icqEventTag = icq->icqSendSms(frontUserId,
             mySmsPhoneEdit->text().toUtf8().constData(),
             myMessageEdit->toPlainText().toUtf8().data());
         break;
@@ -1387,9 +1397,7 @@ void UserSendEvent::sendBase()
   if (myEventTag.size() != 0)
     icqEventTag = myEventTag.front();
 
-  unsigned long myPpid = myUsers.front().protocolId();
-
-  if (icqEventTag != 0 || myPpid != LICQ_PPID)
+  if (icqEventTag != 0 || myUsers.front().protocolId() != ICQ_PPID)
   {
     bool via_server = mySendServerCheck->isChecked();
     myProgressMsg = tr("Sending ");
@@ -1867,9 +1875,6 @@ void UserSendEvent::textChangedTimeout()
   if (str != myTempMessage)
   {
     myTempMessage = str;
-    // Hack to not keep sending the typing notification to ICQ
-    if (myPpid != LICQ_PPID)
-      gProtocolManager.sendTypingNotification(myUsers.front(), true, myConvoId);
   }
   else
   {

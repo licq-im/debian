@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2011-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2011-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,11 +27,11 @@
 #include <boost/foreach.hpp>
 #include <boost/regex.hpp>
 
-using namespace std;
 using namespace LicqDaemon;
 using Licq::FilterRule;
 using Licq::FilterRules;
 using Licq::UserEvent;
+using std::string;
 
 // Declare global FilterManager (internal for daemon)
 LicqDaemon::FilterManager LicqDaemon::gFilterManager;
@@ -65,7 +65,7 @@ void FilterManager::getDefaultRules(FilterRules& rules)
 
   // Ignore reoccuring spam messages that are sent as ICQ Authorization Requests
   rule.isEnabled = true;
-  rule.protocolId = LICQ_PPID;
+  rule.protocolId = ICQ_PPID;
   rule.eventMask = 1<<UserEvent::TypeAuthRequest;
   rule.action = FilterRule::ActionIgnore;
   rule.expression = "(\xD0\xBF|\xD0\x9F)\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82(\xD0\xB8\xD0\xBA)? =\\)";
@@ -87,7 +87,7 @@ void FilterManager::initialize()
   {
     // Failed to read configuration, setup defaults
     getDefaultRules(myRules);
-    saveRules();
+    saveRules(0);
     return;
   }
 
@@ -95,7 +95,7 @@ void FilterManager::initialize()
   int numrules;
   conf.get("NumRules", numrules);
 
-  for (int i = 0; i < numrules; ++i)
+  for (int i = 1; i <= numrules; ++i)
   {
     char key[20];
     FilterRule rule;
@@ -103,7 +103,9 @@ void FilterManager::initialize()
     sprintf(key, "Rule%i.enabled", i);
     conf.get(key, rule.isEnabled);
     sprintf(key, "Rule%i.protocol", i);
-    conf.get(key, rule.protocolId);
+    string ppidStr;
+    conf.get(key, ppidStr);
+    rule.protocolId = Licq::protocolId_fromString(ppidStr);
     sprintf(key, "Rule%i.events", i);
     conf.get(key, rule.eventMask);
     sprintf(key, "Rule%i.expression", i);
@@ -125,12 +127,13 @@ void FilterManager::getRules(FilterRules& rules)
 void FilterManager::setRules(const FilterRules& newRules)
 {
   Licq::MutexLocker lock(myDataMutex);
+  int oldCount = myRules.size();
   myRules = newRules;
 
-  saveRules();
+  saveRules(oldCount);
 }
 
-void FilterManager::saveRules()
+void FilterManager::saveRules(int oldCount)
 {
   Licq::IniFile conf("filter.conf");
   conf.loadFile();
@@ -142,19 +145,36 @@ void FilterManager::saveRules()
   {
     char key[20];
 
+    ++i;
     sprintf(key, "Rule%i.enabled", i);
     conf.set(key, rule.isEnabled);
     sprintf(key, "Rule%i.protocol", i);
-    conf.set(key, rule.protocolId);
+    conf.set(key, rule.protocolId == 0 ? "" : Licq::protocolId_toString(rule.protocolId));
     sprintf(key, "Rule%i.events", i);
     conf.set(key, rule.eventMask);
     sprintf(key, "Rule%i.expression", i);
     conf.set(key, rule.expression);
     sprintf(key, "Rule%i.action", i);
     conf.set(key, rule.action);
-
-    ++i;
   }
+
+  // Remove old entries
+  while (i < oldCount)
+  {
+    char key[20];
+    ++i;
+    sprintf(key, "Rule%i.enabled", i);
+    conf.unset(key);
+    sprintf(key, "Rule%i.protocol", i);
+    conf.unset(key);
+    sprintf(key, "Rule%i.events", i);
+    conf.unset(key);
+    sprintf(key, "Rule%i.expression", i);
+    conf.unset(key);
+    sprintf(key, "Rule%i.action", i);
+    conf.unset(key);
+  }
+
   conf.writeFile();
 }
 

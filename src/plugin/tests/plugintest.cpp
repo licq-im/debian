@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq Developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq Developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,87 +17,158 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-// Steal the PluginManager's friend declaration
-#define PluginManager PluginTest
 #include "../plugin.h"
-#undef PluginManager
+#include "../plugininstance.h"
+
+#include <licq/plugin/pluginfactory.h>
+#include <licq/plugin/plugininterface.h>
 
 #include <gtest/gtest.h>
-#include <list>
-
-#include "../../utils/dynamiclibrary.h"
-#include "../pluginthread.h"
+#include <gmock/gmock.h>
 
 // licq.cpp
 static const char* argv0 = "test";
 char** global_argv = const_cast<char**>(&argv0);
 
-using Licq::Plugin;
+using LicqDaemon::Plugin;
+using LicqDaemon::PluginInstance;
 using LicqDaemon::DynamicLibrary;
 using LicqDaemon::PluginThread;
 
-namespace LicqDaemon
+using ::testing::_;
+using ::testing::InSequence;
+using ::testing::Invoke;
+using ::testing::Return;
+
+namespace LicqTest
 {
 
-class PluginTest : public Plugin
+// Dummy interfaces
+class InternalFactoryInterface { };
+class InternalInstanceInterface { };
+class UnImplementedInterface { };
+
+class MockPluginFactory : public Licq::PluginFactory,
+                          public InternalFactoryInterface
 {
 public:
-  PluginTest(Params& p) :
-    Plugin(p) { /* Empty */ }
-
-  bool callInit(int argc = 0, char** argv = NULL, void (*callback)(const Plugin&) = NULL)
-  { return myPrivate->callInit(argc, argv, callback); }
-
-  void startThread(void (*startCallback)(const Plugin&) = NULL,
-      void (*exitCallback)(const Plugin&) = NULL)
-  { myPrivate->startThread(startCallback, exitCallback); }
-
-  int joinThread()
-  { return myPrivate->joinThread(); }
-
-  std::string name() const
-  { return "Name"; }
-
-  std::string version() const
-  { return "Version"; }
-
-  std::string configFile() const
-  { return "ConfigFile"; }
-
-  bool init(int, char**)
-  { return true; }
-
-  int run()
-  { return 5; }
-
-  void destructor()
-  { delete this; }
-
-  // Un-protect functions so we can test them without being the PluginManager
-  using Plugin::getReadPipe;
-  using Plugin::shutdown;
+  MOCK_CONST_METHOD0(name, std::string());
+  MOCK_CONST_METHOD0(version, std::string());
+  MOCK_METHOD1(destroyPlugin, void(Licq::PluginInterface* plugin));
 };
 
-} // namespace LicqDaemon
+class MockPlugin : public Licq::PluginInterface,
+                   public InternalInstanceInterface
+{
+public:
+  MOCK_METHOD2(init, bool(int argc, char** argv));
+  MOCK_METHOD0(run, int());
+  MOCK_METHOD0(shutdown, void());
+};
 
-using LicqDaemon::PluginTest;
+class TestPlugin : public Plugin
+{
+public:
+  typedef boost::shared_ptr<TestPlugin> Ptr;
 
-namespace LicqTest {
+  TestPlugin(DynamicLibrary::Ptr lib,
+             boost::shared_ptr<Licq::PluginFactory> factory)
+    : Plugin(lib),
+      myFactory(factory)
+  {
+    // Empty
+  }
+
+  // From Plugin
+  boost::shared_ptr<Licq::PluginFactory> factory()
+  {
+    return myFactory;
+  }
+
+protected:
+  // From Plugin
+  boost::shared_ptr<const Licq::PluginFactory> factory() const
+  {
+    return myFactory;
+  }
+
+private:
+  boost::shared_ptr<Licq::PluginFactory> myFactory;
+};
+
+class TestPluginInstance : public PluginInstance
+{
+public:
+  bool myIsCreated;
+
+  TestPluginInstance(
+      int id, TestPlugin::Ptr plugin, PluginThread::Ptr thread,
+      boost::shared_ptr<Licq::PluginInterface> interface)
+    : PluginInstance(id, thread),
+      myIsCreated(false),
+      myPlugin(plugin),
+      myInterface(interface)
+  {
+    // Empty
+  }
+
+  ~TestPluginInstance()
+  {
+    destroyInstance();
+  }
+
+  // For test
+  void destroyInstance()
+  {
+    if (myInterface)
+      myPlugin->factory()->destroyPlugin(myInterface.get());
+    myInterface.reset();
+    myPlugin.reset();
+  }
+
+protected:
+  // From PluginInstance
+  void createInterface() { myIsCreated = true; }
+
+  boost::shared_ptr<Licq::PluginInterface> interface()
+  {
+    return myInterface;
+  }
+
+  boost::shared_ptr<const Licq::PluginInterface> interface() const
+  {
+    return myInterface;
+  }
+
+private:
+  TestPlugin::Ptr myPlugin;
+  boost::shared_ptr<Licq::PluginInterface> myInterface;
+};
+
+static void nullDeleter(void*) { /* Empty */ }
 
 struct PluginFixture : public ::testing::Test
 {
   DynamicLibrary::Ptr myLib;
   PluginThread::Ptr myThread;
-  Plugin::Params myPluginParams;
-  PluginTest plugin;
+  MockPluginFactory myMockFactory;
+  MockPlugin myMockInterface;
+  TestPlugin plugin;
+  TestPluginInstance instance;
+
+  pthread_t myPluginThreadId;
 
   PluginFixture() :
     myLib(new DynamicLibrary("")),
     myThread(new PluginThread()),
-    myPluginParams(1, myLib, myThread),
-    plugin(myPluginParams)
+    plugin(myLib,
+           boost::shared_ptr<MockPluginFactory>(&myMockFactory, &nullDeleter)),
+    instance(1, boost::shared_ptr<TestPlugin>(&plugin, &nullDeleter),
+             myThread,
+             boost::shared_ptr<MockPlugin>(&myMockInterface, &nullDeleter)),
+    myPluginThreadId(0)
   {
-    // Empty
+    EXPECT_CALL(myMockFactory, destroyPlugin(&myMockInterface));
   }
 
   ~PluginFixture()
@@ -105,75 +176,165 @@ struct PluginFixture : public ::testing::Test
     myThread->cancel();
   }
 
-  char getPipeChar()
+  int compareThread()
   {
-    int fd = plugin.getReadPipe();
-    char ch;
-    read(fd, &ch, sizeof(ch));
-    return ch;
+    myPluginThreadId = ::pthread_self();
+    return myThread->isThread(::pthread_self()) ? 5 : -5;
   }
 };
 
-TEST(Plugin, load)
-{
-  DynamicLibrary::Ptr lib(new DynamicLibrary(""));
-  PluginThread::Ptr thread(new PluginThread());
-  Plugin::Params pluginParams(1, lib, thread);
-  ASSERT_NO_THROW(PluginTest plugin(pluginParams));
-}
-
 TEST_F(PluginFixture, callApiFunctions)
 {
-  EXPECT_EQ(1, plugin.id());
-  EXPECT_EQ("Name", plugin.name());
-  EXPECT_EQ("Version", plugin.version());
-  EXPECT_EQ("ConfigFile", plugin.configFile());
-  EXPECT_EQ("", plugin.libraryName());
+  InSequence dummy;
+  EXPECT_CALL(myMockFactory, name());
+  EXPECT_CALL(myMockFactory, version());
+  EXPECT_CALL(myMockInterface, shutdown());
+
+  // Verify that the calls are forwarded to the interface
+  plugin.name();
+  plugin.version();
+  instance.shutdown();
 }
 
-TEST_F(PluginFixture, runPlugin)
+TEST_F(PluginFixture, castToInternalFactoryInterface)
 {
-  plugin.startThread();
-  EXPECT_FALSE(plugin.isThisThread());
-  EXPECT_EQ(5, plugin.joinThread());
+  Plugin::Ptr ptr(&plugin, &nullDeleter);
+
+  EXPECT_FALSE(plugin_internal_cast<UnImplementedInterface>(ptr));
+  EXPECT_FALSE(plugin_internal_cast<InternalInstanceInterface>(ptr));
+  EXPECT_EQ(plugin_internal_cast<InternalFactoryInterface>(ptr).get(),
+            &myMockFactory);
 }
 
-static bool InitCallbackCalled = false;
-static void initCallback(const Plugin&)
+TEST_F(PluginFixture, castToInternalInstanceInterface)
 {
-  InitCallbackCalled = true;
+  PluginInstance::Ptr ptr(&instance, &nullDeleter);
+
+  EXPECT_FALSE(plugin_internal_cast<UnImplementedInterface>(ptr));
+  EXPECT_FALSE(plugin_internal_cast<InternalFactoryInterface>(ptr));
+  EXPECT_EQ(plugin_internal_cast<InternalInstanceInterface>(ptr).get(),
+            &myMockInterface);
 }
 
-static bool StartCallbackCalled = false;
-static void startCallback(const Plugin&)
+static int DeleteCount = 0;
+void countingNullDeleter(void*)
 {
-  StartCallbackCalled = true;
+  DeleteCount += 1;
 }
 
-static bool ExitCallbackCalled = false;
-static void exitCallback(const Plugin&)
+TEST_F(PluginFixture, lifeTimeOfCastedFactory)
 {
-  ExitCallbackCalled = true;
+  DeleteCount = 0;
+
+  // Make the instance drop the plugin shared_ptr
+  instance.destroyInstance();
+
+  // The plugin should not be "deleted" until both the plugin and the interface
+  // has gone out of scope.
+
+  {
+    boost::shared_ptr<InternalFactoryInterface> factory;
+    {
+      Plugin::Ptr ptr(&plugin, &countingNullDeleter);
+      factory = plugin_internal_cast<InternalFactoryInterface>(ptr);
+      EXPECT_EQ(ptr.use_count(), factory.use_count());
+    }
+    EXPECT_EQ(0, DeleteCount);
+  }
+
+  EXPECT_EQ(1, DeleteCount);
 }
 
-TEST_F(PluginFixture, runPluginWithCallbacks)
+TEST_F(PluginFixture, lifeTimeOfCastedInstance)
 {
-  InitCallbackCalled = false;
-  StartCallbackCalled = false;
-  ExitCallbackCalled = false;
-  plugin.callInit(0, NULL, &initCallback);
-  plugin.startThread(&startCallback, &exitCallback);
-  EXPECT_FALSE(plugin.isThisThread());
-  EXPECT_EQ(5, plugin.joinThread());
-  EXPECT_TRUE(InitCallbackCalled);
-  EXPECT_TRUE(StartCallbackCalled);
-  EXPECT_TRUE(ExitCallbackCalled);
+  DeleteCount = 0;
+
+  // The instance should not be "deleted" until both the instance and the
+  // interface has gone out of scope.
+
+  {
+    boost::shared_ptr<InternalInstanceInterface> interface;
+    {
+      PluginInstance::Ptr ptr(&instance, &countingNullDeleter);
+      interface = plugin_internal_cast<InternalInstanceInterface>(ptr);
+      EXPECT_EQ(ptr.use_count(), interface.use_count());
+    }
+    EXPECT_EQ(0, DeleteCount);
+  }
+
+  EXPECT_EQ(1, DeleteCount);
 }
 
-TEST_F(PluginFixture, shutdown)
+struct CallbackData
 {
-  plugin.shutdown();
-  EXPECT_EQ('X', getPipeChar());
+  bool myCalled;
+  const PluginInstance* myInstance;
+  pthread_t myThreadId;
+
+  CallbackData() : myCalled(false), myInstance(NULL), myThreadId(0) { }
+};
+
+static CallbackData CreateCallbackData;
+static void createCallback(const PluginInstance& instance)
+{
+  CreateCallbackData.myCalled = true;
+  CreateCallbackData.myInstance = &instance;
+  CreateCallbackData.myThreadId = ::pthread_self();
+}
+
+TEST_F(PluginFixture, create)
+{
+  CreateCallbackData = CallbackData();
+  EXPECT_FALSE(instance.myIsCreated);
+
+  EXPECT_TRUE(instance.create(&createCallback));
+  EXPECT_TRUE(instance.myIsCreated);
+
+  EXPECT_TRUE(CreateCallbackData.myCalled);
+  EXPECT_EQ(&instance, CreateCallbackData.myInstance);
+  EXPECT_TRUE(myThread->isThread(CreateCallbackData.myThreadId));
+}
+
+TEST_F(PluginFixture, init)
+{
+  EXPECT_CALL(myMockInterface, init(1, _));
+  instance.init(0, NULL);
+}
+
+static CallbackData StartCallbackData;
+static void startCallback(const PluginInstance& instance)
+{
+  StartCallbackData.myCalled = true;
+  StartCallbackData.myInstance = &instance;
+  StartCallbackData.myThreadId = ::pthread_self();
+}
+
+static CallbackData ExitCallbackData;
+static void exitCallback(const PluginInstance& instance)
+{
+  ExitCallbackData.myCalled = true;
+  ExitCallbackData.myInstance = &instance;
+  ExitCallbackData.myThreadId = ::pthread_self();
+}
+
+TEST_F(PluginFixture, run)
+{
+  EXPECT_CALL(myMockInterface, run())
+      .WillOnce(Invoke(this, &PluginFixture::compareThread));
+  myPluginThreadId = 0;
+  StartCallbackData = CallbackData();
+  ExitCallbackData = CallbackData();
+
+  instance.run(&startCallback, &exitCallback);
+  EXPECT_EQ(5, instance.joinThread());
+
+  EXPECT_TRUE(StartCallbackData.myCalled);
+  EXPECT_EQ(&instance, StartCallbackData.myInstance);
+  EXPECT_TRUE(::pthread_equal(myPluginThreadId, StartCallbackData.myThreadId));
+
+  EXPECT_TRUE(ExitCallbackData.myCalled);
+  EXPECT_EQ(&instance, ExitCallbackData.myInstance);
+  EXPECT_TRUE(::pthread_equal(myPluginThreadId, ExitCallbackData.myThreadId));
 }
 
 } // namespace LicqTest

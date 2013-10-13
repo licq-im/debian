@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1999-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1999-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@
 #include "helpers/support.h"
 
 #include "widgets/groupcombobox.h"
-#include "widgets/protocombobox.h"
+#include "widgets/ownercombobox.h"
 
 #include "authdlg.h"
 
@@ -51,15 +51,16 @@ AddUserDlg::AddUserDlg(const Licq::UserId& userId, QWidget* parent)
 
   QGridLayout* layDialog = new QGridLayout(this);
 
-  QLabel* lblProtocol = new QLabel(tr("&Protocol:"));
-  myProtocol = new ProtoComboBox(ProtoComboBox::FilterOwnersOnly);
-  myProtocol->setCurrentPpid(userId.protocolId());
-  lblProtocol->setBuddy(myProtocol);
+  QLabel* ownerLabel = new QLabel(tr("&Account:"));
+  myOwnerCombo = new OwnerComboBox();
+  if (userId.isValid())
+    myOwnerCombo->setCurrentOwnerId(userId.ownerId());
+  ownerLabel->setBuddy(myOwnerCombo);
 
   unsigned line = 0;
 
-  layDialog->addWidget(lblProtocol, line, 0);
-  layDialog->addWidget(myProtocol, line++, 1);
+  layDialog->addWidget(ownerLabel, line, 0);
+  layDialog->addWidget(myOwnerCombo, line++, 1);
 
   QLabel* lblGroup = new QLabel(tr("&Group:"));
   myGroup = new GroupComboBox();
@@ -95,21 +96,21 @@ AddUserDlg::AddUserDlg(const Licq::UserId& userId, QWidget* parent)
       QDialogButtonBox::Ok |
       QDialogButtonBox::Cancel);
 
-  connect(myProtocol, SIGNAL(currentIndexChanged(int)), SLOT(protocolChanged()));
+  connect(myOwnerCombo, SIGNAL(currentIndexChanged(int)), SLOT(ownerChanged()));
   connect(buttons, SIGNAL(accepted()), SLOT(ok()));
   connect(buttons, SIGNAL(rejected()), SLOT(close()));
 
   layDialog->addWidget(buttons, line++, 0, 1, 2);
 
   myId->setFocus();
-  protocolChanged();
+  ownerChanged();
   show();
 }
 
-void AddUserDlg::protocolChanged()
+void AddUserDlg::ownerChanged()
 {
-  unsigned long ppid = myProtocol->currentPpid();
-  Licq::ProtocolPlugin::Ptr protocol = Licq::gPluginManager.getProtocolPlugin(ppid);
+  unsigned long ppid = myOwnerCombo->currentOwnerId().protocolId();
+  Licq::ProtocolPlugin::Ptr protocol(Licq::gPluginManager.getProtocolPlugin(ppid));
   myReqAuthCheck->setEnabled(protocol.get() != NULL &&
     (protocol->capabilities() & Licq::ProtocolPlugin::CanSendAuthReq));
 }
@@ -117,7 +118,7 @@ void AddUserDlg::protocolChanged()
 void AddUserDlg::ok()
 {
   QString accountId = myId->text().trimmed();
-  Licq::UserId userId(accountId.toLatin1().constData(), myProtocol->currentPpid());
+  Licq::UserId userId(myOwnerCombo->currentOwnerId(), accountId.toUtf8().constData());
   int group = myGroup->currentGroupId();
   bool notify = myNotify->isChecked();
   bool reqAuth = myReqAuthCheck->isEnabled() && myReqAuthCheck->isChecked();
@@ -126,8 +127,13 @@ void AddUserDlg::ok()
   if (userId.isValid())
     added = Licq::gUserManager.addUser(userId, true, true, group);
 
-  if (added && notify)
-    gLicqDaemon->icqAlertUser(userId);
+  if (added && notify && userId.protocolId() == ICQ_PPID)
+  {
+    Licq::IcqProtocol::Ptr icq = plugin_internal_cast<Licq::IcqProtocol>(
+        Licq::gPluginManager.getProtocolInstance(userId.ownerId()));
+    if (icq)
+      icq->icqAlertUser(userId);
+  }
 
   if (added && reqAuth)
     new AuthDlg(AuthDlg::RequestAuth, userId);

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2011 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,17 +30,17 @@ namespace LicqDaemon
 class UserHistory
 {
 public:
-  explicit UserHistory(unsigned long ppid);
+  explicit UserHistory(const Licq::UserId& userId);
   ~UserHistory();
 
   /**
    * Sets name of the history file
    * Note: Should not be called by plugins
    *
-   * @param filename "default", "none" or a filename
-   * @param userId User id to use if default is requested
+   * @param filename Absolute filename for history file
    */
-  void setFile(const std::string& filename, const std::string& description);
+  void setFile(const std::string& filename)
+  { myFilename = filename; }
 
   /**
    * Read history from file
@@ -70,16 +70,14 @@ public:
   void append(const std::string& buf) { write(buf, true); }
   void save(const std::string& buf) { write(buf, false); }
 
-  const std::string& description() const { return myDescription; }
   const std::string& filename() const { return myFilename; }
 
 protected:
-  unsigned long myPpid;
+  Licq::UserId myUserId;
   std::string myFilename;
-  std::string myDescription;
 };
 
-} // namespace Licq
+} // namespace LicqDaemon
 
 #endif
 

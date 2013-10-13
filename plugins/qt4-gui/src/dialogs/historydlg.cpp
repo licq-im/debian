@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2007-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2007-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,8 +58,6 @@ HistoryDlg::HistoryDlg(const Licq::UserId& userId, QWidget* parent)
 {
   Support::setWidgetProps(this, "UserHistoryDialog");
   setAttribute(Qt::WA_DeleteOnClose, true);
-
-  myIsOwner = Licq::gUserManager.isOwner(myUserId);
 
   QVBoxLayout* topLayout = new QVBoxLayout(this);
 
@@ -146,7 +144,7 @@ HistoryDlg::HistoryDlg(const Licq::UserId& userId, QWidget* parent)
   // Dialog buttons
   QHBoxLayout* buttonsLayout = new QHBoxLayout();
   topLayout->addLayout(buttonsLayout);
-  if (!myIsOwner)
+  if (!myUserId.isOwner())
   {
     QPushButton* menuButton = new QPushButton(tr("&Menu"));
     connect(menuButton, SIGNAL(pressed()), SLOT(showUserMenu()));
@@ -173,11 +171,7 @@ HistoryDlg::HistoryDlg(const Licq::UserId& userId, QWidget* parent)
     // Fetch list of all history entries
     else if (!u->GetHistory(myHistoryList))
     {
-      if (!u->historyFile().empty())
-        myStatusLabel->setText(tr("Error loading history file: %1\nDescription: %2")
-            .arg(u->historyFile().c_str()).arg(u->historyName().c_str()));
-      else
-        myStatusLabel->setText(tr("Sorry, history is disabled for this person"));
+      myStatusLabel->setText(tr("Error loading history file"));
     }
     // No point in doing anything more if history is empty
     else if (myHistoryList.empty())
@@ -204,21 +198,24 @@ HistoryDlg::HistoryDlg(const Licq::UserId& userId, QWidget* parent)
     myContactName = tr("server");
     myUseHtml = false;
 
-    if (!myIsOwner)
+    if (!myUserId.isOwner())
       myContactName = QString::fromUtf8(u->getAlias().c_str());
-    QString myId = u->accountId().c_str();
-    for (int x = 0; x < myId.length(); x++)
+    if (u->protocolId() == ICQ_PPID)
     {
-      if (!myId[x].isDigit())
+      QString myId = u->accountId().c_str();
+      for (int x = 0; x < myId.length(); x++)
       {
-        myUseHtml = true;
-        break;
+        if (!myId[x].isDigit())
+        {
+          myUseHtml = true;
+          break;
+        }
       }
     }
   }
 
   {
-    Licq::OwnerReadGuard o(myUserId.protocolId());
+    Licq::OwnerReadGuard o(myUserId.ownerId());
     if (o.isLocked())
       myOwnerName = QString::fromUtf8(o->getAlias().c_str());
   }

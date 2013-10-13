@@ -1,7 +1,7 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
  * Copyright (C) 2003-2005 Martin Maurer (martinmaurer@gmx.at)
- * Copyright (C) 2007-2011 Licq developers
+ * Copyright (C) 2007-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,20 +43,12 @@
 
 #include "my_xosd.h"
 #include "licq_osd.conf.h"
-#include "pluginversion.h"
 
-using namespace std;
 using Licq::User;
 using Licq::UserId;
 using Licq::gLog;
 using Licq::gUserManager;
-
-//#if CVSLICQ==1
-//#warning compiling for licq>=1.2.8
-//#else
-//#undef CVSLICQ
-//#warning compiling for licq<1.2.8
-//#endif
+using std::string;
 
 #define _(String) gettext (String)
 
@@ -92,8 +84,7 @@ struct Config {
 
 
 // some forward declarations
-void ProcessSignal(Licq::PluginSignal* s);
-void ProcessEvent(Licq::Event* e);
+void ProcessSignal(const Licq::PluginSignal* s);
 #ifdef CP_TRANSLATE
     const char *get_iconv_encoding_name(const char *licq_encoding_name);
 string my_translate(const UserId& userId, const string& msg, const char* userenc);
@@ -105,41 +96,9 @@ bool Online;
 bool Enabled;
 bool Configured=false; // is the xosd display initialized?
 
-using namespace std;
-
-OsdPlugin::OsdPlugin(Licq::GeneralPlugin::Params& p)
-  : Licq::GeneralPlugin(p)
+OsdPlugin::OsdPlugin()
 {
   // Empty
-}
-
-// when licq --help is called
-string OsdPlugin::usage() const
-{
-    static const char name[] = "no options for this plugin. Configure via configfile";
-    return name;
-}
-
-// plugin name as seen in the licq load plugins menupoint
-string OsdPlugin::name() const
-{
-    static const char name[] = "OSD";
-    return name;
-}
-
-// config file for this plugin
-// used when you select configure in the licq plugin selector
-string OsdPlugin::configFile() const
-{
-    static const char name[] = "licq_osd.conf";
-    return name;
-}
-
-// displayed in plugin selector
-string OsdPlugin::version() const
-{
-    static const char version[] = PLUGIN_VERSION_STRING;
-    return version;
 }
 
 // status of plugin - so they can be deactivated
@@ -147,13 +106,6 @@ string OsdPlugin::version() const
 bool OsdPlugin::isEnabled() const
 {
   return Enabled;
-}
-
-// displayed in plugin selector
-string OsdPlugin::description() const
-{
-    static const char desc[] = "OSD-text on new messages";
-    return desc;
 }
 
 // a wrapper so we can log from my_xosd.cpp to standard licq log
@@ -346,43 +298,36 @@ int OsdPlugin::run()
 
 	switch (buf[0])
 	{
-      case Licq::GeneralPlugin::PipeSignal:
+      case PipeSignal:
       {
-		// read the actual signal from the daemon
-        Licq::PluginSignal* s = popSignal();
-		if (s)
-		{
-		    ProcessSignal(s);
-		    delete s;
-		    s=0;
-		}
-		break;
-	    }
+        // read the actual signal from the daemon
+        ProcessSignal(popSignal().get());
+        break;
+      }
 
 	    // An event is pending - skip it - shouldnt happen
 	    // events are responses to some requests to the licq daemon
 	    // like send a message - we never do such a thing
-      case Licq::GeneralPlugin::PipeEvent:
+      case PipeEvent:
       {
         gLog.warning("Event received - should not happen in this plugin");
-        Licq::Event* e = popEvent();
-        delete e;
+        popEvent();
         break;
       }
 	    // shutdown command from daemon
 	    // every plugin has to implement this command
-      case Licq::GeneralPlugin::PipeShutdown:
+      case PipeShutdown:
       {
 		Exit = true;
 		gLog.info("OSD Plugin shutting down");
 		break;
 	    }
 
-      case Licq::GeneralPlugin::PipeDisable:
+      case PipeDisable:
 	    Enabled=false;
 	    gLog.info("OSD Plugin disabled");
 	    break;
-      case Licq::GeneralPlugin::PipeEnable:
+      case PipeEnable:
 	    Enabled=true;
 	    gLog.info("OSD Plugin enabled");
 	    break;
@@ -400,12 +345,7 @@ int OsdPlugin::run()
     return 0;
 }
 
-void OsdPlugin::destructor()
-{
-  delete this;
-}
-
-void ProcessSignal(Licq::PluginSignal* s)
+void ProcessSignal(const Licq::PluginSignal* s)
 {
     string username;
     bool notify=false;
@@ -437,7 +377,7 @@ void ProcessSignal(Licq::PluginSignal* s)
 
             if (want_osd)
 	    {
-        Licq::OwnerReadGuard o(LICQ_PPID);
+        Licq::OwnerReadGuard o(s->userId().ownerId());
         if (o.isLocked())
         {
           status = o->status();
@@ -519,7 +459,7 @@ void ProcessSignal(Licq::PluginSignal* s)
 		want_osd=false;
 	    if (ignore)
 		want_osd=false;
-      if (gUserManager.isOwner(s->userId())) // no messages for our own actions
+      if (s->userId().isOwner()) // no messages for our own actions
                 want_osd=false;
 
 	    // user checked our auto-response

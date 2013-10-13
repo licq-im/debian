@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -21,9 +21,9 @@
  */
 
 #include "client.h"
-#include "config.h"
-#include "handler.h"
+
 #include "sessionmanager.h"
+#include "user.h"
 #include "vcard.h"
 
 #include <gloox/connectionhttpproxy.h>
@@ -31,33 +31,33 @@
 #include <gloox/disco.h>
 #include <gloox/message.h>
 #include <gloox/rostermanager.h>
+#include <gloox/vcardupdate.h>
 
-#include <licq/contactlist/user.h>
 #include <licq/daemon.h>
 #include <licq/logging/log.h>
 #include <licq/licqversion.h>
+#include <licq/thread/mutexlocker.h>
 
-#define TRACE() gLog.debug("In Client::%s()", __func__)
+#define TRACE_FORMAT "Client::%s: "
+#define TRACE_ARGS __func__
+#include "debug.h"
 
 using namespace LicqJabber;
 
-using Licq::User;
 using Licq::gDaemon;
 using Licq::gLog;
 using std::string;
 
-JClient::JClient(const gloox::JID& jid, const string& password, int port) :
-  gloox::Client(jid, password, port)
+static const time_t PING_TIMEOUT = 60;
+Licq::Mutex Client::myGlooxMutex;
+
+GlooxClient::GlooxClient(const gloox::JID& jid, const string& password) :
+  gloox::Client(jid, password)
 {
-  // EMPTY
+  // Empty
 }
 
-JClient::~JClient()
-{
-  // EMPTY
-}
-
-bool JClient::checkStreamVersion(const string& version)
+bool GlooxClient::checkStreamVersion(const string& version)
 {
   // do not consider absence of the version as an error
   if (version.empty())
@@ -66,16 +66,21 @@ bool JClient::checkStreamVersion(const string& version)
   return gloox::Client::checkStreamVersion(version);
 }
 
-Client::Client(const Config& config, Handler& handler, const string& username,
-    const string& password, const string& host, int port) :
-  myHandler(handler),
+Client::Client(Licq::MainLoop& mainLoop, const Licq::UserId& ownerId,
+    const string& username, const string& password, const string& host,
+    int port, const string& resource, gloox::TLSPolicy tlsPolicy) :
+  myMainLoop(mainLoop),
+  myHandler(ownerId),
   mySessionManager(NULL),
-  myJid(username + "/" + config.getResource()),
+  myJid(username + "/" + resource),
   myClient(myJid, password),
   myTcpClient(NULL),
   myRosterManager(myClient.rosterManager()),
   myVCardManager(&myClient)
 {
+  myClient.registerStanzaExtension(new gloox::VCardUpdate);
+  myClient.addPresenceExtension(new gloox::VCardUpdate);
+
   myClient.registerConnectionListener(this);
   myRosterManager->registerRosterListener(this, false);
   myClient.logInstance().registerLogHandler(
@@ -87,7 +92,7 @@ Client::Client(const Config& config, Handler& handler, const string& username,
   myClient.disco()->setIdentity("client", "pc");
   myClient.disco()->setVersion("Licq", LICQ_VERSION_STRING);
 
-  myClient.setTls(config.getTlsPolicy());
+  myClient.setTls(tlsPolicy);
 
   if (!gDaemon.proxyEnabled())
   {
@@ -119,7 +124,15 @@ Client::Client(const Config& config, Handler& handler, const string& username,
 Client::~Client()
 {
   myVCardManager.cancelVCardOperations(this);
-  myClient.disconnect();
+
+  {
+    // Lock is needed here to protect the calls to gnutls_global_init
+    Licq::MutexLocker locker(myGlooxMutex);
+    myClient.disconnect();
+  }
+
+  // Avoid memory leak in gloox
+  myClient.removePresenceExtension(gloox::ExtVCardUpdate);
 
   delete mySessionManager;
 }
@@ -133,12 +146,12 @@ int Client::getSocket()
       myClient.connectionImpl())->socket();
 }
 
-void Client::recv()
+void Client::rawFileEvent(int /*fd*/, int /*revents*/)
 {
   myClient.recv();
 }
 
-void Client::ping()
+void Client::timeoutEvent(int /*id*/)
 {
   myClient.whitespacePing();
 }
@@ -150,8 +163,22 @@ void Client::setPassword(const string& password)
 
 bool Client::connect(unsigned status)
 {
+  // When having multiple accounts connecting at the same time, gloox can
+  // SIGSEGV: TLSDefault::init returns false (probably thread race), making
+  // ClientBase::getDefaultEncryption delete the TLSDefault instance which
+  // deletes GnuTLSBase. The destructor for GnuTLSBase calls cleanup() which
+  // does gnutls_bye(*m_session, ...). But m_session == NULL...
+  Licq::MutexLocker locker(myGlooxMutex);
+
   changeStatus(status, false);
-  return myClient.connect(false);
+  if (!myClient.connect(false))
+    return false;
+
+  // Register with mainloop for socket monitoring and whitespace ping
+  myMainLoop.addRawFile(getSocket(), this);
+  myMainLoop.addTimeout(PING_TIMEOUT*1000, this, 0, false);
+
+  return true;
 }
 
 bool Client::isConnected()
@@ -177,11 +204,14 @@ void Client::getVCard(const string& user)
 
 void Client::setOwnerVCard(const UserToVCard& wrapper)
 {
+  myPendingPhotoHash = wrapper.pictureSha1();
+
   gloox::VCard* card = wrapper.createVCard();
   myVCardManager.storeVCard(card, this);
 }
 
-void Client::addUser(const string& user, const gloox::StringList& groupNames, bool notify)
+void Client::addUser(const string& user, const gloox::StringList& groupNames,
+                     bool notify)
 {
   if (notify)
     myRosterManager->subscribe(gloox::JID(user), user, groupNames);
@@ -237,6 +267,9 @@ void Client::onConnect()
   gloox::ConnectionBase* conn = myClient.connectionImpl();
   myHandler.onConnect(conn->localInterface(), conn->localPort(),
                       presenceToStatus(myClient.presence().subtype()));
+
+  // Fetch the current vCard from the server
+  myVCardManager.fetchVCard(myClient.jid().bareJID(), this);
 }
 
 bool Client::onTLSConnect(const gloox::CertInfo& /*info*/)
@@ -246,6 +279,9 @@ bool Client::onTLSConnect(const gloox::CertInfo& /*info*/)
 
 void Client::onDisconnect(gloox::ConnectionError error)
 {
+  // Socket no longer open, stop monitoring it
+  myMainLoop.removeCallback(this);
+
   bool authError = false;
 
   switch (error)
@@ -309,7 +345,7 @@ void Client::onDisconnect(gloox::ConnectionError error)
 
 void Client::handleItemAdded(const gloox::JID& jid)
 {
-  TRACE();
+  TRACE("%s", jid.full().c_str());
 
   gloox::RosterItem* item = myRosterManager->getRosterItem(jid);
   addRosterItem(*item);
@@ -317,21 +353,21 @@ void Client::handleItemAdded(const gloox::JID& jid)
 
 void Client::handleItemSubscribed(const gloox::JID& jid)
 {
-  TRACE();
+  TRACE("%s", jid.full().c_str());
 
   gLog.info("Now authorized for %s", jid.bare().c_str());
 }
 
 void Client::handleItemRemoved(const gloox::JID& jid)
 {
-  TRACE();
+  TRACE("%s", jid.full().c_str());
 
   myHandler.onUserRemoved(jid.bare());
 }
 
 void Client::handleItemUpdated(const gloox::JID& jid)
 {
-  TRACE();
+  TRACE("%s", jid.full().c_str());
 
   gloox::RosterItem* item = myRosterManager->getRosterItem(jid);
   addRosterItem(*item);
@@ -339,7 +375,7 @@ void Client::handleItemUpdated(const gloox::JID& jid)
 
 void Client::handleItemUnsubscribed(const gloox::JID& jid)
 {
-  TRACE();
+  TRACE("%s", jid.full().c_str());
 
   gLog.info("No longer authorized for %s", jid.bare().c_str());
 }
@@ -365,10 +401,31 @@ void Client::handleRosterPresence(const gloox::RosterItem& item,
                                   gloox::Presence::PresenceType presence,
                                   const string& msg)
 {
-  TRACE();
+  using namespace gloox;
 
-  myHandler.onUserStatusChange(gloox::JID(item.jid()).bare(),
-      presenceToStatus(presence), msg);
+  TRACE("%s %d", item.jid().c_str(), presence);
+
+  std::string photoHash;
+
+  const RosterItem::ResourceMap& resources = item.resources();
+  for (RosterItem::ResourceMap::const_iterator resource = resources.begin();
+       photoHash.empty() && resource != resources.end(); ++resource)
+  {
+    const StanzaExtensionList& extensions = resource->second->extensions();
+    for (StanzaExtensionList::const_iterator it = extensions.begin();
+         photoHash.empty() && it != extensions.end(); ++it)
+    {
+      if ((*it)->extensionType() == gloox::ExtVCardUpdate)
+      {
+        const VCardUpdate* vCardUpdate = dynamic_cast<const VCardUpdate*>(*it);
+        if (vCardUpdate != NULL)
+          photoHash = vCardUpdate->hash();
+      }
+    }
+  }
+
+  myHandler.onUserStatusChange(
+      JID(item.jid()).bare(), presenceToStatus(presence), msg, photoHash);
 }
 
 void Client::handleSelfPresence(const gloox::RosterItem& /*item*/,
@@ -492,6 +549,9 @@ void Client::handleVCard(const gloox::JID& jid, const gloox::VCard* vcard)
   {
     VCardToUser user(vcard);
     myHandler.onUserInfo(jid.bare(), user);
+
+    if (jid.bare() == myClient.jid().bare())
+      broadcastPhotoHash(user.pictureSha1());
   }
 }
 
@@ -502,10 +562,50 @@ void Client::handleVCardResult(gloox::VCardHandler::VCardContext context,
 
   if (error != gloox::StanzaErrorUndefined)
   {
-    gLog.warning("%s VCard for user %s failed with error %u",
+    gLog.warning("%s vCard for user %s failed with error %u",
         context == gloox::VCardHandler::StoreVCard ? "Storing" : "Fetching",
-        jid.bare().c_str(), error);
+        jid ? jid.bare().c_str() : myClient.jid().bare().c_str(), error);
   }
+
+  if (!jid && context == gloox::VCardHandler::StoreVCard)
+  {
+    if (error == gloox::StanzaErrorUndefined)
+      broadcastPhotoHash(myPendingPhotoHash);
+    else
+      broadcastPhotoHash(boost::none);
+
+    myPendingPhotoHash = boost::none;
+  }
+}
+
+void Client::broadcastPhotoHash(const boost::optional<std::string>& hash)
+{
+  TRACE();
+
+  if (hash)
+  {
+    if (hash->empty())
+    {
+      // Bug in gloox: if the hash is empty then VCardUpdate will not generate
+      // a empty photo tag as it should.
+      gloox::VCardUpdate card("dummy");
+
+      gloox::Tag* tag = card.tag();
+      tag->removeChild("photo");
+      new gloox::Tag(tag, "photo");
+
+      myClient.addPresenceExtension(new gloox::VCardUpdate(tag));
+      delete tag;
+    }
+    else
+      myClient.addPresenceExtension(new gloox::VCardUpdate(*hash));
+  }
+  else
+  {
+    myClient.addPresenceExtension(new gloox::VCardUpdate);
+  }
+
+  myClient.setPresence();
 }
 
 bool Client::addRosterItem(const gloox::RosterItem& item)

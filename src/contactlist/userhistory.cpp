@@ -41,25 +41,20 @@
 
 #define MAX_HISTORY_MSG_SIZE 8192
 
-using namespace std;
 using Licq::UserId;
 using Licq::gLog;
 using Licq::gTranslator;
 using LicqDaemon::UserHistory;
+using std::list;
+using std::string;
 
-UserHistory::UserHistory(unsigned long ppid)
-  : myPpid(ppid)
+UserHistory::UserHistory(const Licq::UserId& userId)
+  : myUserId(userId)
 {
 }
 
 UserHistory::~UserHistory()
 {
-}
-
-void UserHistory::setFile(const string& filename, const string& description)
-{
-  myFilename = filename;
-  myDescription = description;
 }
 
 
@@ -234,7 +229,7 @@ bool UserHistory::load(Licq::HistoryList& lHistory, const string& userEncoding) 
           email = gTranslator.toUtf8(email);
           message = gTranslator.toUtf8(message, userEncoding);
         }
-        e = new Licq::EventAuthRequest(UserId(accountId, myPpid), alias,
+        e = new Licq::EventAuthRequest(UserId(myUserId, accountId), alias,
             firstName, lastName, email, message, tTime, nFlags);
         break;
       }
@@ -245,7 +240,7 @@ bool UserHistory::load(Licq::HistoryList& lHistory, const string& userEncoding) 
         GET_VALID_LINES(message);
         if (convertToUtf8)
           message = gTranslator.toUtf8(message, userEncoding);
-        e = new Licq::EventAuthGranted(UserId(accountId, myPpid), message,
+        e = new Licq::EventAuthGranted(UserId(myUserId, accountId), message,
             tTime, nFlags);
         break;
       }
@@ -256,7 +251,7 @@ bool UserHistory::load(Licq::HistoryList& lHistory, const string& userEncoding) 
         GET_VALID_LINES(message);
         if (convertToUtf8)
           message = gTranslator.toUtf8(message, userEncoding);
-        e = new Licq::EventAuthRefused(UserId(accountId, myPpid), message,
+        e = new Licq::EventAuthRefused(UserId(myUserId, accountId), message,
             tTime, nFlags);
         break;
       }
@@ -275,7 +270,7 @@ bool UserHistory::load(Licq::HistoryList& lHistory, const string& userEncoding) 
           lastName = gTranslator.toUtf8(lastName);
           email = gTranslator.toUtf8(email);
         }
-        e = new Licq::EventAdded(UserId(accountId, myPpid), alias, firstName,
+        e = new Licq::EventAdded(UserId(myUserId, accountId), alias, firstName,
             lastName, email, tTime, nFlags);
         break;
       }
@@ -319,7 +314,7 @@ bool UserHistory::load(Licq::HistoryList& lHistory, const string& userEncoding) 
           GET_VALID_LINE_OR_BREAK(alias);
           if (convertToUtf8)
             alias = gTranslator.toUtf8(alias);
-          vc.push_back(new Licq::EventContactList::Contact(UserId(accountId, myPpid), alias));
+          vc.push_back(new Licq::EventContactList::Contact(UserId(myUserId, accountId), alias));
         }
         e = new Licq::EventContactList(vc, false, tTime, nFlags);
         break;
@@ -387,18 +382,6 @@ void UserHistory::write(const string& buf, bool append)
 {
   if (myFilename.empty() || buf.empty())
     return;
-
-  // Make sure history dir exists before trying to write a file in it
-  size_t slashPos = myFilename.rfind('/');
-  if (slashPos != string::npos)
-  {
-    string historydir = myFilename.substr(0, slashPos);
-    if (mkdir(historydir.c_str(), 0700) == -1 && errno != EEXIST)
-    {
-      fprintf(stderr, "Couldn't mkdir %s: %s\n", historydir.c_str(), strerror(errno));
-      return;
-    }
-  }
 
   int fd = open(myFilename.c_str(), O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC), 00600);
   if (fd == -1)

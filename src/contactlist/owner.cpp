@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2000-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2000-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,14 +38,12 @@ using namespace Licq;
 
 
 Owner::Owner(const UserId& id)
-  : User(id, false, true)
+  : User(id, false)
 {
   m_bOnContactList = true;
 
   m_bSavePassword = true;
   myPassword = "";
-
-  myPictureFileName = gDaemon.baseDir() + "owner.pic";
 
   IniFile& conf(userConf());
 
@@ -66,48 +64,8 @@ Owner::Owner(const UserId& id)
   conf.get("StartupStatus", statusStr, "");
   if (!User::stringToStatus(statusStr, myStartupStatus))
     myStartupStatus = User::OfflineStatus;
-
-  bool gotserver = false;
-  if (conf.get("ServerHost", myServerHost))
-    gotserver = true;
-  if (conf.get("ServerPort", myServerPort))
-    gotserver = true;
-
-  if (!gotserver)
-  {
-    // Server parameters are missing, this could be due to upgrade from Licq 1.5.x or older
-    // Try to migrate from protocol specific config file
-    switch (myId.protocolId())
-    {
-      case LICQ_PPID:
-      {
-        Licq::IniFile& oldConf(LicqDaemon::gDaemon.getLicqConf());
-        oldConf.setSection("network");
-        oldConf.get("ICQServer", myServerHost);
-        oldConf.get("ICQServerPort", myServerPort);
-        LicqDaemon::gDaemon.releaseLicqConf();
-        break;
-      }
-      case MSN_PPID:
-      {
-        Licq::IniFile oldConf("licq_msn.conf");
-        oldConf.loadFile();
-        oldConf.setSection("network");
-        oldConf.get("MsnServerAddress", myServerHost);
-        oldConf.get("MsnServerPort", myServerPort);
-        break;
-      }
-      case JABBER_PPID:
-      {
-        Licq::IniFile oldConf("licq_jabber.conf");
-        oldConf.loadFile();
-        oldConf.setSection("network");
-        oldConf.get("Server", myServerHost);
-        oldConf.get("Port", myServerPort);
-        break;
-      }
-    }
-  }
+  conf.get("ServerHost", myServerHost);
+  conf.get("ServerPort", myServerPort);
 
   gLog.info(tr("Loading owner configuration for %s"), myId.toString().c_str());
 
@@ -150,23 +108,18 @@ void Licq::Owner::SetPicture(const char *f)
   if (f == NULL)
   {
     SetPicturePresent(false);
-    if (remove(filename.c_str()) != 0 && errno != ENOENT)
-    {
-      gLog.error("Unable to delete %s's picture file (%s): %s",
-          myAlias.c_str(), filename.c_str(), strerror(errno));
-    }
+    deletePictureData();
   }
-  else if (strcmp(f, filename.c_str()) == 0)
+  else if (filename == f)
   {
     SetPicturePresent(true);
-    return;
   }
   else
   {
     int source = open(f, O_RDONLY);
     if (source == -1)
     {
-      gLog.error("Unable to open source picture file (%s): %s",
+      gLog.error(tr("Unable to open source picture file (%s): %s"),
           f, strerror(errno));
       return;
     }
@@ -174,7 +127,7 @@ void Licq::Owner::SetPicture(const char *f)
     int dest = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 00664);
     if (dest == -1)
     {
-      gLog.error("Unable to open picture file (%s): %s",
+      gLog.error(tr("Unable to open picture file (%s): %s"),
           filename.c_str(), strerror(errno));
       close(source);
       return;
@@ -192,14 +145,14 @@ void Licq::Owner::SetPicture(const char *f)
       }
       else if (s == -1)
       {
-        gLog.error("Error reading from %s: %s", f, strerror(errno));
+        gLog.error(tr("Error reading from %s: %s"), f, strerror(errno));
         SetPicturePresent(false);
         break;
       }
 
       if (write(dest, buf, s) != s)
       {
-        gLog.error("Error writing to %s: %s", f, strerror(errno));
+        gLog.error(tr("Error writing to %s: %s"), f, strerror(errno));
         SetPicturePresent(false);
         break;
       }

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 2010-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Please refer to the COPYRIGHT file distributed with this source
  * distribution for the names of the individual contributors.
@@ -21,12 +21,12 @@
  */
 
 #include "handler.h"
+#include "owner.h"
+#include "user.h"
 #include "vcard.h"
 
 #include <boost/foreach.hpp>
 
-#include <licq/contactlist/owner.h>
-#include <licq/contactlist/user.h>
 #include <licq/contactlist/usermanager.h>
 #include <licq/daemon.h>
 #include <licq/logging/log.h>
@@ -37,6 +37,10 @@
 #include <licq/socket.h>
 #include <licq/userevents.h>
 
+#define TRACE_FORMAT "Handler::%s: "
+#define TRACE_ARGS __func__
+#include "debug.h"
+
 using namespace LicqJabber;
 
 using Licq::OnEventData;
@@ -45,9 +49,8 @@ using Licq::gOnEventManager;
 using Licq::gUserManager;
 using std::string;
 
-#define TRACE() Licq::gLog.debug("In Handler::%s()", __func__)
-
-Handler::Handler()
+Handler::Handler(const Licq::UserId& ownerId)
+  : myOwnerId(ownerId)
 {
   // Empty
 }
@@ -57,25 +60,25 @@ void Handler::onConnect(const string& ip, int port, unsigned status)
   TRACE();
 
   {
-    Licq::OwnerWriteGuard owner(JABBER_PPID);
+    OwnerWriteGuard owner(myOwnerId);
     if (owner.isLocked())
     {
       owner->statusChanged(status);
       owner->SetIpPort(Licq::INetSocket::ipToInt(ip), port);
-      owner->setTimezone(Licq::User::systemTimezone());
+      owner->setTimezone(User::systemTimezone());
     }
   }
 
   Licq::gPluginManager.pushPluginSignal(
       new Licq::PluginSignal(Licq::PluginSignal::SignalLogon,
-      0, gUserManager.ownerUserId(JABBER_PPID)));
+      0, myOwnerId));
 }
 
 void Handler::onChangeStatus(unsigned status)
 {
   TRACE();
 
-  Licq::OwnerWriteGuard owner(JABBER_PPID);
+  OwnerWriteGuard owner(myOwnerId);
   if (owner.isLocked())
     owner->statusChanged(status);
 }
@@ -85,19 +88,19 @@ void Handler::onDisconnect(bool authError)
   TRACE();
 
   {
-    Licq::UserListGuard userList(JABBER_PPID);
+    Licq::UserListGuard userList(myOwnerId);
     BOOST_FOREACH(Licq::User* licqUser, **userList)
     {
       Licq::UserWriteGuard user(licqUser);
       if (user->isOnline())
-        user->statusChanged(Licq::User::OfflineStatus);
+        user->statusChanged(User::OfflineStatus);
     }
   }
 
   {
-    Licq::OwnerWriteGuard owner(JABBER_PPID);
+    OwnerWriteGuard owner(myOwnerId);
     if (owner.isLocked())
-      owner->statusChanged(Licq::User::OfflineStatus);
+      owner->statusChanged(User::OfflineStatus);
   }
 
   Licq::gPluginManager.pushPluginSignal(
@@ -105,25 +108,28 @@ void Handler::onDisconnect(bool authError)
                              authError ?
                              Licq::PluginSignal::LogoffPassword :
                              Licq::PluginSignal::LogoffRequested,
-                             gUserManager.ownerUserId(JABBER_PPID)));
+                             myOwnerId));
 }
 
 void Handler::onUserAdded(
     const string& id, const string& name, const std::list<string>& groups,
     bool awaitingAuthorization)
 {
-  TRACE();
+  TRACE("%s (%s)", id.c_str(), name.c_str());
 
-  UserId userId(id, JABBER_PPID);
+  UserId userId(myOwnerId, id);
   bool wasAdded = false;
   if (!gUserManager.userExists(userId))
   {
     gUserManager.addUser(userId, true, false);
     wasAdded = true;
   }
-  Licq::UserWriteGuard user(userId);
+  UserWriteGuard user(userId);
   assert(user.isLocked());
-  if (wasAdded)
+
+  user->SetEnableSave(false);
+
+  if (wasAdded || !user->KeepAliasOnUpdate())
     user->setAlias(name);
 
   Licq::UserGroupList glist;
@@ -140,13 +146,11 @@ void Handler::onUserAdded(
   user->SetGroups(glist);
 
   user->setUserEncoding("UTF-8");
-  if (!user->KeepAliasOnUpdate())
-    user->setAlias(name);
-
   user->SetAwaitingAuth(awaitingAuthorization);
+  user->SetSendServer(true);
 
-  // Remove this line when SetGroups call above saves contact groups itself.
-  user->save(Licq::User::SaveLicqInfo);
+  user->SetEnableSave(true);
+  user->save(User::SaveUserInfo | User::SaveLicqInfo);
 
   Licq::gPluginManager.pushPluginSignal(
       new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
@@ -164,48 +168,80 @@ void Handler::onUserRemoved(const string& id)
 {
   TRACE();
 
-  Licq::gUserManager.removeLocalUser(UserId(id, JABBER_PPID));
+  Licq::gUserManager.removeLocalUser(UserId(myOwnerId, id));
 }
 
 void Handler::onUserStatusChange(
-    const string& id, unsigned status, const string& msg)
+    const string& id, unsigned status, const string& msg,
+    const string& photoHash)
 {
   TRACE();
 
-  Licq::UserWriteGuard user(Licq::UserId(id, JABBER_PPID));
+  bool refreshInfo = false;
+
+  Licq::UserId userId(myOwnerId, id);
+  UserWriteGuard user(userId);
   if (user.isLocked())
   {
     user->SetSendServer(true);
     user->setAutoResponse(msg);
     user->statusChanged(status);
+
+    if (!photoHash.empty() && photoHash != user->pictureSha1())
+    {
+      Licq::gLog.debug("New picture SHA1 for %s; requesting new VCard",
+                       userId.accountId().c_str());
+      refreshInfo = true;
+    }
   }
+
+  if (refreshInfo)
+    Licq::gProtocolManager.requestUserInfo(userId);
 }
 
 void Handler::onUserInfo(const string& id, const VCardToUser& wrapper)
 {
   TRACE();
 
-  bool updated = false;
-  Licq::UserId userId(id, JABBER_PPID);
-  if (gUserManager.isOwner(userId))
+  bool aliasUpdated = false;
+  int saveGroup = 0;
+  Licq::UserId userId(myOwnerId, id);
+  if (userId.isOwner())
   {
-    Licq::OwnerWriteGuard owner(userId);
+    OwnerWriteGuard owner(userId);
     if (owner.isLocked())
-      updated = wrapper.updateUser(*owner);
+    {
+      const string oldAlias = owner->getAlias();
+      saveGroup = wrapper.updateUser(*owner);
+      aliasUpdated = owner->getAlias() != oldAlias;
+    }
   }
   else
   {
-    Licq::UserWriteGuard user(userId);
+    UserWriteGuard user(userId);
     if (user.isLocked())
-      updated = wrapper.updateUser(*user);
+    {
+      const string oldAlias = user->getAlias();
+      saveGroup = wrapper.updateUser(*user);
+      aliasUpdated = user->getAlias() != oldAlias;
+    }
   }
 
-  if (updated)
+  if (saveGroup != 0)
   {
-    Licq::gPluginManager.pushPluginSignal(
-        new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
-                               Licq::PluginSignal::UserBasic, userId));
+    if (saveGroup & User::SaveUserInfo)
+      Licq::gPluginManager.pushPluginSignal(
+          new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+                                 Licq::PluginSignal::UserBasic, userId));
+
+    if (saveGroup & User::SavePictureInfo)
+      Licq::gPluginManager.pushPluginSignal(
+          new Licq::PluginSignal(Licq::PluginSignal::SignalUser,
+                                 Licq::PluginSignal::UserPicture, userId));
   }
+
+  if (aliasUpdated)
+    Licq::gProtocolManager.updateUserAlias(userId);
 }
 
 void Handler::onRosterReceived(const std::set<string>& ids)
@@ -216,7 +252,7 @@ void Handler::onRosterReceived(const std::set<string>& ids)
   std::list<UserId>::const_iterator it;
 
   {
-    Licq::UserListGuard userList(JABBER_PPID);
+    Licq::UserListGuard userList(myOwnerId);
     BOOST_FOREACH(const Licq::User* user, **userList)
     {
       if (ids.count(user->accountId()) == 0)
@@ -234,14 +270,14 @@ void Handler::onUserAuthorizationRequest(
   TRACE();
 
   Licq::EventAuthRequest* event = new Licq::EventAuthRequest(
-      UserId(id, JABBER_PPID),
+      UserId(myOwnerId, id),
       string(), // alias
       string(), string(), // first and last name
       string(), // email
       message,
       time(0), 0);
 
-  Licq::OwnerWriteGuard owner(JABBER_PPID);
+  OwnerWriteGuard owner(myOwnerId);
   if (Licq::gDaemon.addUserEvent(*owner, event))
   {
     event->AddToHistory(*owner, true);
@@ -258,10 +294,11 @@ void Handler::onMessage(const string& from, const string& message, time_t sent,
       message.c_str(), sent,
       urgent ? unsigned(Licq::UserEvent::FlagUrgent) : 0);
 
-  Licq::UserWriteGuard user(UserId(from, JABBER_PPID), true);
+  Licq::UserWriteGuard user(UserId(myOwnerId, from), true);
 
   if (user.isLocked())
     user->setIsTyping(false);
+
   if (Licq::gDaemon.addUserEvent(*user, event))
     gOnEventManager.performOnEvent(OnEventData::OnEventMessage, *user);
 }
@@ -270,7 +307,7 @@ void Handler::onNotifyTyping(const string& from, bool active)
 {
   TRACE();
 
-  Licq::UserWriteGuard user(UserId(from, JABBER_PPID));
+  UserWriteGuard user(UserId(myOwnerId, from));
   if (user.isLocked())
   {
     user->setIsTyping(active);
@@ -284,10 +321,10 @@ void Handler::onNotifyTyping(const string& from, bool active)
 
 string Handler::getStatusMessage(unsigned status)
 {
-  if ((status & Licq::User::MessageStatuses) == 0)
+  if ((status & User::MessageStatuses) == 0)
     return string();
 
-  Licq::OwnerReadGuard o(JABBER_PPID);
+  OwnerReadGuard o(myOwnerId);
   if (!o.isLocked())
     return string();
 

@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 1998-2012 Licq developers <licq-dev@googlegroups.com>
+ * Copyright (C) 1998-2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,13 +65,12 @@ extern "C" {
 
 #include "gettext.h"
 
-
-using namespace std;
 using Licq::Buffer;
 using Licq::INetSocket;
 using Licq::TCPSocket;
 using Licq::UDPSocket;
 using Licq::UserId;
+using std::string;
 
 char* Licq::ip_ntoa(unsigned long in, char *buf)
 {
@@ -434,7 +433,7 @@ bool INetSocket::StartServer(unsigned int _nPort)
   }
 #endif
 
-  if (bind(myDescriptor, (struct sockaddr*)&myLocalAddr, addrlen) == -1)
+  if (::bind(myDescriptor, (struct sockaddr*)&myLocalAddr, addrlen) == -1)
   {
     myErrorType = ErrorErrno;
     ::close(myDescriptor);
@@ -587,7 +586,11 @@ bool TCPSocket::RecvConnection(TCPSocket &newSocket)
   return success;
 }
 
+#ifdef USE_OPENSSL
 #define m_pSSL ((SSL *) m_p_SSL)
+#else
+#define m_pSSL m_p_SSL
+#endif
 
 /*-----TCPSocket::TransferConnectionFrom---------------------------------------
  * Transfers a connection from the given socket to the current one and closes
@@ -655,6 +658,8 @@ bool TCPSocket::send(Buffer& buf)
   DumpPacket(&buf, false);
 
   return true;
+#else
+  return false;
 #endif
 }
 
@@ -711,6 +716,8 @@ bool TCPSocket::receive(Buffer& buf, size_t maxlength, bool dump)
     DumpPacket(&buf, true);
 
   return (true);
+#else
+  return false;
 #endif
 }
 
@@ -731,7 +738,7 @@ bool TCPSocket::SSL_Pending()
 bool TCPSocket::SecureConnect()
 {
   pthread_mutex_init(&mutex_ssl, NULL);
-  if (myUserId.protocolId() == LICQ_PPID)
+  if (myUserId.protocolId() == ICQ_PPID)
     m_p_SSL = SSL_new(gSSL_CTX);
   else
     m_p_SSL = SSL_new(gSSL_CTX_NONICQ);
@@ -767,7 +774,7 @@ bool TCPSocket::SecureListen()
 {
   pthread_mutex_init(&mutex_ssl, NULL);
 
-  if (myUserId.protocolId() == LICQ_PPID)
+  if (myUserId.protocolId() == ICQ_PPID)
     m_p_SSL = SSL_new(gSSL_CTX);
   else
     m_p_SSL = SSL_new(gSSL_CTX_NONICQ);

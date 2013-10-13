@@ -28,11 +28,9 @@ set(dialogs_SRCS
   phonedlg.cpp
   randomchatdlg.cpp
   refusedlg.cpp
-  registeruser.cpp
   searchuserdlg.cpp
   showawaymsgdlg.cpp
   statsdlg.cpp
-  userselectdlg.cpp
   utilitydlg.cpp
 )
 

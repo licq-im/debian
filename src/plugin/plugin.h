@@ -1,6 +1,6 @@
 /*
  * This file is part of Licq, an instant messaging client for UNIX.
- * Copyright (C) 2010-2011 Licq developers
+ * Copyright (C) 2010-2011, 2013 Licq developers <licq-dev@googlegroups.com>
  *
  * Licq is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,107 +20,48 @@
 #ifndef LICQDAEMON_PLUGIN_H
 #define LICQDAEMON_PLUGIN_H
 
-#include <licq/plugin/plugin.h>
-
-#include <licq/pipe.h>
-
 #include "utils/dynamiclibrary.h"
-#include "pluginthread.h"
 
-namespace Licq
+#include <licq/plugin/plugin.h>
+#include <licq/thread/mutex.h>
+
+#include <boost/enable_shared_from_this.hpp>
+#include <boost/weak_ptr.hpp>
+#include <vector>
+
+namespace LicqDaemon
 {
 
-/**
- * Temporary class used to hold initalization data for Plugin constructor
- */
-class Plugin::Params
-{
-public:
-  Params(int id, LicqDaemon::DynamicLibrary::Ptr lib,
-      LicqDaemon::PluginThread::Ptr thread) :
-    myId(id), myLib(lib), myThread(thread)
-  { /* Empty */ }
+class PluginInstance;
 
-  int myId;
-  LicqDaemon::DynamicLibrary::Ptr myLib;
-  LicqDaemon::PluginThread::Ptr myThread;
-};
-
-class Plugin::Private
+class Plugin : public virtual Licq::Plugin,
+               public boost::enable_shared_from_this<Plugin>
 {
 public:
-  Private(Plugin* plugin, int id, LicqDaemon::DynamicLibrary::Ptr lib,
-      LicqDaemon::PluginThread::Ptr thread);
-  ~Private();
+  typedef boost::shared_ptr<Plugin> Ptr;
 
-  /**
-   * Initialize the plugin
-   *
-   * This is a wrapper that initializes the plugin in it's thread and waits
-   * for the init function to return.
-   *
-   * @param argc Number of arguments for plugin
-   * @param argv Arguments for plugin
-   * @param callback Function to call in plugin's thread before calling plugin
-   * @return Return value from plugin initialization
-   */
-  bool callInit(int argc = 0, char** argv = NULL, void (*callback)(const Plugin&) = NULL);
+  Plugin(DynamicLibrary::Ptr lib);
+  ~Plugin();
 
-  /**
-   * Start the plugin
-   *
-   * This is a wrapper that runs the plugin in its thread
-   * This function returns immediately
-   *
-   * @param startCallback Function to call in the plugin's thread just before
-   *                      the plugin's main function is called
-   * @param exitCallback Function to call when thread exists
-   */
-  void startThread(void (*startCallback)(const Plugin&) = NULL,
-                   void (*exitCallback)(const Plugin&) = NULL);
+  // From Licq::Plugin
+  std::string name() const;
+  std::string version() const;
+  std::string libraryName() const;
+  boost::shared_ptr<Licq::PluginFactory> internalFactory();
 
-  /**
-   * Wait for the plugin to stop
-   *
-   * @return Exit code from plugin thread
-   */
-  int joinThread();
+protected:
+  virtual boost::shared_ptr<Licq::PluginFactory> factory() = 0;
+  virtual boost::shared_ptr<const Licq::PluginFactory> factory() const = 0;
 
-  /**
-   * Cancel the plugin's thread
-   */
-  void cancelThread();
+  void registerInstance(boost::weak_ptr<PluginInstance> instance);
 
-  /**
-   * Get the library object for this plugin
-   */
-  LicqDaemon::DynamicLibrary::Ptr library()
-  { return myLib; }
+  mutable Licq::Mutex myMutex;
+  std::vector< boost::weak_ptr<PluginInstance> > myInstances;
 
 private:
-  /// Entry point for calling init() in plugin's thread
-  static bool initThreadEntry(void* plugin);
-
-  /// Entry point for calling run() in plugin's thread
-  static void* startThreadEntry(void* plugin);
-
-  Plugin* const myPlugin;
-  const int myId;
-  LicqDaemon::DynamicLibrary::Ptr myLib;
-  Licq::Pipe myPipe;
-
-  LicqDaemon::PluginThread::Ptr myThread;
-  void (*myInitCallback)(const Plugin&);
-  void (*myStartCallback)(const Plugin&);
-  void (*myExitCallback)(const Plugin&);
-
-  int myArgc;
-  char** myArgv;
-  char** myArgvCopy;
-
-  friend class Plugin;
+  DynamicLibrary::Ptr myLibrary;
 };
 
-} // namespace Licq
+} // namespace LicqDaemon
 
 #endif
