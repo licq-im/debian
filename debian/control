@@ -88,16 +88,6 @@ Description: Jabber plug-in for Licq
  communication over a Jabber (XMPP) instant messaging network, such as Google
  Talk and the Facebook chat.
 
-Package: licq-plugin-kde
-Architecture: all
-Depends: licq-plugin-kde4, ${misc:Depends}
-Section: oldlibs
-Priority: extra
-Description: dummy package for transition to licq-plugin-kde4
- This is a transitional dummy package to ease the migration from the deprecated
- licq-plugin-kde to the new licq-plugin-kde4 package.  You can remove it
- safely.
-
 Package: licq-plugin-kde4
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4-common
@@ -130,15 +120,6 @@ Description: on-screen display plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables it to
  display new messages as an on-screen display message.  User logged on/off and
  status changed messages are also supported.
-
-Package: licq-plugin-qt
-Architecture: all
-Depends: licq-plugin-qt4, ${misc:Depends}
-Section: oldlibs
-Priority: extra
-Description: dummy package for transition to licq-plugin-qt4
- This is a transitional dummy package to ease the migration from the deprecated
- licq-plugin-qt to the new licq-plugin-qt4 package.  You can remove it safely.
 
 Package: licq-plugin-qt4
 Architecture: any

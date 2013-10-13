@@ -25,7 +25,7 @@ export CTEST_OUTPUT_ON_FAILURE=1
 # plugin packages
 PLUGINS := $(filter licq-plugin-%,$(shell dh_listpackages))
 PLUGINS := $(patsubst licq-plugin-%,%,$(PLUGINS))
-PLUGINS := $(filter-out kde qt qt4-common,$(PLUGINS))
+PLUGINS := $(filter-out qt4-common,$(PLUGINS))
 
 # directories of plugin packages in source tree
 src/autoreply = auto-reply
