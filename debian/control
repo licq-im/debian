@@ -4,11 +4,9 @@ Build-Depends: cdbs (>= 0.4.52), debhelper (>= 9), imagemagick,
  kdelibs5-dev,
  libboost-dev (>= 1.36.0),
  libboost-regex-dev (>= 1.36.0),
- libcdk5-dev,
  libgloox-dev (>= 1.0),
  libgpgme11-dev (>= 0.4.2),
  libhunspell-dev,
- libncurses5-dev,
  libqt4-dev (>= 4.3.0), qt4-dev-tools,
  libssl-dev,
  libxosd-dev (>= 2.1.0),
@@ -28,9 +26,9 @@ Recommends: sox
 Suggests: bind9-host | host, ping, traceroute
 Description: multi-protocol instant messaging client (base files)
  Licq is an instant messaging client daemon that supports a number of
- interfaces via plug-ins, primarily KDE or Qt, but also console, and several
- utility plug-ins.  Included in this package is support for AIM and ICQ.
- Support for MSN and Jabber is available as separate plug-ins.
+ interfaces via plug-ins, currently KDE or Qt, and several utility plug-ins.
+ Included in this package is support for AIM and ICQ.  Support for MSN and
+ Jabber is available as separate plug-ins.
  .
  Implemented features include messaging, chat, file transfer, whitepages,
  history, invisible list, server-side stored contacts, typing
@@ -60,17 +58,6 @@ Description: autoreply plug-in for Licq
  events (messages, URLs, etc.) received while the plug-in is enabled will cause
  the plug-in to reply with the output from any specified program (e.g.,
  fortune).
-
-Package: licq-plugin-console
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Recommends: licq (= ${binary:Version})
-Provides: licq-plugin-ui
-Description: console user interface plug-in for Licq
- This is a console user interface plug-in for the Licq instant messaging
- client.  It does not have all the features that the Qt GUI supports, but it
- does offer a number of really cool text-mode things such as multiple windows,
- contact list pane and log window.
 
 Package: licq-plugin-forwarder
 Architecture: any
