@@ -1,0 +1,31 @@
+commit f288367c758de16fc013c6f4c9851ca85813eb59
+Author: Erik Johansson <erijo@licq.org>
+Date:   Thu Oct 31 21:05:42 2013 +0100
+
+    Fix build error
+    
+    Must include QObject to get the definition for Q_OBJECT. But according to the
+    documentation, Q_OBJECT should only be used for objects derived from QObject so
+    use Q_GADGET instead. Don't really know why it is needed at all, but this
+    builds at least.
+
+diff --git a/qt4-gui/src/helpers/usercodec.h b/qt4-gui/src/helpers/usercodec.h
+index eb1df23..74f87e8 100644
+--- a/plugins/qt4-gui/src/helpers/usercodec.h
++++ b/plugins/qt4-gui/src/helpers/usercodec.h
+@@ -20,13 +20,14 @@
+ #ifndef USERCODEC_H
+ #define USERCODEC_H
+ 
++#include <QObject>
+ #include <QString>
+ 
+ namespace LicqQtGui
+ {
+ class UserCodec
+ {
+-  Q_OBJECT
++  Q_GADGET
+ 
+ public:
+   struct encoding_t
