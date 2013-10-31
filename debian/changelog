@@ -1,3 +1,13 @@
+licq (1.8.1-1) unstable; urgency=low
+
+  * New upstream version 1.8.1
+  * Remove dummy packages licq-plugin-(kde|qt)
+  * Remove licq-plugin-console as it is no longer available from upstream
+    (Closes: #96445, #138298, #693953)
+  * Add new licq-plugin-icq as ICQ/AIM is no longer part of licq daemon
+
+ -- Erik Johansson <debian@ejohansson.se>  Thu, 31 Oct 2013 20:40:28 +0100
+
 licq (1.7.1-1) unstable; urgency=low
 
   * New upstream version 1.7.1
