@@ -21,7 +21,8 @@ Homepage: http://www.licq.org/
 
 Package: licq
 Architecture: any
-# Remove dependency on icq once Jessie has been release
+# Remove dependency on icq once Jessie has been released. Also change icq's
+# recommendation on licq to depends.
 Depends: ${shlibs:Depends}, ${misc:Depends}, licq-plugin-qt4 | licq-plugin-ui,
  licq-plugin-icq
 Recommends: sox,
@@ -72,7 +73,8 @@ Description: forwarder plug-in for Licq
 
 Package: licq-plugin-icq
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, licq (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: licq (= ${binary:Version})
 Description: ICQ/AIM plug-in for Licq
  This is a plug-in for the Licq instant messaging client that enables
  communication over ICQ and/or AIM instant messaging network.
