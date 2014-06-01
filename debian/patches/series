@@ -1,4 +1,1 @@
-# Fix build error introduced in 1.8.1
-fix-build-error.patch
-
 30_licq-debian-config.patch
