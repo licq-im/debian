@@ -14,7 +14,7 @@ Build-Depends: cdbs (>= 0.4.52), debhelper (>= 9), imagemagick,
 Section: net
 Priority: optional
 Maintainer: Erik Johansson <debian@ejohansson.se>
-Standards-Version: 3.9.4
+Standards-Version: 3.9.5
 Vcs-Git: git://github.com/licq-im/debian.git
 Vcs-Browser: https://github.com/licq-im/debian
 Homepage: http://www.licq.org/
