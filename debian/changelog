@@ -1,3 +1,11 @@
+licq (1.8.2-1) unstable; urgency=low
+
+  * New upstream version 1.8.2
+  * Drop fix-build-error patch that has been included upstream
+  * Bump standards version to 3.9.4 with no changes
+
+ -- Erik Johansson <debian@ejohansson.se>  Tue, 02 Sep 2014 12:26:50 +0200
+
 licq (1.8.1-2) unstable; urgency=low
 
   * Break circular dependency between licq and licq-plugin-icq (Closes: #729362)
